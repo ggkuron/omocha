@@ -1,4 +1,8 @@
-{-# LANGUAGE ScopedTypeVariables, TypeFamilies, TemplateHaskell, QuasiQuotes, FlexibleContexts #-}   
+{-# LANGUAGE ScopedTypeVariables
+           , TypeFamilies
+           , TemplateHaskell
+           , QuasiQuotes
+           , FlexibleContexts #-}   
 
 module Main where   
 
@@ -11,6 +15,8 @@ import Paths_omocha
 
 import qualified Codec.Picture as P
 import qualified Codec.Picture.Types as P
+
+import Control.Lens
 
 loadBitmapsWith [|getDataFileName|] "static/images"
 
@@ -25,8 +31,8 @@ main = do
         normals   :: Buffer os (B3 Float) <- newBuffer 6  
         tangents  :: Buffer os (B3 Float) <- newBuffer 6  
         writeBuffer positions 0 [V2 1 1, V2 1 (-1), V2 (-1) 1, V2 (-1) (-1)]        
-        writeBuffer normals 0 [V3 1 0 0, V3 (-1) 0 0, V3 0 1 0, V3 0 (-1) 0, V3 0 0 1, V3 0 0 (-1)]  
-        writeBuffer tangents 0 [V3 0 1 0, V3 0 (-1) 0, V3 0 0 1, V3 0 0 (-1), V3 (-1) 0 0, V3 1 0 0]  
+        writeBuffer normals 0 [V3 0 0 1]
+        writeBuffer tangents 0 [V3 (1) 0 0]
 
         -- Create a buffer for the uniform values        
         uniform :: Buffer os (Uniform (V4 (B4 Float), V3 (B3 Float))) <- newBuffer 1  
@@ -56,7 +62,7 @@ main = do
                       uv <- rasterize (\_ -> rasterOptions) projectedSides
                       let litFrags = light samp <$> uv  
                           litFragsWithDepth = withRasterizedInfo   
-                              (\(V4 r g b a) x -> (V3 r g b, getZ $ rasterizedFragCoord x)) litFrags  
+                              (\(V4 r g b a) x -> (V3 r g b, (rasterizedFragCoord x)^._z)) litFrags  
                           colorOption = ContextColorOption NoBlending (pure True)  
                           depthOption = DepthOption Less True                            
     
@@ -64,7 +70,7 @@ main = do
        
         loop makePrimitives shader uniform 0   
 
-getZ (V4 _ _ z _) = z 
+
 
 getJuicyPixel xs _x _y pix =  
   let P.PixelRGBA8 r g b a = P.convertPixel pix in V4 r g b a : xs   
@@ -72,11 +78,11 @@ getJuicyPixel xs _x _y pix =
 loop makePrimitives shader uniform angle = do  
   -- Write this frames uniform value   
   size@(V2 w h) <- getContextBuffersSize  
-  let modelRot = fromQuaternion (axisAngle (V3 1 0.5 0.3) angle)  
-      modelMat = mkTransformationMat modelRot (pure 0)  
+  let modelRot = fromQuaternion (axisAngle (V3 1 1 1) angle)  
+      -- modelMat = mkTransformationMat modelRot (pure 0)  
       projMat = perspective (pi/3) (fromIntegral w / fromIntegral h) 1 100   
       viewMat = mkTransformationMat identity (- V3 0 0 5)  
-      viewProjMat = projMat !*! viewMat !*! modelMat  
+      viewProjMat = projMat !*! viewMat 
       normMat = modelRot  
   writeBuffer uniform 0 [(viewProjMat, normMat)]  
 
@@ -89,7 +95,7 @@ loop makePrimitives shader uniform angle = do
 
   closeRequested <- GLFW.windowShouldClose   
   unless closeRequested $  
-      loop makePrimitives shader uniform ((angle + 0.005) `mod''` (2*pi))  
+      loop makePrimitives shader uniform (0)
 
 
 -- light :: ColorSampleable c =>
