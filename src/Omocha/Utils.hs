@@ -15,17 +15,12 @@ import Control.Monad.IO.Class
 import qualified Codec.Picture as C
 import qualified Codec.Picture.RGBA8 as C
 
--- import Linear
-import System.Random
 import System.Directory
 import System.FilePath
 import System.IO.Unsafe
 -- import System.Random
 import System.Environment
--- import FreeGame.UI
-import Data.Hashable
-import qualified Data.IntMap as IM
-import Data.Char
+import Data.Char(isAlphaNum)
 
 newtype Bitmap = Bitmap { bitmapImage :: C.Image C.PixelRGBA8}
 
