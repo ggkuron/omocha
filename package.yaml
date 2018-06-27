@@ -1,0 +1,46 @@
+name:                omocha
+version:             0.1.1.0
+synopsis:            Initial project template from stack
+description:         Please see README.md
+homepage:            http://github.com/name/project
+license:             BSD3
+license-file:        LICENSE
+author:              gg
+maintainer:          ggkuron@gmail.com
+# copyright:           
+category:            Game
+build-type:          Simple
+data-files: 
+- ./static/images/*.png
+- ./static/images/maptips/*.png
+
+dependencies:
+- base >= 4.9.1.0
+executables:
+  omocha:
+    source-dirs:      
+    - .
+    - src
+    main:             Main.hs
+    other-modules:       
+    - Omocha.Utils
+    - Paths_omocha
+    dependencies:       
+    - GPipe >= 2.2.3
+    - GPipe-GLFW
+    - elerea
+    - JuicyPixels
+    - JuicyPixels-util
+    - filepath
+    - template-haskell
+    - hashable
+    - directory
+    - transformers
+    - containers
+    - lens
+    - random
+    - linear
+    ghc-options:         
+    - -threaded
+    - -debug
+  
