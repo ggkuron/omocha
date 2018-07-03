@@ -1,12 +1,11 @@
-{-# LANGUAGE ScopedTypeVariables
-, TypeFamilies
-, TemplateHaskell
-, QuasiQuotes
-, MultiWayIf
-, ScopedTypeVariables
-, FlexibleContexts 
-, PartialTypeSignatures
-#-}   
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE PartialTypeSignatures #-}
 
 module Main where   
 
@@ -36,8 +35,7 @@ getImage bmp = let img = bitmapImage bmp
                    size = V2 (P.imageWidth img) (P.imageHeight img)
                 in (size, img)
 
-getJuicyPixel xs _ _ pix =  
-  let P.PixelRGBA8 r g b a = P.convertPixel pix in V4 r g b a : xs   
+getJuicyPixel xs _ _ pix = let P.PixelRGBA8 r g b a = P.convertPixel pix in V4 r g b a : xs   
 
 type UniInput = (B2 Int32, V3 (B3 Float), B3 Float, B3 Float, B3 Float)
 
@@ -48,11 +46,12 @@ viewTarget  (_, _, _, a, _) = a
 viewUp      (_, _, _, _, a) = a
 
 
-data  RenderInput os = RenderInput 
-                     {  riScreenSize :: V2 Int
-                     ,  riStream :: PrimitiveArray Triangles (B3 Float, B3 Float)
-                     ,  tex :: Texture2D os (Format RGBAFloat)
-                     }
+data  RenderInput os = RenderInput {
+   riScreenSize :: V2 Int
+,  riStream :: PrimitiveArray Triangles (B3 Float, B3 Float)
+,  tex :: Texture2D os (Format RGBAFloat)
+}
+
 
 main = runContextT GLFW.defaultHandleConfig $ do
     win <- newWindow (WindowFormatColorDepth RGBA8 Depth16) (GLFW.defaultWindowConfig "omocha")
@@ -85,41 +84,6 @@ main = runContextT GLFW.defaultHandleConfig $ do
         shader' $ RenderInput size prims' btex
         shader $ RenderInput size prims tex
       ]
-    where 
-        pictureShader :: Window os RGBAFloat Depth -> Buffer os (Uniform UniInput) -> Shader os (RenderInput os) ()
-        pictureShader win uniform = do
-            uni <- getUniform (const (uniform, 0)) 
-            sides <- fmap makeSide <$> toPrimitiveStream riStream 
-            let projectedSides = proj uni <$> sides
-                filterMode = SamplerFilter Linear Linear Linear (Just 16)
-                edge = (pure ClampToEdge, 1.0)
-            samp <- newSampler2D (\ri -> (tex ri, filterMode, edge))
-
-            uv <- rasterize (\ri -> (Front, ViewPort (V2 0 0) (riScreenSize ri), DepthRange 0 1) ) projectedSides
-            let litFrags = light samp <$> uv
-                litFragsWithDepth = withRasterizedInfo
-                                       (\p x -> (p , (rasterizedFragCoord x)^._z)) litFrags
-                colorOption = ContextColorOption (BlendRgbAlpha (FuncAdd, FuncAdd) (BlendingFactors SrcAlpha OneMinusSrcAlpha, BlendingFactors Zero One) (V4 0 0 0 0)) (pure True)
-                depthOption = DepthOption Less True
-            
-            drawWindowColorDepth (const (win, colorOption, depthOption)) litFragsWithDepth
-        boardShader :: (Window os RGBAFloat Depth) -> Buffer os (Uniform UniInput) -> Shader os (RenderInput os) ()
-        boardShader win uniform = do
-            uni <- getUniform (const (uniform, 0))
-            boards <- fmap makeBoard <$> toPrimitiveStream riStream
-            let projectedSides = proj uni <$> boards
-                filterMode = SamplerFilter Linear Linear Linear (Just 16)
-                edge = (pure ClampToEdge, 1.0)
-            samp <- newSampler2D (\ri -> (tex ri, filterMode, edge))
-
-            uv <- rasterize (\ri -> (Front, ViewPort (V2 0 0) (riScreenSize ri), DepthRange 0 1) ) projectedSides
-            let litFrags = light samp <$> uv
-                litFragsWithDepth = withRasterizedInfo
-                                       (\p x -> (p, (rasterizedFragCoord x)^._z)) litFrags
-                colorOption = ContextColorOption (BlendRgbAlpha (FuncAdd, FuncAdd) (BlendingFactors SrcAlpha OneMinusSrcAlpha, BlendingFactors Zero One) (V4 0 0 0 0)) (pure True)
-                depthOption = DepthOption Lequal True
-            
-            drawWindowColorDepth (const (win, colorOption, depthOption)) litFragsWithDepth
 
 loop win uniform camera renderings = do  
   closeRequested <- GLFW.windowShouldClose  win 
@@ -152,6 +116,46 @@ loop win uniform camera renderings = do
       loop win uniform camera' renderings 
 
 keyIsPressed win k = maybe False (== GLFW.KeyState'Pressed) <$> GLFW.getKey win k
+
+
+pictureShader :: Window os RGBAFloat Depth -> Buffer os (Uniform UniInput) -> Shader os (RenderInput os) ()
+pictureShader win uniform = do
+    uni <- getUniform (const (uniform, 0)) 
+    sides <- fmap makeSide <$> toPrimitiveStream riStream 
+    let projectedSides = proj uni <$> sides
+        filterMode = SamplerFilter Linear Linear Linear (Just 16)
+        edge = (pure ClampToEdge, 1.0)
+    samp <- newSampler2D (\ri -> (tex ri, filterMode, edge))
+
+    uv <- rasterize (\ri -> (Front, ViewPort (V2 0 0) (riScreenSize ri), DepthRange 0 1) ) projectedSides
+    let litFrags = light samp <$> uv
+        litFragsWithDepth = withRasterizedInfo
+                               (\p x -> (p , (rasterizedFragCoord x)^._z)) litFrags
+        colorOption = ContextColorOption (BlendRgbAlpha (FuncAdd, FuncAdd) (BlendingFactors SrcAlpha OneMinusSrcAlpha, BlendingFactors Zero One) (V4 0 0 0 0)) (pure True)
+        depthOption = DepthOption Less True
+    
+    drawWindowColorDepth (const (win, colorOption, depthOption)) litFragsWithDepth
+
+
+boardShader :: (Window os RGBAFloat Depth) -> Buffer os (Uniform UniInput) -> Shader os (RenderInput os) ()
+boardShader win uniform = do
+    uni <- getUniform (const (uniform, 0))
+    boards <- fmap makeBoard <$> toPrimitiveStream riStream
+    let projectedSides = proj uni <$> boards
+        filterMode = SamplerFilter Linear Linear Linear (Just 16)
+        edge = (pure ClampToEdge, 1.0)
+    samp <- newSampler2D (\ri -> (tex ri, filterMode, edge))
+
+    uv <- rasterize (\ri -> (Front, ViewPort (V2 0 0) (riScreenSize ri), DepthRange 0 1) ) projectedSides
+    let litFrags = light samp <$> uv
+        litFragsWithDepth = withRasterizedInfo
+                               (\p x -> (p, (rasterizedFragCoord x)^._z)) litFrags
+        colorOption = ContextColorOption (BlendRgbAlpha (FuncAdd, FuncAdd) (BlendingFactors SrcAlpha OneMinusSrcAlpha, BlendingFactors Zero One) (V4 0 0 0 0)) (pure True)
+        depthOption = DepthOption Lequal True
+    
+    drawWindowColorDepth (const (win, colorOption, depthOption)) litFragsWithDepth
+
+
 
 -- light :: ColorSampleable c =>
 --        Sampler2D (Format c) -> (t, V2 (S F Float)) -> ColorSample F c
