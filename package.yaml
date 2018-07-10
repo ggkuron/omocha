@@ -33,14 +33,9 @@ executables:
     - JuicyPixels-util
     - filepath
     - template-haskell
-    - hashable
     - directory
-    - transformers
-    - containers
     - lens
-    - random
-    - linear
     ghc-options:         
     - -threaded
     - -debug
-  
+    - -fprint-potential-instances
