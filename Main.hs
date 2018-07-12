@@ -8,194 +8,234 @@
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Main where   
 
-import Omocha.Utils
+import Omocha.Bitmap
+import Omocha.Font
+import Omocha.Collada
+import Omocha.Scene
 
 import Paths_omocha
-import Graphics.GPipe   
+import Graphics.GPipe 
 import qualified Graphics.GPipe.Context.GLFW as GLFW  
+import qualified Graphics.GPipe.Context.GLFW.Input as Input
 
 import qualified Codec.Picture as P
 import qualified Codec.Picture.Types as P
-import Control.Monad (unless, join)  
+import Control.Monad (join)
 import Control.Monad.IO.Class (liftIO)  
 import Control.Monad.Fix (fix)
-import Control.Lens
-import Data.Int(Int32)
-import Data.Maybe(fromMaybe)
-import qualified FRP.Elerea.Simple as E
+import Control.Monad.Exception (MonadException)
+import Control.Lens hiding (indices)
+import Data.Word (Word32)
+import Control.Monad.IO.Class (MonadIO)
 
-loadBitmapsWith [|getDataFileName|] "static/images"
+import qualified FRP.Elerea.Param as E
 
+loadBitmapsWith [|getDataFileName|] "./static/images"
+
+loadImage :: (MonadIO m, ContextHandler ctx) =>
+    Bitmap -> ContextT ctx os m (Texture2D os (Format RGBAFloat))
 loadImage bmp = do 
        tex <- newTexture2D RGBA8 size maxBound
        writeTexture2D tex 0 0 size $ P.pixelFold getJuicyPixel [] img 
        return tex
-    where (size, img) = getImage bmp
+    where
+        (size, img) = getImage bmp
+        getJuicyPixel xs _ _ pix = let P.PixelRGBA8 r g b a = P.convertPixel pix in V4 r g b a : xs   
 
 getImage :: Bitmap -> (V2 Int, P.Image P.PixelRGBA8)
 getImage bmp = let img = bitmapImage bmp
                    size = V2 (P.imageWidth img) (P.imageHeight img)
                 in (size, img)
 
-getJuicyPixel xs _ _ pix = let P.PixelRGBA8 r g b a = P.convertPixel pix in V4 r g b a : xs   
-
-type UniInput = (B2 Int32, V3 (B3 Float), B3 Float, B3 Float, B3 Float)
-
-windowSize  (a, _, _, _, _) = a
-modelNorm   (_, a, _, _, _) = a
-viewCamera  (_, _, a, _, _) = a 
-viewTarget  (_, _, _, a, _) = a
-viewUp      (_, _, _, _, a) = a
 
 
-data  RenderInput os = RenderInput {
-   riScreenSize :: V2 Int
-,  riStream :: PrimitiveArray Triangles (B3 Float, B3 Float)
-,  tex :: Texture2D os (Format RGBAFloat)
-}
 
-data Buffers os = Buffers {
-    position :: Buffer os (B3 Float),
-    normals  :: Buffer os (B3 Float),
-    board :: Buffer os (B3 Float),
-    boardNormals :: Buffer os (B3 Float)
-}
+scene :: Scene
+scene = Scene {
+          camera = V3 0 0.25 1,
+          meshes = [
+                        Mesh [ DrawVertex (V3   1  0   1)  (V3 0 1 0) (V2 1 1),
+                               DrawVertex (V3   1  0 (-1)) (V3 0 1 0) (V2 1 0),
+                               DrawVertex (V3 (-1) 0   1)  (V3 0 1 0) (V2 0 1),
+                               DrawVertex (V3 (-1) 0 (-1)) (V3 0 1 0) (V2 0 0) ]
+                             Nothing
+                             (V3 0 0 0)
+                             (Just _maptips_grass_png)
+                             BoardShader
+                        ,
+                        Mesh [ DrawVertex (V3   1    1  0) (V3 0 1 0) (V2 1 1),
+                               DrawVertex (V3   1  (-1) 0) (V3 0 1 0) (V2 1 0),
+                               DrawVertex (V3 (-1)   1  0) (V3 0 1 0) (V2 0 1),
+                               DrawVertex (V3 (-1) (-1) 0) (V3 0 1 0) (V2 0 0) ]
+                             Nothing
+                             (V3 0 1 0)
+                             (Just _front0_png)
+                             TargetBoard
+                   ]
+      }
 
 
-main = runContextT GLFW.defaultHandleConfig $ do
+buildRendering :: forall ctx os m. (ContextHandler ctx, MonadIO m, MonadException m) => 
+               Window os RGBAFloat Depth
+               -> Buffer os (Uniform UniInput)
+               -> Scene 
+               -> ContextT ctx os m (CompiledShader os (V2 Int))
+buildRendering win uniform Scene{ meshes } = do
+    bs <- compileShader $ boardShader (\_ -> id) win uniform
+    ts <- compileShader $ boardShader (\uni -> \(p, n, uv) -> (p + viewTarget uni, n, uv)) win uniform
+    ms <- compileShader $ monoShader (\_ -> id) win uniform
+    rr <- mapM (renderMesh bs ts ms) meshes
+    return $ \vpSize -> mapM_ (\r -> r vpSize) rr
+    where 
+        renderMesh :: (CompiledShader os (RenderInput os TextureInput)) 
+                   -> (CompiledShader os (RenderInput os TextureInput)) 
+                   -> (CompiledShader os (RenderInput os PlainInput)) 
+                   -> Mesh 
+                   -> ContextT ctx os m (CompiledShader os (V2 Int))
+        renderMesh bs ts ms Mesh{..} = do
+            vbuf :: Buffer os VBuffer <- newBuffer (length vertices)
+            writeBuffer vbuf 0 [(dvPosition + offset, dvNormal, dvUv) | DrawVertex {..} <- vertices] 
+            ibuf <- case indices of
+                Just indices' -> do
+                    ibuf :: Buffer os (B Word32) <- newBuffer (length indices')
+                    writeBuffer ibuf 0 $ map fromIntegral $ indices'
+                    return $ Just ibuf
+                _ -> return Nothing
+
+            case textureImage of
+                Just tex -> do 
+                    tex' <- loadImage tex
+                    let shader = case shaderType of
+                                   BoardShader -> bs
+                                   TargetBoard -> ts
+                    return $ \vpSize -> do 
+                                 prims <- newPrimitiveArray vbuf ibuf
+                                 shader $ RenderInput vpSize prims tex'
+                _ -> do
+                    let shader = ms
+                    return $ \vpSize -> do 
+                                 prims <- newPrimitiveArray vbuf ibuf
+                                 shader $ PlainInput vpSize prims
+
+        newPrimitiveArray :: forall b i a. (BufferFormat b, Integral i, IndexFormat b ~ i) => Buffer os a -> Maybe (Buffer os b) -> Render os (PrimitiveArray Triangles a)
+        newPrimitiveArray p Nothing = do   
+          pArr <- newVertexArray p  
+          return $ toPrimitiveArray TriangleStrip pArr
+        newPrimitiveArray p (Just i) = do   
+          pArr <- newVertexArray p  
+          iArr <- newIndexArray i Nothing
+          return $ toPrimitiveArrayIndexed TriangleStrip iArr pArr
+        
+
+main ::  IO () 
+main = runContextT (GLFW.defaultHandleConfig { GLFW.configEventPolicy = Nothing }) $ do
     win <- newWindow (WindowFormatColorDepth RGBA8 Depth16) (GLFW.defaultWindowConfig "omocha")
     uniform :: Buffer os (Uniform UniInput) <- newBuffer 1  
 
-    position :: Buffer os (B3 Float) <- newBuffer 4  
-    normals :: Buffer os (B3 Float) <- newBuffer 1  
-    board :: Buffer os (B3 Float) <- newBuffer 4  
-    boardNormals :: Buffer os (B3 Float) <- newBuffer 1  
-    let buffers = Buffers {
-        position,
-        normals,
-        board,
-        boardNormals
-    }
-    let makePrimitives p n = do   
-          pArr <- newVertexArray p  
-          nArr <- newVertexArray n  
-          return $ toPrimitiveArrayInstanced TriangleStrip (,) pArr nArr   
+    -- font <- loadFont "VL-PGothic-Regular.ttf"
+    collada <- liftIO $ readColladaFile "untitled.dae"
+    let s = sceneFromCollada collada
 
-    tex <- loadImage _front0_png
-    btex <- loadImage _maptips_grass_png
-   
-    shader <- compileShader $ boardShader makeSide win uniform
-    shader' <- compileShader $ boardShader makeBoard win uniform
+    r <- buildRendering win uniform s
+    r0 <- buildRendering win uniform scene
 
-    let renderings = \size -> [ do   
-                                  clearWindowColor win (V4 0 0.25 1 0)
-                                  clearWindowDepth win 1
-                                  prims <- makePrimitives position normals
-                                  prims' <- makePrimitives board boardNormals
-                                  shader' $ RenderInput size prims' btex
-                                  shader $ RenderInput size prims tex
-                              ]
+    let renderings = [\vpSize -> do   
+                         clearWindowColor win (V4 0 0.25 1 0)
+                         clearWindowDepth win 1 
+                         r vpSize 
+                         r0 vpSize
+                     ]
 
-    (input, inputSink) <- liftIO $ E.external (False, False, False, False)
-    network <- liftIO $ E.start $ mdo
-        camera' <- E.transfer (V3 0 0.25 1) 
-                              (\(keyH, keyJ, keyK, keyL) camera -> 
-                                  camera&_x+~(if 
-                                               | keyL -> 0.2
-                                               | keyH -> -0.2
-                                               | otherwise ->  0)
-                                        &_y+~(if 
-                                               | keyJ -> 0.2 
-                                               | keyK -> -0.2
-                                               | otherwise ->  0)
+    (keyInput, keyInputSink) <- liftIO $ E.external (False, False, False, False)
+
+    network <- liftIO $ E.start $ do
+        frameCount <- E.stateful 0 (const (+1))
+        fps <- do
+          sig <- E.transfer 
+                    (30, (0,0)) 
+                    (\dt v (x, (v0, t)) -> let t' = dt + t
+                                         in if t' > 1 then ((v-v0)/t', (v, 0)) 
+                                                      else (x, (v0, t'))
+                    )
+                    frameCount
+          return (fst <$> sig)
+        moveUnit <- E.stateful 0 (\dt _ -> realToFrac $ 1.25 * dt )
+        target <- E.transfer2 (V3 0 0 0)
+                              (\_ (keyH, keyJ, keyK, keyL) mu t -> 
+                                  t&_x+~(if 
+                                          | keyL -> -mu
+                                          | keyH -> mu 
+                                          | otherwise ->  0)
+                                   &_z+~(if 
+                                          | keyJ -> -mu
+                                          | keyK -> mu
+                                          | otherwise ->  0)
                               ) 
-                              input
-        return $ renderFrame win uniform buffers renderings <$> camera' 
+                              keyInput moveUnit
+        camera' <- E.transfer (V3 0 0.25 1) 
+                              (\_ t _ -> 
+                                  t&_y+~(5)
+                                   &_z-~(7.5) 
+                              ) 
+                              target
+        return $ renderFrame win uniform renderings <$> camera' <*> target <*> fps
 
-    fix $ \loop -> do
-        closeRequested <- GLFW.windowShouldClose win 
-        closeKeyPressed <- keyIsPressed win GLFW.Key'Q
-        input <- (,,,) <$> keyIsPressed win GLFW.Key'H
-                       <*> keyIsPressed win GLFW.Key'J
-                       <*> keyIsPressed win GLFW.Key'K
-                       <*> keyIsPressed win GLFW.Key'L
-        join $ liftIO $ inputSink input >> network 
+    _ <- liftIO $ GLFW.setTime 0
+    fix $ \(~loop) -> do
+        _ <- GLFW.mainstep win GLFW.Wait
+        dt <- readInput win keyInputSink
+        case dt of 
+            Just dt' -> (join . liftIO . network $ dt') >> loop
+            Nothing -> return ()
+    
 
-        unless (closeRequested == Just True || closeKeyPressed) $ loop 
+readInput :: forall a os c ds m. MonadIO m =>
+     Window os c ds
+     -> ((Bool, Bool, Bool, Bool) -> IO a)
+     -> (ContextT GLFW.Handle os m (Maybe Double))
+readInput win keyInputSink = do
+    t' <- liftIO $ do
+        t <- GLFW.getTime
+        GLFW.setTime 0
+        return t
+
+    closeRequested <- GLFW.windowShouldClose win 
+    closeKeyPressed <- keyIsPressed GLFW.Key'Q
+
+    keyInput <- (,,,) <$> keyIsPressed GLFW.Key'H
+                      <*> keyIsPressed GLFW.Key'J
+                      <*> keyIsPressed GLFW.Key'K
+                      <*> keyIsPressed GLFW.Key'L
+    _ <- liftIO $ keyInputSink keyInput 
+    return $ if closeRequested == Just True || closeKeyPressed then Nothing else t'
+  where
+    keyIsPressed :: Input.Key -> ContextT GLFW.Handle os m Bool
+    keyIsPressed k = maybe False (== GLFW.KeyState'Pressed) <$> GLFW.getKey win k
 
 renderFrame :: Window os RGBAFloat Depth
                -> Buffer os (Uniform UniInput)
-               -> Buffers os 
-               -> (V2 Int -> [Render os ()])
+               -> [CompiledShader os (V2 Int)]
                -> V3 Float
+               -> V3 Float
+               -> Double
                -> ContextT GLFW.Handle os IO ()
-renderFrame win uniform buffers renderings camera = do
-  size <- getFrameBufferSize win
-  let viewTarget = V3 0 0 0 
-      viewUp = V3 0 1 0 
-      normMat = identity
-      uni = (fromIntegral <$> size, normMat, camera, viewTarget, viewUp) 
+renderFrame win uniform renderings camera target fps = do
+    size <- getFrameBufferSize win
+    let viewUpNorm = V3 0 1 0 
+        normMat = identity
+        uni = (fromIntegral <$> size, normMat, camera, target, viewUpNorm, fromRational . toRational $ fps) 
 
-  writeBuffer uniform 0 [uni]
-  writeBuffer (position buffers) 0 [V3 1 1 0, V3 1 (-1) 0, V3 (-1) 1 0, V3 (-1) (-1) 0]        
-  writeBuffer (normals buffers) 0 [V3 0 0 1]
-  writeBuffer (board buffers) 0 [V3 5 0 5, V3 5 0 (-5), V3 (-5) 0 5, V3 (-5) 0 (-5)]        
-  writeBuffer (normals buffers) 0 [V3 0 1 0]
-  writeBuffer (boardNormals buffers) 0 [V3 0 1 0]
+    writeBuffer uniform 0 [uni]
 
-  mapM_ render (renderings size)
-  swapWindowBuffers win
+    mapM_ (\r -> render $ r size) renderings
+    swapWindowBuffers win
 
+       
 
-keyIsPressed win k = maybe False (== GLFW.KeyState'Pressed) <$> GLFW.getKey win k
-        
-boardShader :: ((V3 VFloat, V3 VFloat) -> (V3 (S V Float), V3 VFloat, V2 (S V Float))) -> Window os RGBAFloat Depth -> Buffer os (Uniform UniInput) -> Shader os (RenderInput os) ()
-boardShader pick win uniform = do
-    uni <- getUniform (const (uniform, 0))
-    boards <- fmap pick <$> toPrimitiveStream riStream
-    let projectedSides = proj uni <$> boards
-        filterMode = SamplerFilter Linear Linear Linear (Just 16)
-        edge = (pure ClampToEdge, 1.0)
-    samp <- newSampler2D (\ri -> (tex ri, filterMode, edge))
-
-    uv <- rasterize (\ri -> (FrontAndBack, ViewPort (V2 0 0) (riScreenSize ri), DepthRange 0 1) ) projectedSides
-    let litFrags = light samp <$> uv
-        litFragsWithDepth = withRasterizedInfo
-                               (\p x -> (p, (rasterizedFragCoord x)^._z)) litFrags
-        colorOption = ContextColorOption (BlendRgbAlpha (FuncAdd, FuncAdd) (BlendingFactors SrcAlpha OneMinusSrcAlpha, BlendingFactors Zero One) (V4 0 0 0 0)) (pure True)
-        depthOption = DepthOption Lequal True
-    
-    drawWindowColorDepth (const (win, colorOption, depthOption)) litFragsWithDepth
-
-
-light :: ColorSampleable c => Sampler2D (Format c) -> (t, V2 (S F Float)) -> ColorSample F c
-light samp (normal, uv) = sample2D samp SampleAuto (Just 1) Nothing uv 
-
-makeSide :: Fractional a => (V3 a, V3 a) -> (V3 a, V3 a, V2 a)
-makeSide (p, normal) = (p&_y+~1, normal, uv)    
-  where uv = (p^._xy + 1) / 2
-
-makeBoard :: Fractional a => (V3 a, V3 a) -> (V3 a, V3 a, V2 a)
-makeBoard (p, normal) = (p, normal, uv)
-  where uv = (p^._xz + 1) / 2
-
-proj uni (V3 px py pz, normal, uv) =   
-  let modelViewProj = perspective (pi/3) (let V2 w h = windowSize uni in (toFloat w) / (toFloat h)) 1 (-1)
-      normMat = modelNorm uni
-      viewProj = lookAt' (viewCamera uni) (viewTarget uni) (viewUp uni)
-      in (modelViewProj !*! viewProj !* V4 px py pz 1, (fmap Flat $ normMat !* normal, uv))   
-
-lookAt' eye center up =
-  V4 (V4 (xa^._x)  (xa^._y)  (xa^._z)  xd)
-     (V4 (ya^._x)  (ya^._y)  (ya^._z)  yd)
-     (V4 (-za^._x) (-za^._y) (-za^._z) zd)
-     (V4 0         0         0          1)
-  where za = signorm $ center - eye
-        xa = signorm $ cross za up
-        ya = cross xa za
-        xd = -dot xa eye
-        yd = -dot ya eye
-        zd = dot za eye

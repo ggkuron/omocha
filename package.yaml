@@ -10,6 +10,7 @@ maintainer:          ggkuron@gmail.com
 # copyright:           
 category:            Game
 build-type:          Simple
+default-extensions: Strict StrictData
 data-files: 
 - ./static/images/*.png
 - ./static/images/maptips/*.png
@@ -18,24 +19,61 @@ dependencies:
 - base >= 4.9.1.0
 executables:
   omocha:
-    source-dirs:      
-    - .
-    - src
+    source-dirs:      .
     main:             Main.hs
-    other-modules:       
-    - Omocha.Utils
-    - Paths_omocha
     dependencies:       
+    - omocha
     - GPipe >= 2.2.3
     - GPipe-GLFW
     - elerea
+    - JuicyPixels
+    - JuicyPixels-util
+    - template-haskell
+    - lens
+    - linear
+    - transformers
+    - exception-transformers
+
+    ghc-options:         
+    - -fprint-potential-instances
+    - -Wall
+library:
+    exposed-modules: 
+    - Paths_omocha
+    - Omocha.Bitmap
+    - Omocha.Class
+    - Omocha.Font
+    - Omocha.Internal.Finalizer
+    - Omocha.Scene
+    - Omocha.Collada
+    source-dirs:     src
+    dependencies:
+    - either
+    - GPipe >= 2.2.3
     - JuicyPixels
     - JuicyPixels-util
     - filepath
     - template-haskell
     - directory
     - lens
-    ghc-options:         
-    - -threaded
-    - -debug
-    - -fprint-potential-instances
+    - freetype2 >= 0.1
+    - containers
+    - boundingboxes
+    - linear
+    - mtl >= 2.2
+    - vector
+    - random
+    - HaXml
+    - array
+    - transformers
+    - exception-transformers
+
+
+tests:
+    omocha-test:
+        main:           Spec.hs
+        source-dirs:    test/Omocha
+        dependencies:
+        - omocha 
+        - hspec
+
