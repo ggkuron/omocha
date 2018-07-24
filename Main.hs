@@ -8,13 +8,15 @@
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE InstanceSigs #-}
 
 module Main where   
 
-import Omocha.Utils
+import Omocha.Bitmap
+import Omocha.Font
 
 import Paths_omocha
-import Graphics.GPipe   
+import Graphics.GPipe 
 import qualified Graphics.GPipe.Context.GLFW as GLFW  
 
 import qualified Codec.Picture as P
@@ -84,6 +86,8 @@ main = runContextT GLFW.defaultHandleConfig $ do
           nArr <- newVertexArray n  
           return $ toPrimitiveArrayInstanced TriangleStrip (,) pArr nArr   
 
+    font <- loadFont "VL-PGothic-Regular.ttf"
+
     tex <- loadImage _front0_png
     btex <- loadImage _maptips_grass_png
    
@@ -101,19 +105,26 @@ main = runContextT GLFW.defaultHandleConfig $ do
 
     (input, inputSink) <- liftIO $ E.external (False, False, False, False)
     network <- liftIO $ E.start $ mdo
+        target <- E.transfer (V3 0 0 0)
+                             (\(keyH, keyJ, keyK, keyL) t -> 
+                                 t&_x+~(if 
+                                         | keyL -> -0.02
+                                         | keyH -> 0.02
+                                         | otherwise ->  0)
+                                  &_z+~(if 
+                                         | keyJ -> -0.02 
+                                         | keyK -> 0.02
+                                         | otherwise ->  0)
+                             ) 
+                             input
         camera' <- E.transfer (V3 0 0.25 1) 
-                              (\(keyH, keyJ, keyK, keyL) camera -> 
-                                  camera&_x+~(if 
-                                               | keyL -> 0.2
-                                               | keyH -> -0.2
-                                               | otherwise ->  0)
-                                        &_y+~(if 
-                                               | keyJ -> 0.2 
-                                               | keyK -> -0.2
-                                               | otherwise ->  0)
+                              (\t camera -> 
+                                  t&_y+~(5)
+                                   &_z-~(7.5) 
                               ) 
-                              input
-        return $ renderFrame win uniform buffers renderings <$> camera' 
+                              target
+
+        return $ renderFrame win uniform buffers renderings <$> camera' <*> target
 
     fix $ \loop -> do
         closeRequested <- GLFW.windowShouldClose win 
@@ -124,25 +135,29 @@ main = runContextT GLFW.defaultHandleConfig $ do
                        <*> keyIsPressed win GLFW.Key'L
         join $ liftIO $ inputSink input >> network 
 
-        unless (closeRequested == Just True || closeKeyPressed) $ loop 
+        unless (closeRequested == Just True || closeKeyPressed) loop 
 
 renderFrame :: Window os RGBAFloat Depth
                -> Buffer os (Uniform UniInput)
                -> Buffers os 
                -> (V2 Int -> [Render os ()])
                -> V3 Float
+               -> V3 Float
                -> ContextT GLFW.Handle os IO ()
-renderFrame win uniform buffers renderings camera = do
+renderFrame win uniform buffers renderings camera target= do
   size <- getFrameBufferSize win
-  let viewTarget = V3 0 0 0 
-      viewUp = V3 0 1 0 
+  let viewUp = V3 0 1 0 
       normMat = identity
-      uni = (fromIntegral <$> size, normMat, camera, viewTarget, viewUp) 
+      uni = (fromIntegral <$> size, normMat, camera, target, viewUp) 
 
   writeBuffer uniform 0 [uni]
-  writeBuffer (position buffers) 0 [V3 1 1 0, V3 1 (-1) 0, V3 (-1) 1 0, V3 (-1) (-1) 0]        
+  writeBuffer (position buffers) 0 [ target&_x+~1&_y*~(-1)&_y+~1,
+                                     target&_x+~1&_y*~(-1)&_y-~1,
+                                     target&_x-~1&_y*~(-1)&_y+~1,
+                                     target&_x-~1&_y*~(-1)&_y-~1
+                                   ]
   writeBuffer (normals buffers) 0 [V3 0 0 1]
-  writeBuffer (board buffers) 0 [V3 5 0 5, V3 5 0 (-5), V3 (-5) 0 5, V3 (-5) 0 (-5)]        
+  writeBuffer (board buffers) 0 [V3 1 0 1, V3 1 0 (-1), V3 (-1) 0 1, V3 (-1) 0 (-1)]        
   writeBuffer (normals buffers) 0 [V3 0 1 0]
   writeBuffer (boardNormals buffers) 0 [V3 0 1 0]
 
@@ -161,7 +176,7 @@ boardShader pick win uniform = do
         edge = (pure ClampToEdge, 1.0)
     samp <- newSampler2D (\ri -> (tex ri, filterMode, edge))
 
-    uv <- rasterize (\ri -> (FrontAndBack, ViewPort (V2 0 0) (riScreenSize ri), DepthRange 0 1) ) projectedSides
+    uv <- rasterize (\ri -> (Front, ViewPort (V2 0 0) (riScreenSize ri), DepthRange 0 1) ) projectedSides
     let litFrags = light samp <$> uv
         litFragsWithDepth = withRasterizedInfo
                                (\p x -> (p, (rasterizedFragCoord x)^._z)) litFrags

@@ -1,7 +1,7 @@
 flags: {}
 packages:
-- '.'
+- .
 extra-deps:
-- elerea-2.8.0
 - JuicyPixels-util-0.2
+- elerea-2.8.0
 resolver: lts-9.6

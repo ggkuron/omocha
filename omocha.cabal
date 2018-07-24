@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 4ffbc4f37123a413442bb7f8f14952032ddf04497ad6e3861f0e43c02bd6ce57
+-- hash: 3eb5efc36c77e9293e3f3863013d2ac65d468e8d117ce2f1eae7db25bc0d9906
 
 name:           omocha
 version:        0.1.1.0
@@ -69,8 +69,11 @@ data-files:
 executable omocha
   main-is: Main.hs
   other-modules:
-      Omocha.Utils
       Paths_omocha
+      Omocha.Bitmap
+      Omocha.Class
+      Omocha.Font
+      Omocha.Internal.Finalizer
   hs-source-dirs:
       ./.
       src
@@ -81,9 +84,16 @@ executable omocha
     , JuicyPixels
     , JuicyPixels-util
     , base >=4.9.1.0
+    , boundingboxes
+    , containers
     , directory
     , elerea
     , filepath
+    , freetype2 >=0.1
     , lens
+    , linear
+    , mtl >=2.2
+    , random
     , template-haskell
+    , vector
   default-language: Haskell2010

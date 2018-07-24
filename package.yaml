@@ -23,8 +23,11 @@ executables:
     - src
     main:             Main.hs
     other-modules:       
-    - Omocha.Utils
     - Paths_omocha
+    - Omocha.Bitmap
+    - Omocha.Class
+    - Omocha.Font
+    - Omocha.Internal.Finalizer
     dependencies:       
     - GPipe >= 2.2.3
     - GPipe-GLFW
@@ -35,7 +38,12 @@ executables:
     - template-haskell
     - directory
     - lens
+    - freetype2 >= 0.1
+    - containers
+    - boundingboxes
+    - linear
+    - mtl >= 2.2
+    - vector
+    - random
     ghc-options:         
-    - -threaded
-    - -debug
     - -fprint-potential-instances
