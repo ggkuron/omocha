@@ -9,6 +9,7 @@
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
 
 module Main where   
 
@@ -22,13 +23,15 @@ import qualified Graphics.GPipe.Context.GLFW.Input as Input
 
 import qualified Codec.Picture as P
 import qualified Codec.Picture.Types as P
-import Control.Monad (unless, join)  
+import Control.Applicative
+import Control.Monad (unless, join, when)
 import Control.Monad.IO.Class (liftIO)  
 import Control.Monad.Fix (fix)
 import Control.Lens
 import Data.Int(Int32)
-import Data.Maybe(fromMaybe)
-import qualified FRP.Elerea.Simple as E
+import Data.Maybe(fromMaybe, fromJust)
+import Data.Function(on)
+import qualified FRP.Elerea.Param as E
 
 loadBitmapsWith [|getDataFileName|] "static/images"
 
@@ -68,10 +71,20 @@ data RenderInput os = RenderInput {
 data Buffers os = Buffers {
                               normals  :: Buffer os (B3 Float),
                               board :: Buffer os (B3 Float, B2 Float),
-                              boardNormals  :: Buffer os (B3 Float)
+                              boardNormals  :: Buffer os (B3 Float),
+                              position :: Buffer os (B3 Float, B2 Float)
                           }
 
 
+driveNetwork network driver = do
+    dt <- driver
+    case dt of 
+        Just dt -> do join $ network dt
+                      driveNetwork network driver
+        Nothing -> return ()
+
+
+ 
 main = runContextT GLFW.defaultHandleConfig $ do
     win <- newWindow (WindowFormatColorDepth RGBA8 Depth16) (GLFW.defaultWindowConfig "omocha")
     uniform :: Buffer os (Uniform UniInput) <- newBuffer 1  
@@ -94,7 +107,8 @@ main = runContextT GLFW.defaultHandleConfig $ do
     let buffers = Buffers {
         normals,
         board,
-        boardNormals
+        boardNormals,
+        position
     }
     let makePrimitives p n = do   
           pArr <- newVertexArray p  
@@ -122,10 +136,14 @@ main = runContextT GLFW.defaultHandleConfig $ do
                                   shader $ RenderInput size prims tex
                               ]
 
-    (input, inputSink) <- liftIO $ E.external ((False, False, False, False), 0.0)
-    network <- liftIO $ E.start $ mdo
+    (keyInput, keyInputSink) <- liftIO $ E.external (False, False, False, False)
+
+    network <- liftIO $ E.start $ do
+        -- elapsed <- E.transfer 0.0 (+) time
+        -- tick <- E.transfer (0, False) (\t (p, _) -> let p' = floor t in (p', p' /= p)) time
+        -- fps <- E.transfer 0 (\(_, t) p -> if t then 0 else p + 1) tick
         target <- E.transfer (V3 0 0 0)
-                             (\((keyH, keyJ, keyK, keyL), _) t -> 
+                             (\p (keyH, keyJ, keyK, keyL) t -> 
                                  t&_x+~(if 
                                          | keyL -> -0.02
                                          | keyH -> 0.02
@@ -135,43 +153,31 @@ main = runContextT GLFW.defaultHandleConfig $ do
                                          | keyK -> 0.02
                                          | otherwise ->  0)
                              ) 
-                             input
-        target' <- E.effectful1  
-            (\target -> do {
-                putStrLn "working";
-                action <- return $ writeBuffer (position) 0 
-                [
-                    (target&_x+~1&_y*~(-1)&_y+~1, V2 1 1),
-                    (target&_x+~1&_y*~(-1)&_y-~1, V2 1 0),
-                    (target&_x-~1&_y*~(-1)&_y+~1, V2 0 1),
-                    (target&_x-~1&_y*~(-1)&_y-~1, V2 0 0)
-                ] :: IO (ContextT GLFW.Handle os IO ());
-                return action
-             }
-            ) target
-
+                             keyInput
         camera' <- E.transfer (V3 0 0.25 1) 
-                              (\t camera -> 
+                              (\p t camera -> 
                                   t&_y+~(5)
                                    &_z-~(7.5) 
                               ) 
                               target
-        time <- E.transfer (0.0) (\(_, t) _ -> t) input
+        return $ renderFrame win uniform buffers renderings <$> camera' <*> target 
 
-        return $ renderFrame win uniform buffers renderings <$> camera' <*> target <*> time
+    liftIO $ driveNetwork network (readInput win keyInputSink)
+    return ()
 
-    fix $ \loop -> do
-        closeRequested <- GLFW.windowShouldClose win 
-        closeKeyPressed <- keyIsPressed win GLFW.Key'Q
-        input <- (,,,) <$> keyIsPressed win GLFW.Key'H
-                       <*> keyIsPressed win GLFW.Key'J
-                       <*> keyIsPressed win GLFW.Key'K
-                       <*> keyIsPressed win GLFW.Key'L
 
-        Just t' <- liftIO $ GLFW.getTime
-        join $ liftIO $ inputSink (input, t') >> network 
+readInput win keyInputSink = do
+    closeRequested <- liftIO $ GLFW.windowShouldClose win 
+    closeKeyPressed <- keyIsPressed win GLFW.Key'Q
 
-        unless (closeRequested == Just True || closeKeyPressed) loop 
+    keyInput <- (,,,) <$> keyIsPressed win GLFW.Key'H
+                      <*> keyIsPressed win GLFW.Key'J
+                      <*> keyIsPressed win GLFW.Key'K
+                      <*> keyIsPressed win GLFW.Key'L
+    keyInputSink keyInput 
+    t' <- liftIO $ GLFW.getTime
+    return $ if closeRequested == Just True || closeKeyPressed then Nothing else t'
+
 
 renderFrame :: Window os RGBAFloat Depth
                -> Buffer os (Uniform UniInput)
@@ -179,17 +185,24 @@ renderFrame :: Window os RGBAFloat Depth
                -> (V2 Int -> [Render os ()])
                -> V3 Float
                -> V3 Float
-               -> Double
                -> ContextT GLFW.Handle os IO ()
-renderFrame win uniform buffers renderings camera target t = do
+renderFrame win uniform buffers renderings camera target = do
   size <- getFrameBufferSize win
   let viewUp = V3 0 1 0 
       normMat = identity
-      uni = (fromIntegral <$> size, normMat, camera, target, viewUp, realToFrac t) 
+      uni = (fromIntegral <$> size, normMat, camera, target, viewUp, 0.0) 
 
   writeBuffer uniform 0 [uni]
+  writeBuffer (position buffers) 0 [
+                                       (target&_x+~1&_y*~(-1)&_y+~1, V2 1 1),
+                                       (target&_x+~1&_y*~(-1)&_y-~1, V2 1 0),
+                                       (target&_x-~1&_y*~(-1)&_y+~1, V2 0 1),
+                                       (target&_x-~1&_y*~(-1)&_y-~1, V2 0 0)
+                                   ] 
   mapM_ render (renderings size)
   swapWindowBuffers win
+  liftIO $ putStrLn $ show fps
+  -- liftIO $ GLFW.setTime 0.0
 
 
 keyIsPressed win k = maybe False (== GLFW.KeyState'Pressed) <$> GLFW.getKey win k
@@ -242,3 +255,10 @@ lookAt' eye center up =
         xd = -dot xa eye
         yd = -dot ya eye
         zd = dot za eye
+
+derivT :: (Fractional a, Ord a) => a -> E.Signal a -> E.SignalGen a (E.Signal a)
+derivT wt s = do
+  sig <- E.transfer (0,(0,0)) d s
+  return (fst <$> sig)
+  where d dt v (x,(v0,t)) = if t' > wt then ((v-v0)/t',(v,0)) else (x,(v0,t'))
+          where t' = dt+t
