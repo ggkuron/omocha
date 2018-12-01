@@ -21,7 +21,7 @@ executables:
     source-dirs:      
     - .
     - src
-    main:             Main.hs
+    main:             src/Main.hs
     other-modules:       
     - Paths_omocha
     - Omocha.Bitmap

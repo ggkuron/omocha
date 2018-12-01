@@ -29,11 +29,11 @@ import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Fix (fix)
 import Control.Lens
 import Data.Int(Int32)
-import Data.Maybe(fromMaybe, fromJust)
+import Data.Maybe(fromMaybe, fromJust, isJust)
 import Data.Function(on)
 import qualified FRP.Elerea.Param as E
 
-loadBitmapsWith [|getDataFileName|] "static/images"
+loadBitmapsWith [|getDataFileName|] "../static/images"
 
 loadImage bmp = do 
        tex <- newTexture2D RGBA8 size maxBound
@@ -76,16 +76,9 @@ data Buffers os = Buffers {
                           }
 
 
-driveNetwork network driver = do
-    dt <- driver
-    case dt of 
-        Just dt -> do join $ network dt
-                      driveNetwork network driver
-        Nothing -> return ()
-
 
  
-main = runContextT GLFW.defaultHandleConfig $ do
+main = runContextT (GLFW.defaultHandleConfig { GLFW.configEventPolicy = Nothing }) $ do
     win <- newWindow (WindowFormatColorDepth RGBA8 Depth16) (GLFW.defaultWindowConfig "omocha")
     uniform :: Buffer os (Uniform UniInput) <- newBuffer 1  
 
@@ -139,43 +132,62 @@ main = runContextT GLFW.defaultHandleConfig $ do
     (keyInput, keyInputSink) <- liftIO $ E.external (False, False, False, False)
 
     network <- liftIO $ E.start $ do
-        -- elapsed <- E.transfer 0.0 (+) time
-        -- tick <- E.transfer (0, False) (\t (p, _) -> let p' = floor t in (p', p' /= p)) time
-        -- fps <- E.transfer 0 (\(_, t) p -> if t then 0 else p + 1) tick
-        target <- E.transfer (V3 0 0 0)
-                             (\p (keyH, keyJ, keyK, keyL) t -> 
-                                 t&_x+~(if 
-                                         | keyL -> -0.02
-                                         | keyH -> 0.02
-                                         | otherwise ->  0)
-                                  &_z+~(if 
-                                         | keyJ -> -0.02 
-                                         | keyK -> 0.02
-                                         | otherwise ->  0)
-                             ) 
-                             keyInput
+        frameCount <- E.stateful 0 (const (+1))
+        fps <- do
+          sig <- E.transfer 
+                    (30, (0,0)) 
+                    (\dt v (x, (v0, t)) -> let t' = dt + t
+                                         in if t' > 1 then ((v-v0)/t', (v, 0)) 
+                                                      else (x, (v0, t'))
+                    )
+                    frameCount
+          return (fst <$> sig)
+        moveUnit <- E.stateful 0 (\dt _ -> realToFrac $ 1.25 * dt )
+        target <- E.transfer2 (V3 0 0 0)
+                              (\_ (keyH, keyJ, keyK, keyL) mu t -> 
+                                  t&_x+~(if 
+                                          | keyL -> -mu
+                                          | keyH -> mu 
+                                          | otherwise ->  0)
+                                   &_z+~(if 
+                                          | keyJ -> -mu
+                                          | keyK -> mu
+                                          | otherwise ->  0)
+                              ) 
+                              keyInput moveUnit
         camera' <- E.transfer (V3 0 0.25 1) 
-                              (\p t camera -> 
+                              (\_ t camera -> 
                                   t&_y+~(5)
                                    &_z-~(7.5) 
                               ) 
                               target
-        return $ renderFrame win uniform buffers renderings <$> camera' <*> target 
+        return $ renderFrame win uniform buffers renderings <$> camera' <*> target <*> fps
 
-    liftIO $ driveNetwork network (readInput win keyInputSink)
-    return ()
-
+    liftIO $ GLFW.setTime 0
+    fix $ \loop -> do
+        GLFW.mainstep win GLFW.Wait
+        dt <- readInput win keyInputSink
+        case dt of 
+            Just dt -> do
+                join $ liftIO $ network dt
+                loop
+            Nothing -> return ()
+    
 
 readInput win keyInputSink = do
-    closeRequested <- liftIO $ GLFW.windowShouldClose win 
+    t' <- liftIO $ do
+        t <- GLFW.getTime
+        GLFW.setTime 0
+        return t
+
+    closeRequested <- GLFW.windowShouldClose win 
     closeKeyPressed <- keyIsPressed win GLFW.Key'Q
 
     keyInput <- (,,,) <$> keyIsPressed win GLFW.Key'H
                       <*> keyIsPressed win GLFW.Key'J
                       <*> keyIsPressed win GLFW.Key'K
                       <*> keyIsPressed win GLFW.Key'L
-    keyInputSink keyInput 
-    t' <- liftIO $ GLFW.getTime
+    liftIO $ keyInputSink keyInput 
     return $ if closeRequested == Just True || closeKeyPressed then Nothing else t'
 
 
@@ -185,8 +197,9 @@ renderFrame :: Window os RGBAFloat Depth
                -> (V2 Int -> [Render os ()])
                -> V3 Float
                -> V3 Float
+               -> Double
                -> ContextT GLFW.Handle os IO ()
-renderFrame win uniform buffers renderings camera target = do
+renderFrame win uniform buffers renderings camera target  fps = do
   size <- getFrameBufferSize win
   let viewUp = V3 0 1 0 
       normMat = identity
@@ -201,9 +214,6 @@ renderFrame win uniform buffers renderings camera target = do
                                    ] 
   mapM_ render (renderings size)
   swapWindowBuffers win
-  liftIO $ putStrLn $ show fps
-  -- liftIO $ GLFW.setTime 0.0
-
 
 keyIsPressed win k = maybe False (== GLFW.KeyState'Pressed) <$> GLFW.getKey win k
         
@@ -256,9 +266,4 @@ lookAt' eye center up =
         yd = -dot ya eye
         zd = dot za eye
 
-derivT :: (Fractional a, Ord a) => a -> E.Signal a -> E.SignalGen a (E.Signal a)
-derivT wt s = do
-  sig <- E.transfer (0,(0,0)) d s
-  return (fst <$> sig)
-  where d dt v (x,(v0,t)) = if t' > wt then ((v-v0)/t',(v,0)) else (x,(v0,t'))
-          where t' = dt+t
+
