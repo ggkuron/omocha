@@ -45,5 +45,7 @@ executables:
     - mtl >= 2.2
     - vector
     - random
+    - HaXml
+    - array
     ghc-options:         
     - -fprint-potential-instances

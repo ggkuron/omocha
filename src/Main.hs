@@ -15,6 +15,7 @@ module Main where
 
 import Omocha.Bitmap
 import Omocha.Font
+import Omocha.Collada
 
 import Paths_omocha
 import Graphics.GPipe 
@@ -75,8 +76,6 @@ data Buffers os = Buffers {
                               position :: Buffer os (B3 Float, B2 Float)
                           }
 
-
-
  
 main = runContextT (GLFW.defaultHandleConfig { GLFW.configEventPolicy = Nothing }) $ do
     win <- newWindow (WindowFormatColorDepth RGBA8 Depth16) (GLFW.defaultWindowConfig "omocha")
@@ -88,7 +87,6 @@ main = runContextT (GLFW.defaultHandleConfig { GLFW.configEventPolicy = Nothing 
     boardNormals :: Buffer os (B3 Float) <- newBuffer 1  
     tip :: Buffer os (B2 Int32) <- newBuffer 32
 
-    writeBuffer (normals) 0 [V3 0 0 1]
     writeBuffer (board) 0 [
                               (V3 1 0 1, V2 1 1),
                               (V3 1 0 (-1), V2 1 0),
@@ -113,6 +111,7 @@ main = runContextT (GLFW.defaultHandleConfig { GLFW.configEventPolicy = Nothing 
             pArr nArr 
 
     font <- loadFont "VL-PGothic-Regular.ttf"
+    scene <- liftIO $ readColladaFile "house.dae"
 
     tex <- loadImage _front0_png
     btex <- loadImage _maptips_grass_png
@@ -200,20 +199,20 @@ renderFrame :: Window os RGBAFloat Depth
                -> Double
                -> ContextT GLFW.Handle os IO ()
 renderFrame win uniform buffers renderings camera target  fps = do
-  size <- getFrameBufferSize win
-  let viewUp = V3 0 1 0 
-      normMat = identity
-      uni = (fromIntegral <$> size, normMat, camera, target, viewUp, 0.0) 
+    size <- getFrameBufferSize win
+    let viewUp = V3 0 1 0 
+        normMat = identity
+        uni = (fromIntegral <$> size, normMat, camera, target, viewUp, 0.0) 
 
-  writeBuffer uniform 0 [uni]
-  writeBuffer (position buffers) 0 [
-                                       (target&_x+~1&_y*~(-1)&_y+~1, V2 1 1),
-                                       (target&_x+~1&_y*~(-1)&_y-~1, V2 1 0),
-                                       (target&_x-~1&_y*~(-1)&_y+~1, V2 0 1),
-                                       (target&_x-~1&_y*~(-1)&_y-~1, V2 0 0)
-                                   ] 
-  mapM_ render (renderings size)
-  swapWindowBuffers win
+    writeBuffer uniform 0 [uni]
+    writeBuffer (position buffers) 0 [
+                                         (target&_x+~1&_y*~(-1)&_y+~1, V2 1 1),
+                                         (target&_x+~1&_y*~(-1)&_y-~1, V2 1 0),
+                                         (target&_x-~1&_y*~(-1)&_y+~1, V2 0 1),
+                                         (target&_x-~1&_y*~(-1)&_y-~1, V2 0 0)
+                                     ] 
+    mapM_ render (renderings size)
+    swapWindowBuffers win
 
 keyIsPressed win k = maybe False (== GLFW.KeyState'Pressed) <$> GLFW.getKey win k
         
@@ -249,21 +248,20 @@ makeBoard :: Fractional a => (V3 a, V3 a, V2 a) -> (V3 a, V3 a, V2 a)
 makeBoard (p, normal, uv) = (p, normal, uv)
 
 proj uni (V3 px py pz, normal, uv) =   
-  let modelViewProj = perspective (pi/3) (let V2 w h = windowSize uni in (toFloat w) / (toFloat h)) 1 (-1)
-      normMat = modelNorm uni
-      viewProj = lookAt' (viewCamera uni) (viewTarget uni) (viewUp uni)
-      in (modelViewProj !*! viewProj !* V4 px py pz 1, (fmap Flat $ normMat !* normal, uv))   
+    let modelViewProj = perspective (pi/3) (let V2 w h = windowSize uni in (toFloat w) / (toFloat h)) 1 (-1)
+        normMat = modelNorm uni
+        viewProj = lookAt' (viewCamera uni) (viewTarget uni) (viewUp uni)
+        in (modelViewProj !*! viewProj !* V4 px py pz 1, (fmap Flat $ normMat !* normal, uv))   
 
 lookAt' eye center up =
-  V4 (V4 (xa^._x)  (xa^._y)  (xa^._z)  xd)
-     (V4 (ya^._x)  (ya^._y)  (ya^._z)  yd)
-     (V4 (-za^._x) (-za^._y) (-za^._z) zd)
-     (V4 0         0         0          1)
-  where za = signorm $ center - eye
-        xa = signorm $ cross za up
-        ya = cross xa za
-        xd = -dot xa eye
-        yd = -dot ya eye
-        zd = dot za eye
-
+    V4 (V4 (xa^._x)  (xa^._y)  (xa^._z)  xd)
+       (V4 (ya^._x)  (ya^._y)  (ya^._z)  yd)
+       (V4 (-za^._x) (-za^._y) (-za^._z) zd)
+       (V4 0         0         0          1)
+    where za = signorm $ center - eye
+          xa = signorm $ cross za up
+          ya = cross xa za
+          xd = -dot xa eye
+          yd = -dot ya eye
+          zd = dot za eye
 

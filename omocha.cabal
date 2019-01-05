@@ -67,7 +67,7 @@ data-files:
     ./static/images/why.png
 
 executable omocha
-  main-is: Main.hs
+  main-is: src/Main.hs
   other-modules:
       Paths_omocha
       Omocha.Bitmap
@@ -81,8 +81,10 @@ executable omocha
   build-depends:
       GPipe >=2.2.3
     , GPipe-GLFW
+    , HaXml
     , JuicyPixels
     , JuicyPixels-util
+    , array
     , base >=4.9.1.0
     , boundingboxes
     , containers
