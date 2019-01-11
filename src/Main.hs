@@ -16,6 +16,7 @@ module Main where
 import Omocha.Bitmap
 import Omocha.Font
 import Omocha.Collada
+import Omocha.Types
 
 import Paths_omocha
 import Graphics.GPipe 
@@ -49,7 +50,6 @@ getImage bmp = let img = bitmapImage bmp
 
 getJuicyPixel xs _ _ pix = let P.PixelRGBA8 r g b a = P.convertPixel pix in V4 r g b a : xs   
 
-type UniInput = (B2 Int32, V3 (B3 Float), B3 Float, B3 Float, B3 Float, B Float)
 
 windowSize  (a, _, _, _, _, _) = a
 modelNorm   (_, a, _, _, _, _) = a
@@ -58,23 +58,23 @@ viewTarget  (_, _, _, a, _, _) = a
 viewUp      (_, _, _, _, a, _) = a
 
 
-data RenderInput os = RenderInput {
-                        riScreenSize :: V2 Int, 
-                        riStream :: PrimitiveArray Triangles (B3 Float, B3 Float, B2 Float),
-                        tex :: Texture2D os (Format RGBAFloat)
-                      }
-                    | BoardInput {
-                        riScreenSize :: V2 Int, 
-                        riStream :: PrimitiveArray Triangles (B3 Float, B3 Float, B2 Float),
-                        tex :: Texture2D os (Format RGBAFloat)
-                      }
-
 data Buffers os = Buffers {
                               normals  :: Buffer os (B3 Float),
                               board :: Buffer os (B3 Float, B2 Float),
                               boardNormals  :: Buffer os (B3 Float),
                               position :: Buffer os (B3 Float, B2 Float)
                           }
+
+newPrimitiveArray :: Buffer os (t2, t1)
+       -> Buffer os t -> Render os (PrimitiveArray Triangles (t2, t, t1))
+newPrimitiveArray p n = do   
+  pArr <- newVertexArray p  
+  nArr <- newVertexArray n  
+  return $ 
+    toPrimitiveArrayInstanced 
+    TriangleStrip 
+    (\(p, u) n -> (p, n, u))
+    pArr nArr 
 
  
 main = runContextT (GLFW.defaultHandleConfig { GLFW.configEventPolicy = Nothing }) $ do
@@ -101,15 +101,6 @@ main = runContextT (GLFW.defaultHandleConfig { GLFW.configEventPolicy = Nothing 
         boardNormals,
         position
     }
-    let makePrimitives p n = do   
-          pArr <- newVertexArray p  
-          nArr <- newVertexArray n  
-          return $ 
-            toPrimitiveArrayInstanced 
-            TriangleStrip 
-            (\(p, u) n -> (p, n, u))
-            pArr nArr 
-
     font <- loadFont "VL-PGothic-Regular.ttf"
     scene <- liftIO $ readColladaFile "house.dae"
 
@@ -119,14 +110,17 @@ main = runContextT (GLFW.defaultHandleConfig { GLFW.configEventPolicy = Nothing 
     shader <- compileShader $ boardShader makeSide win uniform
     shader' <- compileShader $ boardShader makeBoard win uniform
 
-    let renderings = \size -> [ do   
-                                  clearWindowColor win (V4 0 0.25 1 0)
-                                  clearWindowDepth win 1
-                                  prims <- makePrimitives position normals
-                                  prims' <- makePrimitives board boardNormals
-                                  shader' $ RenderInput size prims' btex
-                                  shader $ RenderInput size prims tex
-                              ]
+    cscene <- renderScene scene 
+
+    let renderings = \vpSize -> [ do   
+                                    clearWindowColor win (V4 0 0.25 1 0)
+                                    clearWindowDepth win 1
+                                    prims <- newPrimitiveArray position normals
+                                    prims' <- newPrimitiveArray board boardNormals
+                                    shader' $ RenderInput vpSize prims' btex
+                                    shader $ RenderInput vpSize prims tex
+                                    shader $ cscene vpSize
+                                ]
 
     (keyInput, keyInputSink) <- liftIO $ E.external (False, False, False, False)
 
@@ -216,30 +210,6 @@ renderFrame win uniform buffers renderings camera target  fps = do
 
 keyIsPressed win k = maybe False (== GLFW.KeyState'Pressed) <$> GLFW.getKey win k
         
-boardShader :: ((V3 VFloat, V3 VFloat, V2 VFloat) -> (V3 (S V Float), V3 VFloat, V2 (S V Float))) 
-               -> Window os RGBAFloat Depth 
-               -> Buffer os (Uniform UniInput) 
-               -> Shader os (RenderInput os) ()
-boardShader pick win uniform = do
-    uni <- getUniform (const (uniform, 0))
-    boards <- fmap pick <$> toPrimitiveStream riStream
-    let projectedSides = proj uni <$> boards
-        filterMode = SamplerFilter Linear Linear Linear (Just 16)
-        edge = (pure ClampToEdge, 1.0)
-    samp <- newSampler2D $ \ri -> (tex ri, filterMode, edge)
-
-    uv <- rasterize (\ri -> (Front, ViewPort (V2 0 0) (riScreenSize ri), DepthRange 0 1) ) projectedSides
-    let litFrags = light samp <$> uv
-        litFragsWithDepth = withRasterizedInfo
-                               (\p x -> (p, (rasterizedFragCoord x)^._z)) litFrags
-        colorOption = ContextColorOption (BlendRgbAlpha (FuncAdd, FuncAdd) (BlendingFactors SrcAlpha OneMinusSrcAlpha, BlendingFactors Zero One) (V4 0 0 0 0)) (pure True)
-        depthOption = DepthOption Lequal True
-    
-    drawWindowColorDepth (const (win, colorOption, depthOption)) litFragsWithDepth
-
-
-light :: ColorSampleable c => Sampler2D (Format c) -> (t, V2 (S F Float)) -> ColorSample F c
-light samp (normal, uv) = sample2D samp SampleAuto (Just 1) Nothing uv 
 
 makeSide :: Fractional a => (V3 a, V3 a, V2 a) -> (V3 a, V3 a, V2 a)
 makeSide (p, normal, uv) = (p&_y+~1, normal, uv)
@@ -247,21 +217,4 @@ makeSide (p, normal, uv) = (p&_y+~1, normal, uv)
 makeBoard :: Fractional a => (V3 a, V3 a, V2 a) -> (V3 a, V3 a, V2 a)
 makeBoard (p, normal, uv) = (p, normal, uv)
 
-proj uni (V3 px py pz, normal, uv) =   
-    let modelViewProj = perspective (pi/3) (let V2 w h = windowSize uni in (toFloat w) / (toFloat h)) 1 (-1)
-        normMat = modelNorm uni
-        viewProj = lookAt' (viewCamera uni) (viewTarget uni) (viewUp uni)
-        in (modelViewProj !*! viewProj !* V4 px py pz 1, (fmap Flat $ normMat !* normal, uv))   
-
-lookAt' eye center up =
-    V4 (V4 (xa^._x)  (xa^._y)  (xa^._z)  xd)
-       (V4 (ya^._x)  (ya^._y)  (ya^._z)  yd)
-       (V4 (-za^._x) (-za^._y) (-za^._z) zd)
-       (V4 0         0         0          1)
-    where za = signorm $ center - eye
-          xa = signorm $ cross za up
-          ya = cross xa za
-          xd = -dot xa eye
-          yd = -dot ya eye
-          zd = dot za eye
 

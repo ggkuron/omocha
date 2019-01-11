@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 3eb5efc36c77e9293e3f3863013d2ac65d468e8d117ce2f1eae7db25bc0d9906
+-- hash: 633c27de2d4c66bd5f4b0cfc84c37ff091c6028318ccbc9d6110fe51525ab551
 
 name:           omocha
 version:        0.1.1.0
@@ -90,6 +90,7 @@ executable omocha
     , containers
     , directory
     , elerea
+    , exception-transformers
     , filepath
     , freetype2 >=0.1
     , lens

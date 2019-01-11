@@ -14,6 +14,7 @@ import Data.Function
 import Data.Maybe (fromJust, mapMaybe, catMaybes)
 import Data.List hiding (union, transpose)
 import qualified Data.Map as Map
+import qualified Data.Foldable as F
 import Data.Vector (Vector) 
 import qualified Data.Vector as V 
 import qualified Linear.Vector as V
@@ -27,7 +28,6 @@ import Text.XML.HaXml.Posn
 
 import Data.Typeable
 import Data.Dynamic
-import Data.Nat
 
 import Control.Monad
 import Control.Monad.Error
@@ -498,12 +498,6 @@ makePrimGroup xs@(((material, names, sizes), _):_) = TriangleMesh material desc 
           desc = Map.fromAscList $ zip names $ map makeTypeRep sizes
           pstream = fmap (Map.fromAscList . zip names . zipWith makeDyn sizes . takeBy sizes) $ makeListStream (sum sizes) xs'
 
-type S2 a = Succ (Succ a)
-type S4 a = S2 (S2 a)
-type S10 a = S2 (S4 (S4 a))
-
-s10 :: forall a. Nat a => a -> S10 a
-s10 _ = undefined :: S10 a
 
 toStreamUsingLength = fmap (id) . mconcat . map (toPrimStream . second (second (map id)))
 -- withLength n v = v `asTypeOf` Vec.mkVec n (undefined :: Vector Float)

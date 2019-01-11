@@ -47,5 +47,6 @@ executables:
     - random
     - HaXml
     - array
+    - exception-transformers
     ghc-options:         
     - -fprint-potential-instances
