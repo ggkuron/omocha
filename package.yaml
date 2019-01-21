@@ -28,6 +28,8 @@ executables:
     - Omocha.Class
     - Omocha.Font
     - Omocha.Internal.Finalizer
+    - Omocha.Types
+    - Omocha.Collada
     dependencies:       
     - GPipe >= 2.2.3
     - GPipe-GLFW
@@ -47,6 +49,7 @@ executables:
     - random
     - HaXml
     - array
+    - transformers
     - exception-transformers
     ghc-options:         
     - -fprint-potential-instances

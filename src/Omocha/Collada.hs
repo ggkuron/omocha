@@ -30,7 +30,8 @@ import Data.Typeable
 import Data.Dynamic
 
 import Control.Monad
-import Control.Monad.Error
+import Control.Monad.Except
+import Control.Monad.Trans.Error (strMsg)
 import Control.Monad.Writer.Strict
 import Control.Arrow (first, second)
 import Omocha.Types
@@ -42,11 +43,11 @@ toRadians d = d * pi / 180
 
 newtype RefMap = RefMap (Map ID (RefMap -> Reference))
 
-data Reference = RefNode Scene
+data Reference = RefNode ColladaTree
                | RefArray (Maybe ([Float], Int))
                | RefSource (Maybe ([[Float]], Int))
                | RefVertices (Map String ([[Float]], Int))
-               | RefVisualScene Scene
+               | RefVisualColladaTree ColladaTree
                | RefCamera Camera
                | RefLight Light
                | RefGeometry Geometry
@@ -59,7 +60,7 @@ type Parser = WriterT [(ID, RefMap -> Reference)] (WriterT [RefMap -> Either Str
 runParser :: Parser (Maybe ID) -> Either String Reference
 runParser m = do ((mid, refs), checks) <- runWriterT $ runWriterT m
                  case mid of
-                    Nothing -> return $ RefVisualScene $ Tree.Node (nosid $ Node Nothing [] [] [] [] []) []
+                    Nothing -> return $ RefVisualColladaTree $ Tree.Node (nosid $ Node Nothing [] [] [] [] []) []
                     Just id -> do
                         let refmap = RefMap $ Map.fromList refs
                         mapM_ ($ refmap) checks
@@ -76,11 +77,11 @@ readCollada f s = do p <- xmlParse' f s
                      xs <- withError "Expecting COLLADA top-element" $ do XML.Document _ _ (Elem (N "COLLADA") _ xs) _ <- return p
                                                                           return xs
 
-                     RefVisualScene vs <- runParser $ parseDoc xs
+                     RefVisualColladaTree vs <- runParser $ parseDoc xs
                      return vs
 
                                                                         
-readColladaFile :: FilePath -> IO Scene
+readColladaFile :: FilePath -> IO ColladaTree
 readColladaFile f = readFile f >>= (\s -> case readCollada f s of
                                             Left e -> throwError $ strMsg e
                                             Right v -> return v)
@@ -164,14 +165,14 @@ parseDoc xs = do let sources = xs ==> deep (tagWith (`elem` ["animation", "mesh"
                  mapM_ parseGeometry $ xs ==> tag "library_geometries" /> tag "geometry"
                  mapM_ parseLight $ xs ==> tag "library_lights" /> tag "light" `with` attr "id"
                  mapM_ parseNode $ xs ==> tag "library_nodes" /> tag "node"
-                 mapM_ parseVisualScene $ xs ==> tag "library_visual_scenes" /> tag "visual_scene"
+                 mapM_ parseVisualColladaTree $ xs ==> tag "library_visual_scenes" /> tag "visual_scene"
                  (url,c) <- case xs ==> attributed "url" (tag "scene" /> tag "instance_visual_scene") of
                        [] -> throwError "Missing scene element with instance_visual_scene element found in COLLADA top element."
                        [x] -> return x
                        _ -> throwError "Multiple instance_visual_scene elements in scene element found in COLLADA top element."
                  case localUrl url of
                         Nothing -> return Nothing
-                        Just lurl -> do assert $ \refmap -> withError (missingLinkErr "visual_scene" lurl c) $ do Just (RefVisualScene _) <- return $ getRef lurl refmap
+                        Just lurl -> do assert $ \refmap -> withError (missingLinkErr "visual_scene" lurl c) $ do Just (RefVisualColladaTree _) <- return $ getRef lurl refmap
                                                                                                                   return ()
                                         return $ Just lurl
 
@@ -279,7 +280,7 @@ parseTransformations c = do let sid = makeSID $ getAttribute "sid" c
                                                return $ Just $ sid $ Matrix $ fromListToMat44 mat
                                 "rotate" -> do xs <- getFromListLengthContents 4 c
                                                let (rot,[a]) = splitAt 3 xs
-                                               return $ Just $ sid $ Rotate (fromListToMat44 rot) a
+                                               return $ Just $ sid $ Rotate (fromListToVec rot) a
                                 "scale" ->  do v <- getFromListLengthContents 3 c
                                                return $ Just $ sid $ Scale $ fromListToVec v
                                 "skew" ->   do xs <- getFromListLengthContents 7 c
@@ -291,11 +292,11 @@ parseTransformations c = do let sid = makeSID $ getAttribute "sid" c
                                 _ -> return Nothing
 ---------------------------------------------------------------
 
-parseVisualScene c = do let id = getAttribute "id" c
-                        subNodeFs <- fmap catMaybes $ mapM parseNode $ c -=> keep /> tag "node"
-                        unless (null id) $
-                            addRefF id $ \refmap -> RefVisualScene $ Tree.Node (nosid $ Node (Just id) [] [] [] [] []) $ map ($ refmap) subNodeFs
-                                                
+parseVisualColladaTree c = do let id = getAttribute "id" c
+                              subNodeFs <- fmap catMaybes $ mapM parseNode $ c -=> keep /> tag "node"
+                              unless (null id) $
+                                  addRefF id $ \refmap -> RefVisualColladaTree $ Tree.Node (nosid $ Node (Just id) [] [] [] [] []) $ map ($ refmap) subNodeFs
+                                                       
 ---------------------------------------------------------------
 
 parseCamera c = do let id = getAttribute "id" c
@@ -338,7 +339,7 @@ parseCamera c = do let id = getAttribute "id" c
 parseGeometry c = do verticess <- mapM (getReqSingleElement "vertices") $ c -=> keep /> cat [tag "convex_mesh", tag "brep"]
                      mapM_ parseVertices verticess
                      mesh <- getReqSingleElement "mesh" c
-                     parseMesh (getAttribute "id" c) mesh
+                     parseColladaMesh (getAttribute "id" c) mesh
                      
 parseLight c = do let id = getAttribute "id" c
                   tech <- getReqSingleElement "technique_common" c
@@ -367,17 +368,17 @@ parseLight c = do let id = getAttribute "id" c
                                    return $ Attenuation con lin qua
 
 ---------------------------------------------------------------
--- Mesh parsing:
+-- ColladaMesh parsing:
 
-parseMesh id c = do v <- getReqSingleElement "vertices" c
-                    vertices <- parseVertices v
-                    Control.Monad.unless (null id) $
-                      do dynPrimListFs <- fmap concat $
-                                            mapM (parsePrimitives vertices) $ children c
-                         addRefF id $
-                           \ refmap ->
-                             let dynPrimLists = map (second ($refmap)) dynPrimListFs in
-                               RefGeometry $ Mesh id (makeDynPrimStream dynPrimLists)
+parseColladaMesh id c = do v <- getReqSingleElement "vertices" c
+                           vertices <- parseVertices v
+                           Control.Monad.unless (null id) $
+                             do dynPrimListFs <- fmap concat $
+                                                   mapM (parsePrimitives vertices) $ children c
+                                addRefF id $
+                                  \ refmap ->
+                                    let dynPrimLists = map (second ($refmap)) dynPrimListFs in
+                                      RefGeometry $ ColladaMesh id (makeDynPrimStream dynPrimLists)
 
           
 parseVertices verts = do insF <- fmap (map snd) $ mapM (parseInput False) $ verts -=> keep /> tag "input"
@@ -491,7 +492,7 @@ makeTypeRep n = dynTypeRep $ makeDyn n undefined
 takeBy (size:sizes) xs = case splitAt size xs of (a,b) -> a : takeBy sizes b
 takeBy [] _ = []
 
-makePrimGroup xs@(((material, names, sizes), _):_) = TriangleMesh material desc pstream aabb
+makePrimGroup xs@(((material, names, sizes), _):_) = TriangleColladaMesh material desc pstream aabb
     where 
           xs' = map (second snd) xs
           aabb = mconcat $ map (fst . snd) xs
@@ -501,8 +502,8 @@ makePrimGroup xs@(((material, names, sizes), _):_) = TriangleMesh material desc 
 
 toStreamUsingLength = fmap (id) . mconcat . map (toPrimStream . second (second (map id)))
 -- withLength n v = v `asTypeOf` Vec.mkVec n (undefined :: Vector Float)
-toPrimStream (_, ((primtype, Just indices), input)) =  MeshPrimitiveArray $ [MeshPrimitiveIndexed primtype indices input]
-toPrimStream (_, ((primtype, _), input)) = MeshPrimitiveArray $ [MeshPrimitive primtype input]
+toPrimStream (_, ((primtype, Just indices), input)) =  ColladaMeshPrimitiveArray $ [ColladaMeshPrimitiveIndexed primtype indices input]
+toPrimStream (_, ((primtype, _), input)) = ColladaMeshPrimitiveArray $ [ColladaMeshPrimitive primtype input]
 
 makeDyn n = case n of 
     0 -> const $ toDyn ()

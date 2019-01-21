@@ -1,10 +1,15 @@
-{-# LANGUAGE StandaloneDeriving, DeriveDataTypeable, FlexibleContexts, RankNTypes #-}
+{-# LANGUAGE StandaloneDeriving
+ , DeriveDataTypeable
+ , FlexibleContexts
+ , RankNTypes 
+ , ScopedTypeVariables 
+ #-}
 
 module Omocha.Types (
     ID
     , SID
     , Semantic
-    , Scene(..)
+    , ColladaTree(..)
     , Transform(..)
     , Node(..)
     , Camera(..)
@@ -13,15 +18,21 @@ module Omocha.Types (
     , Light(..)
     , Geometry(..)
     , AABB(..)
-    , Mesh(..)
-    , MeshPrimitive(..)
-    , MeshPrimitiveArray(..)
+    , ColladaMesh(..)
+    , ColladaMeshPrimitive(..)
+    , ColladaMeshPrimitiveArray(..)
     , Attenuation(..)
     , RenderInput(..)
-    , renderScene
+    , renderColladaTree
+    , UniInput
     , boardShader
     , light
-    , proj
+    , windowSize
+    , modelNorm 
+    , viewCamera
+    , viewTarget
+    , viewUp    
+    , VBuffer
     ) where
 
 import Data.Tree as Tree
@@ -37,6 +48,8 @@ import qualified Linear.V as V
 import qualified Data.Foldable as F
 import Graphics.GPipe 
 import Linear.Matrix
+import Linear.Vector
+import Linear.Metric
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Exception (MonadAsyncException)
 import Control.Lens
@@ -46,7 +59,7 @@ type ID = String
 type SID = Maybe String
 type Semantic = String
 
-type Scene = Tree (SID, Node)
+type ColladaTree = Tree (SID, Node)
 type ColladaColor = V3 Float
 
 data Node = Node {
@@ -66,7 +79,7 @@ data Transform = LookAt {
                     lookAtUp :: V3 Float
                  }
                | Matrix (M44 Float)
-               | Rotate (M44 Float) Float
+               | Rotate (V3 Float) Float
                | Scale (V3 Float) 
                | Skew {
                     skewAngle:: Float,
@@ -131,44 +144,41 @@ data Attenuation = Attenuation {
     } deriving (Show, Eq)
 
 
-data Geometry =  Mesh {
+data Geometry =  ColladaMesh {
     meshID :: ID,
-    meshPrimitives :: [Mesh]
+    meshPrimitives :: [ColladaMesh]
 } 
 
-data Mesh = TriangleMesh {
+data ColladaMesh = TriangleColladaMesh {
     meshMaterial :: String,
     meshDescription :: Map Semantic TypeRep,
-    meshPrimitiveStream :: MeshPrimitiveArray (PrimitiveTopology Triangles) (Map Semantic Dynamic),
+    meshPrimitiveStream :: ColladaMeshPrimitiveArray (PrimitiveTopology Triangles) (Map Semantic Dynamic),
     meshAABB :: AABB
 } 
 
-data MeshPrimitive p a = MeshPrimitive p a
-                       | MeshPrimitiveIndexed p [Int] a
+data ColladaMeshPrimitive p a = ColladaMeshPrimitive p a
+                       | ColladaMeshPrimitiveIndexed p [Int] a
 
-newtype MeshPrimitiveArray p a = MeshPrimitiveArray { getMeshPrimitiveArray :: [MeshPrimitive p a]}
+newtype ColladaMeshPrimitiveArray p a = ColladaMeshPrimitiveArray { getColladaMeshPrimitiveArray :: [ColladaMeshPrimitive p a]}
 
-instance Monoid (MeshPrimitiveArray p a) where
-    mempty = MeshPrimitiveArray []
-    mappend (MeshPrimitiveArray a) (MeshPrimitiveArray b) = MeshPrimitiveArray (a ++ b)
-instance Functor (MeshPrimitiveArray p) where
-    fmap f (MeshPrimitiveArray xs) = MeshPrimitiveArray $ fmap g xs
-        where g (MeshPrimitive p a) = MeshPrimitive p (f a)
-              g (MeshPrimitiveIndexed p i a) = MeshPrimitiveIndexed p i (f a)
+instance Monoid (ColladaMeshPrimitiveArray p a) where
+    mempty = ColladaMeshPrimitiveArray []
+    mappend (ColladaMeshPrimitiveArray a) (ColladaMeshPrimitiveArray b) = ColladaMeshPrimitiveArray (a ++ b)
+instance Functor (ColladaMeshPrimitiveArray p) where
+    fmap f (ColladaMeshPrimitiveArray xs) = ColladaMeshPrimitiveArray $ fmap g xs
+        where g (ColladaMeshPrimitive p a) = ColladaMeshPrimitive p (f a)
+              g (ColladaMeshPrimitiveIndexed p i a) = ColladaMeshPrimitiveIndexed p i (f a)
 
 data AABB = AABB {
                 aabbMin :: V3 Float,
                 aabbMax :: V3 Float
-            }
-            deriving (Show, Eq)
+            } deriving (Show, Eq)
 
 instance Monoid AABB where
     mempty = let inf = read "Infinity" :: Float in AABB (V3 inf inf inf) (V3 (-inf) (-inf) (-inf))
     mappend (AABB minA maxA) (AABB minB maxB) = AABB (zipAsVector min minA minB) (zipAsVector max maxA maxB)
         where 
         zipAsVector minMax a b =  V.fromV . fromJust . V.fromVector $ V.zipWith minMax (V.toVector $ V.toV a) (V.toVector $ V.toV b)
-
-    
 
 
 -- | Traverse a Tree top down, much like 'mapAccumL'. The function recieves an accumulator from its parent and generates one that is passed down to its children.
@@ -190,7 +200,7 @@ prune f (Tree.Node x xs) = if f x then Nothing else Just $ Tree.Node x $ mapMayb
 -- | A path where the first string in the list is the closest ID and the rest is all SIDs found in order.
 type SIDPath = [String]
 
--- | Traverse a tree top down accumulating the 'SIDPath' for each node. The projection function enables this to be used on trees that are not 'Scene's.
+-- | Traverse a tree top down accumulating the 'SIDPath' for each node. The projection function enables this to be used on trees that are not 'ColladaTree's.
 --   The accumulated 'SIDPath' for a node will include the node's 'SID' at the end, but not its 'ID'. The 'ID' will however be the first 'String' in the
 --   'SIDPath's of the children, and the nodes 'SID' won't be included in this case.
 topDownSIDPath :: (x -> (SID, Maybe ID)) -> Tree x -> Tree (SIDPath,x)
@@ -199,7 +209,7 @@ topDownSIDPath f = topDown g []
                     (msid, mid) -> let p' = p ++ maybeToList msid
                                    in (maybe p' (:[]) mid, (p', x))
 
--- | Traverse a tree top down accumulating the absolute transform for each node. The projection function enables this to be used on trees that are not 'Scene's.
+-- | Traverse a tree top down accumulating the absolute transform for each node. The projection function enables this to be used on trees that are not 'ColladaTree's.
 --   Use 'nodeMat' to get the @Mat44 Float@ from a node. The accumulated matrix for each node will contain the node's own transforms.
 topDownTransform :: (x -> M44 Float) -> Tree x -> Tree (M44 Float,x)
 topDownTransform f = topDown g identity
@@ -224,44 +234,80 @@ hasDynVertex m s a = maybe False (== typeOf a) $ Map.lookup s m
 dynVertex :: Typeable a => Map Semantic Dynamic -> Semantic -> Maybe a
 dynVertex m s = Map.lookup s m >>= fromDynamic
 
+
+type VBuffer = (B3 Float, B3 Float, B2 Float)
 data RenderInput os = RenderInput {
                         riScreenSize :: V2 Int, 
-                        riStream :: PrimitiveArray Triangles (B3 Float, B3 Float, B2 Float),
+                        riStream :: PrimitiveArray Triangles VBuffer,
                         tex :: Texture2D os (Format RGBAFloat)
                       }
 
 type UniInput = (B2 Int32, V3 (B3 Float), B3 Float, B3 Float, B3 Float, B Float)
 
+windowSize  (a, _, _, _, _, _) = a
+modelNorm   (_, a, _, _, _, _) = a
+viewCamera  (_, _, a, _, _, _) = a 
+viewTarget  (_, _, _, a, _, _) = a
+viewUp      (_, _, _, _, a, _) = a
+
+
+toRadians :: Floating a => a -> a
+toRadians d = d * pi / 180
+
 -- | Gets the transformation matrix of a 'Transform' element.
 transformMat :: Transform -> M44 Float
-transformMat (LookAt e i u) = lookAt' e i u
+transformMat (LookAt e i u) = lookAt e i u
 transformMat (Matrix m) = m
-transformMat (Rotate v a) = rotationVec v (toRadians a)
-transformMat (Scale v) = scaling v
+transformMat (Rotate v a) = mkTransformation (axisAngle v (toRadians a)) v
+transformMat (Scale v) = m33_to_m44 $ scaled v
 transformMat (Skew a r t) = skew (toRadians a) r t
-transformMat (Translate v) = translation v
+transformMat (Translate v) = V4 (V4 1 0 0 (v^._x))
+                                (V4 0 1 0 (v^._y))
+                                (V4 0 0 1 (v^._z))
+                                (V4 0 0 0 1)
+                              
 
 -- | Gets the total transformation matrix of a list of 'Transform' element.
 transformsMat :: [Transform] -> M44 Float
-transformsMat = foldl !*! identity . map transformMat
+transformsMat = foldl (!*!) identity . map transformMat
 
 -- | The complete transform matrix of all 'Transform' elements in a node.
 nodeMat :: Node -> M44 Float
 nodeMat = transformsMat . map snd . nodeTransformations
 
+-- adopted from http://www.koders.com/cpp/fidA08C276050F880D11C2E49280DD9997478DC5BA1.aspx
+skew :: Float -> V3 Float -> V3 Float -> M44 Float
+skew angle a b = m33_to_m44 m
+    where
+        n2 :: V3 Float
+        n2 = normalize b
+        a1 = fmap (* (a `dot` n2)) n2
+        a2 = a-a1
+        n1 = normalize a2
+        an1 = a `dot` n1
+        an2 = a `dot` n2
+        rx = an1 * cos angle - an2 * sin angle
+        ry = an1 * sin angle + an2 * cos angle
+        alpha = if abs an1 < 0.000001 then 0 else ry/rx-an2/an1
+        n3 :: V3 Float
+        n3 = n2 ^* alpha
+        m = n1 `outer` n3 + identity
+        
 -----------------------------------------
 
 -- | Render the scene using a simple shading technique through the first camera found, or through a defult camera if the scene doesn't contain any cameras. The scene's lights aren't
---   used in the rendering. The source of this function can also serve as an example of how a Collada 'Scene' can be processed.
-renderScene :: (MonadIO m, MonadAsyncException m, ContextHandler ctx) => Scene -> (forall os. ContextT ctx os m (V2 Int -> RenderInput os))
-renderScene tree = do
+--   used in the rendering. The source of this function can also serve as an example of how a Collada 'ColladaTree' can be processed.
+renderColladaTree :: (MonadIO m, MonadAsyncException m, ContextHandler ctx) => ColladaTree -> (forall os. ContextT ctx os m (V2 Int -> RenderInput os))
+renderColladaTree tree = do
+    position :: Buffer os (B3 Float, B2 Float) <- newBuffer 4  
     -- Retrieve cameras and geometries tagged with transforms
     let (cameras,geometries) = F.foldMap tagContent $ topDownTransform nodeMat $ fmap snd tree
         tagContent (t,n) = let tagT = zip (repeat t) in (tagT $ nodeCameras n, tagT $ nodeGeometries n) 
     return $ \vpSize -> undefined
-    --  where
-    --    aspect = fromIntegral w / fromIntegral h
-    --    
+    --   where
+    --     primitiveStream = mconcat $ concatMap filterGeometry geometries
+    --     filterGeometry (modelMat, (_,ColladaMesh _ mesh)) = mapMaybe (filterColladaMesh (viewProj !*! modelMat) (view !*! modelMat) modelMat) mesh
+    --     filterColladaMesh modelViewProj modelView modelMat (TriangleColladaMesh _ desc pstream aabb) = do
     --    -- Get the camera and inverted view matrix
     --    (invView,cam) = head (cameras ++ [(translation (V3 0 0 100) , (Nothing, Perspective "" (ViewSizeY 35) (Z 1 10000)))])
     --    
@@ -274,8 +320,6 @@ renderScene tree = do
     --    paint = paintColorRastDepth Lequal True NoBlending (RGB $ V3 1 1 1)
     --    -- fragmentStream = fmap (RGB . Vec.vec) $ rasterizeFront primitiveStream
     --    primitiveStream = mconcat $ concatMap filterGeometry geometries
-    --    filterGeometry (modelMat, (_,Mesh _ mesh)) = mapMaybe (filterMesh (viewProj `multmm` modelMat) (view `multmm` modelMat) modelMat) mesh
-    --    filterMesh modelViewProj modelView modelMat (TriangleMesh _ desc pstream aabb) = do
     --      guard $ hasDynVertex desc "POSITION" (undefined :: V3 Float) -- Filter out geometries without 3D-positions
     --      guard $ hasDynVertex desc "NORMAL" (undefined :: V3 Float)   -- Filter out geometries without 3D-normals
     --      guard $ testAABBprojection modelViewProj aabb /= Outside                -- Frustum cull geometries
@@ -285,6 +329,7 @@ renderScene tree = do
     --                           in ((toGPU modelViewProj :: M44 Float) * p, maxB nz 0)
     --                    ) pstream
             
+
 boardShader :: ((V3 VFloat, V3 VFloat, V2 VFloat) -> (V3 (S V Float), V3 VFloat, V2 (S V Float))) 
                -> Window os RGBAFloat Depth 
                -> Buffer os (Uniform UniInput) 
@@ -318,14 +363,16 @@ proj uni (V3 px py pz, normal, uv) =
 
 lookAt' eye center up =
     V4 (V4 (xa^._x)  (xa^._y)  (xa^._z)  xd)
-       (V4 (ya^._x)  (ya^._y)  (ya^._z)  yd)
-       (V4 (-za^._x) (-za^._y) (-za^._z) zd)
-       (V4 0         0         0          1)
-    where za = signorm $ center - eye
-          xa = signorm $ cross za up
-          ya = cross xa za
-          xd = -dot xa eye
-          yd = -dot ya eye
-          zd = dot za eye
+            (V4 (ya^._x)  (ya^._y)  (ya^._z)  yd)
+            (V4 (-za^._x) (-za^._y) (-za^._z) zd)
+            (V4 0         0         0          1)
+         where za = signorm $ center - eye
+               xa = signorm $ cross za up
+               ya = cross xa za
+               xd = -dot xa eye
+               yd = -dot ya eye
+               zd = dot za eye
+     
+
 
 
