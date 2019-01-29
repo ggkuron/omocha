@@ -3,6 +3,7 @@
  , FlexibleContexts
  , RankNTypes 
  , ScopedTypeVariables 
+ , GADTs
  #-}
 
 module Omocha.Types (
@@ -11,7 +12,7 @@ module Omocha.Types (
     , Semantic
     , ColladaTree(..)
     , Transform(..)
-    , Node(..)
+    , ColladaNode(..)
     , Camera(..)
     , ViewSize(..)
     , Z(..)
@@ -26,6 +27,7 @@ module Omocha.Types (
     , renderColladaTree
     , UniInput
     , boardShader
+    -- , monoShader
     , light
     , windowSize
     , modelNorm 
@@ -33,8 +35,16 @@ module Omocha.Types (
     , viewTarget
     , viewUp    
     , VBuffer
+    , DrawVertex(..)
+    , OmochaShaderType(..)
+    , Scene(..)
+    , Mesh(..)
+    , TextureInput
+    , PlainInput
     ) where
 
+
+import Omocha.Bitmap
 import Data.Tree as Tree
 import Data.Tree (Tree(), Forest)
 import qualified Data.Map as Map
@@ -50,19 +60,47 @@ import Graphics.GPipe
 import Linear.Matrix
 import Linear.Vector
 import Linear.Metric
+import Control.Monad
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Exception (MonadAsyncException)
 import Control.Lens
+
 
 
 type ID = String
 type SID = Maybe String
 type Semantic = String
 
-type ColladaTree = Tree (SID, Node)
+
+type ColladaTree = Tree (SID, ColladaNode)
 type ColladaColor = V3 Float
 
-data Node = Node {
+data DrawVertex = DrawVertex {
+                    dvPosition :: V3 Float,
+                    dvNormal :: V3 Float,
+                    dvUv :: V2 Float
+                }
+
+data Mesh = Mesh {
+              vertices :: [DrawVertex],
+              indices :: Maybe [Int],
+              offset :: V3 Float,
+              textureImage :: Maybe Bitmap,
+              shaderType :: OmochaShaderType
+          }
+
+data OmochaShaderType = BoardShader | TargetBoard
+    deriving (Eq, Ord, Show)
+
+
+data Scene = Scene {
+               meshes :: [Mesh],
+               camera :: V3 Float
+           }
+
+
+
+data ColladaNode = ColladaNode {
     nodeId:: Maybe ID,
     nodeLayers :: [String],
     nodeTransformations :: [(SID, Transform)],
@@ -70,7 +108,6 @@ data Node = Node {
     nodeLights :: [(SID, Light)],
     nodeGeometries :: [(SID, Geometry)]
 } 
-
 
 
 data Transform = LookAt {
@@ -158,8 +195,10 @@ data ColladaMesh = TriangleColladaMesh {
 
 data ColladaMeshPrimitive p a = ColladaMeshPrimitive p a
                        | ColladaMeshPrimitiveIndexed p [Int] a
+        deriving(Show)
 
 newtype ColladaMeshPrimitiveArray p a = ColladaMeshPrimitiveArray { getColladaMeshPrimitiveArray :: [ColladaMeshPrimitive p a]}
+    deriving (Show)
 
 instance Monoid (ColladaMeshPrimitiveArray p a) where
     mempty = ColladaMeshPrimitiveArray []
@@ -236,11 +275,26 @@ dynVertex m s = Map.lookup s m >>= fromDynamic
 
 
 type VBuffer = (B3 Float, B3 Float, B2 Float)
-data RenderInput os = RenderInput {
-                        riScreenSize :: V2 Int, 
-                        riStream :: PrimitiveArray Triangles VBuffer,
-                        tex :: Texture2D os (Format RGBAFloat)
-                      }
+type MBuffer = (B3 Float, B3 Float) 
+
+data TextureInput
+data PlainInput
+
+data RenderInput os tag where
+    RenderInput :: V2 Int -> PrimitiveArray Triangles VBuffer -> Texture2D os (Format RGBAFloat) -> RenderInput os TextureInput
+    PlainInput :: V2 Int -> PrimitiveArray Triangles MBuffer -> RenderInput os PlainInput
+
+riScreenSize :: RenderInput os tag -> V2 Int
+riScreenSize (RenderInput vp _ _) = vp
+riScreenSize (PlainInput vp _) = vp
+riStream :: RenderInput os TextureInput -> PrimitiveArray Triangles VBuffer
+riStream (RenderInput _ st _) = st
+riMStream :: RenderInput os PlainInput -> PrimitiveArray Triangles MBuffer
+riMStream (PlainInput _ st) = st
+tex :: RenderInput os TextureInput -> Texture2D os (Format RGBAFloat)
+tex (RenderInput _ _ tex) = tex
+
+
 
 type UniInput = (B2 Int32, V3 (B3 Float), B3 Float, B3 Float, B3 Float, B Float)
 
@@ -272,7 +326,7 @@ transformsMat :: [Transform] -> M44 Float
 transformsMat = foldl (!*!) identity . map transformMat
 
 -- | The complete transform matrix of all 'Transform' elements in a node.
-nodeMat :: Node -> M44 Float
+nodeMat :: ColladaNode -> M44 Float
 nodeMat = transformsMat . map snd . nodeTransformations
 
 -- adopted from http://www.koders.com/cpp/fidA08C276050F880D11C2E49280DD9997478DC5BA1.aspx
@@ -294,59 +348,79 @@ skew angle a b = m33_to_m44 m
         m = n1 `outer` n3 + identity
         
 -----------------------------------------
+--
+foldTree :: (a -> [b] -> b) -> Tree a -> b
+foldTree f = go where
+    go (Tree.Node x ts) = f x (map go ts)
 
 -- | Render the scene using a simple shading technique through the first camera found, or through a defult camera if the scene doesn't contain any cameras. The scene's lights aren't
 --   used in the rendering. The source of this function can also serve as an example of how a Collada 'ColladaTree' can be processed.
-renderColladaTree :: (MonadIO m, MonadAsyncException m, ContextHandler ctx) => ColladaTree -> (forall os. ContextT ctx os m (V2 Int -> RenderInput os))
-renderColladaTree tree = do
-    position :: Buffer os (B3 Float, B2 Float) <- newBuffer 4  
-    -- Retrieve cameras and geometries tagged with transforms
-    let (cameras,geometries) = F.foldMap tagContent $ topDownTransform nodeMat $ fmap snd tree
-        tagContent (t,n) = let tagT = zip (repeat t) in (tagT $ nodeCameras n, tagT $ nodeGeometries n) 
-    return $ \vpSize -> undefined
-    --   where
-    --     primitiveStream = mconcat $ concatMap filterGeometry geometries
-    --     filterGeometry (modelMat, (_,ColladaMesh _ mesh)) = mapMaybe (filterColladaMesh (viewProj !*! modelMat) (view !*! modelMat) modelMat) mesh
-    --     filterColladaMesh modelViewProj modelView modelMat (TriangleColladaMesh _ desc pstream aabb) = do
-    --    -- Get the camera and inverted view matrix
-    --    (invView,cam) = head (cameras ++ [(translation (V3 0 0 100) , (Nothing, Perspective "" (ViewSizeY 35) (Z 1 10000)))])
-    --    
-    --    -- The transform matrices
-    --    view = fromJust $ invert invView
-    --    proj = cameraMat aspect $ snd cam
-    --    viewProj = proj `multmm` view
-    --          
-    --    framebuffer = paint fragmentStream $ newFrameBufferColorDepth (RGB 0) 1
-    --    paint = paintColorRastDepth Lequal True NoBlending (RGB $ V3 1 1 1)
-    --    -- fragmentStream = fmap (RGB . Vec.vec) $ rasterizeFront primitiveStream
-    --    primitiveStream = mconcat $ concatMap filterGeometry geometries
-    --      guard $ hasDynVertex desc "POSITION" (undefined :: V3 Float) -- Filter out geometries without 3D-positions
-    --      guard $ hasDynVertex desc "NORMAL" (undefined :: V3 Float)   -- Filter out geometries without 3D-normals
-    --      guard $ testAABBprojection modelViewProj aabb /= Outside                -- Frustum cull geometries
-    --      let normMat = transpose $ fromJust $ invert $ fmap (V.take n3) $ V.take n3 modelView
-    --      return $ fmap (\v -> let p = homPoint $ fromJust $ dynVertex v "POSITION"
-    --                               V3 nx ny nz = (toGPU normMat :: M33 Float) * fromJust (dynVertex v "NORMAL")
-    --                           in ((toGPU modelViewProj :: M44 Float) * p, maxB nz 0)
-    --                    ) pstream
+-- \root@(sid, node) fs -> 
+renderColladaTree :: ColladaTree -> Scene
+renderColladaTree tree = 
+    let (cameras, geometries) = F.foldMap tagContent $ topDownTransform nodeMat $ fmap snd tree
+        primitiveStream = mconcat $ concatMap filterGeometry geometries :: ColladaMeshPrimitiveArray (PrimitiveTopology Triangles) (V3 Float, V3 Float)
+    in undefined
+    where
+      tagT t = zip (repeat t)
+      tagContent (t, n) = (tagT t $ nodeCameras n, tagT t $ nodeGeometries n) 
+      filterGeometry (modelMat, (_,ColladaMesh _ mesh)) = mapMaybe (filterColladaMesh modelMat) mesh
+      filterColladaMesh modelMat (TriangleColladaMesh _ desc pstream aabb) = do
+        guard $ hasDynVertex desc "POSITION" (undefined :: V3 Float) -- Filter out geometries without 3D-positions
+        guard $ hasDynVertex desc "NORMAL" (undefined :: V3 Float)   -- Filter out geometries without 3D-normals
+        -- guard $ testAABBprojection modelViewProj aabb /= Outside                -- Frustum cull geometries
+        return $ fmap (\v -> let p = fromJust $ dynVertex v "POSITION" :: V3 Float
+                                 n = fromJust $ dynVertex v "NORMAL" :: V3 Float
+                             in (p, n)
+                      ) pstream
+      -- Get the camera and inverted view matrix
+      -- (invView,cam) = head (cameras ++ [(translation (V3 0 0 100) , (Nothing, Perspective "" (ViewSizeY 35) (Z 1 10000)))])
+      
+      --- framebuffer = paint fragmentStream $ newFrameBufferColorDepth (RGB 0) 1
+      -- paint = paintColorRastDepth Lequal True NoBlending (RGB $ V3 1 1 1)
+      -- fragmentStream = fmap (RGB . Vec.vec) $ rasterizeFront primitiveStream
+      -- primitiveStream = mconcat $ concatMap filterGeometry geometries
             
 
-boardShader :: ((V3 VFloat, V3 VFloat, V2 VFloat) -> (V3 (S V Float), V3 VFloat, V2 (S V Float))) 
-               -> Window os RGBAFloat Depth 
-               -> Buffer os (Uniform UniInput) 
-               -> Shader os (RenderInput os) ()
+
+boardShader :: ((UniformFormat UniInput V) 
+                -> (V3 VFloat, V3 VFloat, V2 VFloat) 
+                -> (V3 (S V Float), V3 VFloat, V2 (S V Float))
+               )-> Window os RGBAFloat Depth 
+                -> Buffer os (Uniform UniInput) 
+                -> Shader os (RenderInput os TextureInput) ()
 boardShader pick win uniform = do
     uni <- getUniform (const (uniform, 0))
-    boards <- fmap pick <$> toPrimitiveStream riStream
-    let projectedSides = proj uni <$> boards
+    boards <- fmap (pick uni) <$> toPrimitiveStream riStream
+    let projected = fmap (\(v, n, uv) -> let (v', n') = proj uni (v, n) in (v', (n', uv))) boards
         filterMode = SamplerFilter Linear Linear Linear (Just 16)
         edge = (pure ClampToEdge, 1.0)
     samp <- newSampler2D $ \ri -> (tex ri, filterMode, edge)
 
-    uv <- rasterize (\ri -> (Front, ViewPort (V2 0 0) (riScreenSize ri), DepthRange 0 1) ) projectedSides
-    let litFrags = light samp <$> uv
+    fragmentStream <- rasterize (\ri -> (Front, ViewPort (V2 0 0) (riScreenSize ri), DepthRange 0 1) ) projected
+    let litFrags = light samp <$> fragmentStream
         litFragsWithDepth = withRasterizedInfo
                                (\p x -> (p, (rasterizedFragCoord x)^._z)) litFrags
         colorOption = ContextColorOption (BlendRgbAlpha (FuncAdd, FuncAdd) (BlendingFactors SrcAlpha OneMinusSrcAlpha, BlendingFactors Zero One) (V4 0 0 0 0)) (pure True)
+        depthOption = DepthOption Lequal True
+    
+    drawWindowColorDepth (const (win, colorOption, depthOption)) litFragsWithDepth
+
+monoShader :: ((UniformFormat UniInput V) 
+               -> (V3 VFloat, V3 VFloat) 
+               -> (V3 (S V Float), V3 VFloat)
+              )-> Window os RGBAFloat Depth 
+               -> Buffer os (Uniform UniInput) 
+               -> Shader os (RenderInput os PlainInput) ()
+monoShader pick win uniform = do
+    uni <- getUniform (const (uniform, 0))
+    boards <- fmap (pick uni) <$> toPrimitiveStream riMStream
+    let projected = fmap (\elm -> let (v', n') = proj uni elm in (v',  V4 1 0 0 (0.5) :: V4 VFloat)) boards
+    fragmentStream <- rasterize (\ri -> (Front, ViewPort (V2 0 0) (riScreenSize ri), DepthRange 0 1) ) projected
+    let litFrags = fragmentStream
+        litFragsWithDepth = withRasterizedInfo
+                               (\p x -> (p, (rasterizedFragCoord x)^._z)) litFrags
+    let colorOption = ContextColorOption (BlendRgbAlpha (FuncAdd, FuncAdd) (BlendingFactors SrcAlpha OneMinusSrcAlpha, BlendingFactors Zero One) (V4 0 0 0 0)) (pure True)
         depthOption = DepthOption Lequal True
     
     drawWindowColorDepth (const (win, colorOption, depthOption)) litFragsWithDepth
@@ -355,11 +429,16 @@ boardShader pick win uniform = do
 light :: ColorSampleable c => Sampler2D (Format c) -> (t, V2 (S F Float)) -> ColorSample F c
 light samp (normal, uv) = sample2D samp SampleAuto (Just 1) Nothing uv 
 
-proj uni (V3 px py pz, normal, uv) =   
+
+proj :: (Functor f, Floating (ConvertFloat a), Convert a, Foldable r, Additive r) =>
+        (V2 a, f (r VFloat), V3 (ConvertFloat a), V3 (ConvertFloat a), V3 (ConvertFloat a), t)
+        -> (V3 (ConvertFloat a), r VFloat)
+        -> (V4 (ConvertFloat a), f FlatVFloat)
+proj uni (V3 px py pz, normal) =   
     let modelViewProj = perspective (pi/3) (let V2 w h = windowSize uni in (toFloat w) / (toFloat h)) 1 (-1)
         normMat = modelNorm uni
         viewProj = lookAt' (viewCamera uni) (viewTarget uni) (viewUp uni)
-        in (modelViewProj !*! viewProj !* V4 px py pz 1, (fmap Flat $ normMat !* normal, uv))   
+    in (modelViewProj !*! viewProj !* V4 px py pz 1, (fmap Flat $ normMat !* normal))   
 
 lookAt' eye center up =
     V4 (V4 (xa^._x)  (xa^._y)  (xa^._z)  xd)

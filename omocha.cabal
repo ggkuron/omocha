@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 633c27de2d4c66bd5f4b0cfc84c37ff091c6028318ccbc9d6110fe51525ab551
+-- hash: b68920a16173cdd5b404c50d079da1dbb1792a6b020b8d05c9f8fd6d526b763f
 
 name:           omocha
 version:        0.1.1.0
@@ -74,6 +74,8 @@ executable omocha
       Omocha.Class
       Omocha.Font
       Omocha.Internal.Finalizer
+      Omocha.Types
+      Omocha.Collada
   hs-source-dirs:
       ./.
       src
@@ -98,5 +100,6 @@ executable omocha
     , mtl >=2.2
     , random
     , template-haskell
+    , transformers
     , vector
   default-language: Haskell2010

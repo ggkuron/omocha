@@ -60,7 +60,7 @@ type Parser = WriterT [(ID, RefMap -> Reference)] (WriterT [RefMap -> Either Str
 runParser :: Parser (Maybe ID) -> Either String Reference
 runParser m = do ((mid, refs), checks) <- runWriterT $ runWriterT m
                  case mid of
-                    Nothing -> return $ RefVisualColladaTree $ Tree.Node (nosid $ Node Nothing [] [] [] [] []) []
+                    Nothing -> return $ RefVisualColladaTree $ Tree.Node (nosid $ ColladaNode Nothing [] [] [] [] []) []
                     Just id -> do
                         let refmap = RefMap $ Map.fromList refs
                         mapM_ ($ refmap) checks
@@ -236,7 +236,7 @@ parseNode c | not $ null $ tag "node" c = do
                     lightFs <- fmap catMaybes $ mapM parseLightInstances $ c -=> keep /> tag "instance_light"                
                     geometryFs <- fmap catMaybes $ mapM parseGeometryInstances $ c -=> keep /> tag "instance_geometry"
                     subNodeFs <- fmap catMaybes $ mapM parseNode $ c -=> keep /> (tag "node" `union` tag "instance_node")
-                    let treeF refmap = Tree.Node (sid (Node mid layer transformations (map ($refmap) cameraFs) (map ($refmap) lightFs) (map ($refmap) geometryFs))) (map ($refmap) subNodeFs)
+                    let treeF refmap = Tree.Node (sid (ColladaNode mid layer transformations (map ($refmap) cameraFs) (map ($refmap) lightFs) (map ($refmap) geometryFs))) (map ($refmap) subNodeFs)
                     case id of (_:_) -> addRefF id $ RefNode . treeF
                     return $ Just treeF
             | otherwise {- "instance_node" -} = do
@@ -295,7 +295,7 @@ parseTransformations c = do let sid = makeSID $ getAttribute "sid" c
 parseVisualColladaTree c = do let id = getAttribute "id" c
                               subNodeFs <- fmap catMaybes $ mapM parseNode $ c -=> keep /> tag "node"
                               unless (null id) $
-                                  addRefF id $ \refmap -> RefVisualColladaTree $ Tree.Node (nosid $ Node (Just id) [] [] [] [] []) $ map ($ refmap) subNodeFs
+                                  addRefF id $ \refmap -> RefVisualColladaTree $ Tree.Node (nosid $ ColladaNode (Just id) [] [] [] [] []) $ map ($ refmap) subNodeFs
                                                        
 ---------------------------------------------------------------
 
@@ -336,6 +336,11 @@ parseCamera c = do let id = getAttribute "id" c
                       zfar <- getFromContents far
                       return $ Z znear zfar
                                               
+parseGeometry :: Content Posn
+    -> WriterT 
+         [(ID, RefMap -> Reference)]
+         (WriterT [RefMap ->  Either String ()] (Either String))
+         ()
 parseGeometry c = do verticess <- mapM (getReqSingleElement "vertices") $ c -=> keep /> cat [tag "convex_mesh", tag "brep"]
                      mapM_ parseVertices verticess
                      mesh <- getReqSingleElement "mesh" c
@@ -370,6 +375,12 @@ parseLight c = do let id = getAttribute "id" c
 ---------------------------------------------------------------
 -- ColladaMesh parsing:
 
+parseColladaMesh :: [Char] 
+    -> Content Posn 
+    -> WriterT
+         [(ID, RefMap -> Reference)]
+         (WriterT [RefMap -> Either String ()] (Either String))
+         ()
 parseColladaMesh id c = do v <- getReqSingleElement "vertices" c
                            vertices <- parseVertices v
                            Control.Monad.unless (null id) $
@@ -381,6 +392,11 @@ parseColladaMesh id c = do v <- getReqSingleElement "vertices" c
                                       RefGeometry $ ColladaMesh id (makeDynPrimStream dynPrimLists)
 
           
+parseVertices :: Content Posn
+    -> WriterT 
+         [(ID, RefMap -> Reference)]
+         (WriterT [RefMap -> Either String ()] (Either String))
+         (RefMap -> Map String ([[Float]], Int))
 parseVertices verts = do insF <- fmap (map snd) $ mapM (parseInput False) $ verts -=> keep /> tag "input"
                          let vertsF refmap = Map.unions $ map ($refmap) insF
                          case getAttribute "id" verts of
@@ -415,6 +431,13 @@ parseInput shared i = do source <- getReqAttribute "source" i
                                 return (offset, f)
                                                                        
               
+parsePrimitives :: (RefMap -> Map String ([[Float]], Int))
+    -> Content Posn
+    -> WriterT
+         [(ID, RefMap -> Reference)]
+         (WriterT [RefMap -> Either String ()] (Either String))
+         [((String, PrimitiveTopology Triangles, Maybe [Int]),
+           RefMap -> Map String [[Float]])]
 parsePrimitives vertices p = case mprimtype of
                        Nothing -> return mempty
                        Just primtype -> do
@@ -432,14 +455,17 @@ parsePrimitives vertices p = case mprimtype of
                                                 (_, _:_) | length ps < count -> throwError $ "Too few p elements in " ++ errorPos p
                                                 _ -> return $ take count ps
                                             mapM (parseP primtype inputFs count) ps'
-    where mprimtype = case fst $ head $ tagged keep p of
-            "triangles" -> Just TriangleList
-            "trifans" -> Just TriangleFan
-            "tristrips" -> Just TriangleStrip
-            _ -> Nothing
-          ps = p -=> keep /> tag "p"
-          combine :: (RefMap -> Map String ([[Float]], Int)) -> (RefMap -> Map String ([[Float]], Int)) -> RefMap -> Map String ([[Float]], Int)
-          combine f g refmap = f refmap `Map.union` g refmap
+    where 
+      mprimtype :: Maybe (PrimitiveTopology Triangles)
+      mprimtype = case fst $ head $ tagged keep p of
+        "triangles" -> Just TriangleList
+        "trifans" -> Just TriangleFan
+        "tristrips" -> Just TriangleStrip
+        _ -> Nothing
+      ps :: [Content Posn]
+      ps = p -=> keep /> tag "p"
+      combine :: (RefMap -> Map String ([[Float]], Int)) -> (RefMap -> Map String ([[Float]], Int)) -> RefMap -> Map String ([[Float]], Int)
+      combine f g refmap = f refmap `Map.union` g refmap
 
 parseP :: PrimitiveTopology Triangles -> Map Int (RefMap -> Map String ([[Float]], Int)) -> Int -> Content Posn -> Parser ((String, PrimitiveTopology Triangles, Maybe [Int]), RefMap -> Map String [[Float]])
 parseP primtype inputs count p = do let pStride = 1 + fst (Map.findMax inputs)
@@ -468,7 +494,10 @@ parseP primtype inputs count p = do let pStride = 1 + fst (Map.findMax inputs)
 -----------------------------------------------------
 -- Dynamic Vertex
 
+makeDynPrimStream :: [((String, PrimitiveTopology Triangles, Maybe [Int]), Map [Char] [[Float]])] -> [ColladaMesh]
 makeDynPrimStream = map makePrimGroup . groupBy ((==) `on` fst) . map splitParts
+
+splitParts :: ((t2, t1, t), Map [Char] [[Float]]) -> ((t2, [[Char]], [Int]), (AABB, ((t1, t), [[Float]])))
 splitParts ((material, primtype, mindices), m) = let mlist = Map.toAscList m
                                                      ins = map snd mlist
                                                      names = map fst mlist
@@ -489,19 +518,28 @@ inf :: Float
 inf = read "Infinity"                      
                 
 makeTypeRep n = dynTypeRep $ makeDyn n undefined
+
+takeBy :: [Int] -> [a] -> [[a]]
 takeBy (size:sizes) xs = case splitAt size xs of (a,b) -> a : takeBy sizes b
 takeBy [] _ = []
 
+makePrimGroup :: [((String, [Semantic], [Int]), (AABB, ((PrimitiveTopology Triangles, Maybe [Int]), [[Float]])))]
+    -> ColladaMesh
 makePrimGroup xs@(((material, names, sizes), _):_) = TriangleColladaMesh material desc pstream aabb
     where 
+          xs' :: [((String, [Semantic], [Int]), ((PrimitiveTopology Triangles, Maybe [Int]), [[Float]]))]
           xs' = map (second snd) xs
+          aabb :: AABB
           aabb = mconcat $ map (fst . snd) xs
+          desc :: Map Semantic TypeRep 
           desc = Map.fromAscList $ zip names $ map makeTypeRep sizes
+          pstream :: ColladaMeshPrimitiveArray (PrimitiveTopology Triangles) (Map Semantic Dynamic)
           pstream = fmap (Map.fromAscList . zip names . zipWith makeDyn sizes . takeBy sizes) $ makeListStream (sum sizes) xs'
 
-
+toStreamUsingLength :: [(t, ((p, Maybe [Int]), [[Float]]))] -> ColladaMeshPrimitiveArray p [[Float]]
 toStreamUsingLength = fmap (id) . mconcat . map (toPrimStream . second (second (map id)))
 -- withLength n v = v `asTypeOf` Vec.mkVec n (undefined :: Vector Float)
+toPrimStream :: (t, ((p, Maybe [Int]), a)) -> ColladaMeshPrimitiveArray p a
 toPrimStream (_, ((primtype, Just indices), input)) =  ColladaMeshPrimitiveArray $ [ColladaMeshPrimitiveIndexed primtype indices input]
 toPrimStream (_, ((primtype, _), input)) = ColladaMeshPrimitiveArray $ [ColladaMeshPrimitive primtype input]
 

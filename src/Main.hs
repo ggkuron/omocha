@@ -31,8 +31,10 @@ import Control.Applicative
 import Control.Monad (unless, join, when)
 import Control.Monad.IO.Class (liftIO)  
 import Control.Monad.Fix (fix)
+import Control.Monad.Exception (MonadException)
 import Control.Lens
 import Data.Int(Int32)
+import Data.Word (Word32,Word8)
 import Data.Maybe(fromMaybe, fromJust, isJust)
 import Data.Function(on)
 import Data.List (nub)
@@ -62,119 +64,95 @@ getImage bmp = let img = bitmapImage bmp
 
 getJuicyPixel xs _ _ pix = let P.PixelRGBA8 r g b a = P.convertPixel pix in V4 r g b a : xs   
 
-data Buffers os = Buffers {
-                    vbuffer :: Buffer os VBuffer
-                }
 
-data DrawVertex = DrawVertex {
-                    dvPosition :: V3 Float,
-                    dvNormal :: V3 Float,
-                    dvUv :: V2 Float
-                }
-
-data Mesh = Mesh {
-              vertices :: [DrawVertex],
-              offset :: V3 Float,
-              textureImage :: Bitmap,
-              shaderType :: OmochaShaderType
-          }
-
-data OmochaShaderType = BoardShader
-    deriving (Eq, Ord, Show)
-
-
--- data RenderResource os = RenderResource {
---                           buffers :: Buffers os,
---                           texture :: Texture2D os (Format RGBAFloat)
---                       }
-
-data Scene = Scene {
-               meshes :: [Mesh],
-               camera :: V3 Float
-           }
-
-    --                             (target&_x+~1&_y*~(-1)&_y+~1, V3 0 1 0, V2 1 1),
-    --                             (target&_x+~1&_y*~(-1)&_y-~1, V3 0 1 0, V2 1 0),
-    --                             (target&_x-~1&_y*~(-1)&_y+~1, V3 0 1 0, V2 0 1),
-    --                             (target&_x-~1&_y*~(-1)&_y-~1, V3 0 1 0, V2 0 0)
---                         Mesh [ DrawVertex (V3 1 0 1) (V3 0 1 0) (V2 1 1),
---                               DrawVertex (V3 1 0 (-1)) (V3 0 1 0) (V2 1 0),
---                               DrawVertex (V3 (-1) 0 1) (V3 0 1 0) (V2 0 1),
---                               DrawVertex (V3 (-1) 0 (-1)) (V3 0 1 0) (V2 0 0) ]
---                             (V3 0 0 0)
---                             _front0_png
---                             BoardShaderV,
---                        Mesh [ DrawVertex (V3 1 0 1) (V3 0 1 0) (V2 1 1),
---                               DrawVertex (V3 1 0 (-1)) (V3 0 1 0) (V2 1 0),
---                               DrawVertex (V3 (-1) 0 1) (V3 0 1 0) (V2 0 1),
---                               DrawVertex (V3 (-1) 0 (-1)) (V3 0 1 0) (V2 0 0) ]
---                             (V3 0 0 0)
---                             _maptips_grass_png
---                             BoardShaderH
--- 
 
 scene :: Scene
 scene = Scene {
           camera = V3 0 0.25 1,
           meshes = [
-                        Mesh [ DrawVertex (V3   1  0  1) (V3 0 1 0) (V2 1 1),
-                               DrawVertex (V3   1  0  (-1)) (V3 0 1 0) (V2 1 0),
-                               DrawVertex (V3 (-1) 0  1) (V3 0 1 0) (V2 0 1),
-                               DrawVertex (V3 (-1) 0  (-1)) (V3 0 1 0) (V2 0 0) ]
+                        Mesh [ DrawVertex (V3   1  0   1)  (V3 0 1 0) (V2 1 1),
+                               DrawVertex (V3   1  0 (-1)) (V3 0 1 0) (V2 1 0),
+                               DrawVertex (V3 (-1) 0   1)  (V3 0 1 0) (V2 0 1),
+                               DrawVertex (V3 (-1) 0 (-1)) (V3 0 1 0) (V2 0 0) ]
+                             Nothing  
                              (V3 0 0 0)
-                             _maptips_grass_png
+                             (Just _maptips_grass_png)
                              BoardShader
                         ,
-                        Mesh [ DrawVertex (V3   1   1  0) (V3 0 1 0) (V2 1 1),
-                               DrawVertex (V3   1 (-1) 0) (V3 0 1 0) (V2 1 0),
+                        Mesh [ DrawVertex (V3   1    1  0) (V3 0 1 0) (V2 1 1),
+                               DrawVertex (V3   1  (-1) 0) (V3 0 1 0) (V2 1 0),
                                DrawVertex (V3 (-1)   1  0) (V3 0 1 0) (V2 0 1),
                                DrawVertex (V3 (-1) (-1) 0) (V3 0 1 0) (V2 0 0) ]
+                             Nothing  
                              (V3 0 1 0)
-                             _front0_png
-                             BoardShader
+                             (Just _front0_png)
+                             TargetBoard
                    ]
       }
 
-type Rendering os = V2 Int -> Render os ()
 
-renderScene :: forall ctx os m . (ContextHandler ctx, MonadIO m) => Map OmochaShaderType (CompiledShader os (RenderInput os)) -> Scene -> ContextT ctx os m [Rendering os]
-renderScene shaderMap Scene{ meshes } = mapM renderMesh meshes
+buildRendering :: forall ctx os m tag. (ContextHandler ctx, MonadIO m, MonadException m) => 
+               Window os RGBAFloat Depth
+               -> Buffer os (Uniform UniInput)
+               -> Scene 
+               -> ContextT ctx os m (CompiledShader os (V2 Int))
+buildRendering win uniform Scene{ meshes } = do
+    bs <- compileShader $ boardShader (\_ -> id) win uniform
+    ts <- compileShader $ boardShader (\uni -> \(p, n, uv) -> (p + viewTarget uni, n, uv)) win uniform
+    -- ms <- compileShader $ monoShader (\_ -> id) win uniform
+    rr <- mapM (renderMesh bs ts) meshes
+    return $ \vpSize -> mapM_ (\r -> r vpSize) rr
     where 
-        renderMesh :: Mesh -> ContextT ctx os m (Rendering os)
-        renderMesh Mesh{..} = do
+        renderMesh :: (CompiledShader os (RenderInput os TextureInput)) 
+                   -> (CompiledShader os (RenderInput os TextureInput)) 
+                   -> Mesh 
+                   -> ContextT ctx os m (CompiledShader os (V2 Int))
+        renderMesh bs ts Mesh{..} = do
             vbuf :: Buffer os VBuffer <- newBuffer (length vertices)
-            tex <- loadImage textureImage
             writeBuffer vbuf 0 [(dvPosition + offset, dvNormal, dvUv) | DrawVertex {..} <- vertices] 
-            let Just shader = Map.lookup shaderType shaderMap 
+            ibuf <- case indices of
+                Just indices -> do
+                    ibuf :: Buffer os (B Word32) <- newBuffer (length indices)
+                    writeBuffer ibuf 0 $ map fromIntegral $ indices
+                    return $ Just ibuf
+                _ -> return Nothing
 
-            return $ \vpSize -> do 
-                         prims <- newPrimitiveArray vbuf
-                         shader $ RenderInput vpSize prims tex
-
-
-newPrimitiveArray :: Buffer os a -> Render os (PrimitiveArray Triangles a)
-newPrimitiveArray p = do   
-  pArr <- newVertexArray p  
-  return $ toPrimitiveArray TriangleStrip pArr
+            case textureImage of
+                Just tex -> do 
+                    tex <- loadImage tex
+                    let shader = case shaderType of
+                                   BoardShader -> bs
+                                   TargetBoard -> ts
+                    return $ \vpSize -> do 
+                                 prims <- newPrimitiveArray vbuf ibuf
+                                 shader $ RenderInput vpSize prims tex
+                otherwise -> do
+                    return $ undefined
+        newPrimitiveArray :: forall b i a. (BufferFormat b, Integral i, IndexFormat b ~ i) => Buffer os a -> Maybe (Buffer os b) -> Render os (PrimitiveArray Triangles a)
+        newPrimitiveArray p Nothing = do   
+          pArr <- newVertexArray p  
+          return $ toPrimitiveArray TriangleStrip pArr
+        newPrimitiveArray p (Just i) = do   
+          pArr <- newVertexArray p  
+          iArr <- newIndexArray i Nothing
+          return $ toPrimitiveArrayIndexed TriangleStrip iArr pArr
+        
 
  
 main = runContextT (GLFW.defaultHandleConfig { GLFW.configEventPolicy = Nothing }) $ do
     win <- newWindow (WindowFormatColorDepth RGBA8 Depth16) (GLFW.defaultWindowConfig "omocha")
     uniform :: Buffer os (Uniform UniInput) <- newBuffer 1  
 
-    font <- loadFont "VL-PGothic-Regular.ttf"
+    -- font <- loadFont "VL-PGothic-Regular.ttf"
     -- scene <- liftIO $ readColladaFile "house.dae"
 
-    bs <- compileShader $ boardShader makeBoard win uniform
-    let shaderMap = Map.fromList [(BoardShader, bs)]
+    r <- buildRendering win uniform scene
 
-    r <- renderScene shaderMap scene
-
-    -- cscene <- renderColladaTree scene 
-
-    let renderings = (\_ -> do   
-                             clearWindowColor win (V4 0 0.25 1 0)
-                             clearWindowDepth win 1 ) : r
+    let renderings = [\vpSize -> do   
+                         clearWindowColor win (V4 0 0.25 1 0)
+                         clearWindowDepth win 1 
+                         r vpSize 
+                     ]
 
     (keyInput, keyInputSink) <- liftIO $ E.external (False, False, False, False)
 
@@ -215,9 +193,7 @@ main = runContextT (GLFW.defaultHandleConfig { GLFW.configEventPolicy = Nothing 
         GLFW.mainstep win GLFW.Wait
         dt <- readInput win keyInputSink
         case dt of 
-            Just dt -> do
-                join $ liftIO $ network dt
-                loop
+            Just dt -> (join . liftIO . network $ dt) >> loop
             Nothing -> return ()
     
 
@@ -240,8 +216,7 @@ readInput win keyInputSink = do
 
 renderFrame :: Window os RGBAFloat Depth
                -> Buffer os (Uniform UniInput)
-               -- -> Buffer os VBuffer
-               -> [Rendering os]
+               -> [CompiledShader os (V2 Int)]
                -> V3 Float
                -> V3 Float
                -> Double
@@ -253,19 +228,10 @@ renderFrame win uniform renderings camera target fps = do
         uni = (fromIntegral <$> size, normMat, camera, target, viewUp, 0.0) 
 
     writeBuffer uniform 0 [uni]
-    -- writeBuffer (buffers) 0 [
-    --                             (target&_x+~1&_y*~(-1)&_y+~1, V3 0 1 0, V2 1 1),
-    --                             (target&_x+~1&_y*~(-1)&_y-~1, V3 0 1 0, V2 1 0),
-    --                             (target&_x-~1&_y*~(-1)&_y+~1, V3 0 1 0, V2 0 1),
-    --                             (target&_x-~1&_y*~(-1)&_y-~1, V3 0 1 0, V2 0 0)
-    --                         ] 
-    mapM_ (\r -> render $ r size) renderings 
+
+    mapM_ (\r -> render $ r size) renderings
     swapWindowBuffers win
 
 keyIsPressed win k = maybe False (== GLFW.KeyState'Pressed) <$> GLFW.getKey win k
         
-
-makeBoard :: Fractional a => (V3 a, V3 a, V2 a) -> (V3 a, V3 a, V2 a)
-makeBoard (p, normal, uv) = (p, normal, uv)
-
 
