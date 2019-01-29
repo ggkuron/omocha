@@ -99,15 +99,16 @@ buildRendering :: forall ctx os m tag. (ContextHandler ctx, MonadIO m, MonadExce
 buildRendering win uniform Scene{ meshes } = do
     bs <- compileShader $ boardShader (\_ -> id) win uniform
     ts <- compileShader $ boardShader (\uni -> \(p, n, uv) -> (p + viewTarget uni, n, uv)) win uniform
-    -- ms <- compileShader $ monoShader (\_ -> id) win uniform
-    rr <- mapM (renderMesh bs ts) meshes
+    ms <- compileShader $ monoShader (\_ -> id) win uniform
+    rr <- mapM (renderMesh bs ts ms) meshes
     return $ \vpSize -> mapM_ (\r -> r vpSize) rr
     where 
         renderMesh :: (CompiledShader os (RenderInput os TextureInput)) 
                    -> (CompiledShader os (RenderInput os TextureInput)) 
+                   -> (CompiledShader os (RenderInput os PlainInput)) 
                    -> Mesh 
                    -> ContextT ctx os m (CompiledShader os (V2 Int))
-        renderMesh bs ts Mesh{..} = do
+        renderMesh bs ts ms Mesh{..} = do
             vbuf :: Buffer os VBuffer <- newBuffer (length vertices)
             writeBuffer vbuf 0 [(dvPosition + offset, dvNormal, dvUv) | DrawVertex {..} <- vertices] 
             ibuf <- case indices of
@@ -127,7 +128,11 @@ buildRendering win uniform Scene{ meshes } = do
                                  prims <- newPrimitiveArray vbuf ibuf
                                  shader $ RenderInput vpSize prims tex
                 otherwise -> do
-                    return $ undefined
+                    let shader = ms
+                    return $ \vpSize -> do 
+                                 prims <- newPrimitiveArray vbuf ibuf
+                                 shader $ PlainInput vpSize prims
+
         newPrimitiveArray :: forall b i a. (BufferFormat b, Integral i, IndexFormat b ~ i) => Buffer os a -> Maybe (Buffer os b) -> Render os (PrimitiveArray Triangles a)
         newPrimitiveArray p Nothing = do   
           pArr <- newVertexArray p  

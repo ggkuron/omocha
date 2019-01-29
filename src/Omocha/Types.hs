@@ -27,7 +27,7 @@ module Omocha.Types (
     , renderColladaTree
     , UniInput
     , boardShader
-    -- , monoShader
+    , monoShader
     , light
     , windowSize
     , modelNorm 
@@ -275,22 +275,20 @@ dynVertex m s = Map.lookup s m >>= fromDynamic
 
 
 type VBuffer = (B3 Float, B3 Float, B2 Float)
-type MBuffer = (B3 Float, B3 Float) 
 
 data TextureInput
 data PlainInput
 
 data RenderInput os tag where
     RenderInput :: V2 Int -> PrimitiveArray Triangles VBuffer -> Texture2D os (Format RGBAFloat) -> RenderInput os TextureInput
-    PlainInput :: V2 Int -> PrimitiveArray Triangles MBuffer -> RenderInput os PlainInput
+    PlainInput :: V2 Int -> PrimitiveArray Triangles VBuffer -> RenderInput os PlainInput
 
 riScreenSize :: RenderInput os tag -> V2 Int
 riScreenSize (RenderInput vp _ _) = vp
 riScreenSize (PlainInput vp _) = vp
-riStream :: RenderInput os TextureInput -> PrimitiveArray Triangles VBuffer
+riStream :: RenderInput os tag -> PrimitiveArray Triangles VBuffer
 riStream (RenderInput _ st _) = st
-riMStream :: RenderInput os PlainInput -> PrimitiveArray Triangles MBuffer
-riMStream (PlainInput _ st) = st
+riStream (PlainInput _ st) = st
 tex :: RenderInput os TextureInput -> Texture2D os (Format RGBAFloat)
 tex (RenderInput _ _ tex) = tex
 
@@ -407,15 +405,15 @@ boardShader pick win uniform = do
     drawWindowColorDepth (const (win, colorOption, depthOption)) litFragsWithDepth
 
 monoShader :: ((UniformFormat UniInput V) 
-               -> (V3 VFloat, V3 VFloat) 
-               -> (V3 (S V Float), V3 VFloat)
+               -> (V3 VFloat, V3 VFloat, V2 VFloat) 
+               -> (V3 (S V Float), V3 VFloat, V2 (S V Float))
               )-> Window os RGBAFloat Depth 
                -> Buffer os (Uniform UniInput) 
                -> Shader os (RenderInput os PlainInput) ()
 monoShader pick win uniform = do
     uni <- getUniform (const (uniform, 0))
-    boards <- fmap (pick uni) <$> toPrimitiveStream riMStream
-    let projected = fmap (\elm -> let (v', n') = proj uni elm in (v',  V4 1 0 0 (0.5) :: V4 VFloat)) boards
+    boards <- fmap (pick uni) <$> toPrimitiveStream riStream
+    let projected = fmap (\(v, n, _) -> let (v', n') = proj uni (v, n) in (v',  V4 1 0 0 (0.5) :: V4 VFloat)) boards
     fragmentStream <- rasterize (\ri -> (Front, ViewPort (V2 0 0) (riScreenSize ri), DepthRange 0 1) ) projected
     let litFrags = fragmentStream
         litFragsWithDepth = withRasterizedInfo
