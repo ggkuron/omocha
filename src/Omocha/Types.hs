@@ -3,6 +3,7 @@
  , FlexibleContexts
  , RankNTypes 
  , ScopedTypeVariables 
+ , RecordWildCards
  , GADTs
  #-}
 
@@ -79,7 +80,8 @@ data DrawVertex = DrawVertex {
                     dvPosition :: V3 Float,
                     dvNormal :: V3 Float,
                     dvUv :: V2 Float
-                }
+                } deriving (Show)
+
 
 data Mesh = Mesh {
               vertices :: [DrawVertex],
@@ -89,6 +91,9 @@ data Mesh = Mesh {
               shaderType :: OmochaShaderType
           }
 
+instance Show Mesh where
+    show Mesh{..} = show vertices ++ show indices ++ show shaderType
+
 data OmochaShaderType = BoardShader | TargetBoard
     deriving (Eq, Ord, Show)
 
@@ -96,7 +101,7 @@ data OmochaShaderType = BoardShader | TargetBoard
 data Scene = Scene {
                meshes :: [Mesh],
                camera :: V3 Float
-           }
+           } deriving (Show)
 
 
 
@@ -108,6 +113,9 @@ data ColladaNode = ColladaNode {
     nodeLights :: [(SID, Light)],
     nodeGeometries :: [(SID, Geometry)]
 } 
+
+instance Show ColladaNode where
+    show ColladaNode{..} = show nodeId ++ show nodeLayers ++ show nodeGeometries
 
 
 data Transform = LookAt {
@@ -184,14 +192,17 @@ data Attenuation = Attenuation {
 data Geometry =  ColladaMesh {
     meshID :: ID,
     meshPrimitives :: [ColladaMesh]
-} 
+} deriving (Show)
+
+deriving instance Show Triangles
+deriving instance Show a => Show (PrimitiveTopology a)
 
 data ColladaMesh = TriangleColladaMesh {
     meshMaterial :: String,
     meshDescription :: Map Semantic TypeRep,
     meshPrimitiveStream :: ColladaMeshPrimitiveArray (PrimitiveTopology Triangles) (Map Semantic Dynamic),
     meshAABB :: AABB
-} 
+} deriving (Show)
 
 data ColladaMeshPrimitive p a = ColladaMeshPrimitive p a
                        | ColladaMeshPrimitiveIndexed p [Int] a
@@ -357,9 +368,16 @@ foldTree f = go where
 renderColladaTree :: ColladaTree -> Scene
 renderColladaTree tree = 
     let (cameras, geometries) = F.foldMap tagContent $ topDownTransform nodeMat $ fmap snd tree
-        primitiveStream = mconcat $ concatMap filterGeometry geometries :: ColladaMeshPrimitiveArray (PrimitiveTopology Triangles) (V3 Float, V3 Float)
-    in undefined
+        primitiveStream = mconcat $ concatMap filterGeometry geometries :: ColladaMeshPrimitiveArray (PrimitiveTopology Triangles) ([V3 Float], [V3 Float])
+
+    in Scene {
+        camera = V3 0 0 0,
+        meshes = fmap toMesh (getColladaMeshPrimitiveArray primitiveStream)
+    }
     where
+      toMesh :: ColladaMeshPrimitive (PrimitiveTopology Triangles) ([V3 Float], [V3 Float]) -> Mesh
+      toMesh (ColladaMeshPrimitive _ vertices) = Mesh [DrawVertex v n (V2 0 0) | (v, n) <- zip (fst vertices) (snd vertices) ] Nothing (V3 0 0 0) Nothing BoardShader
+      toMesh (ColladaMeshPrimitiveIndexed _ indices vertices) = Mesh [ DrawVertex v n (V2 0 0) | (v, n) <- zip (fst vertices) (snd vertices)] (Just indices) (V3 0 0 0) Nothing BoardShader
       tagT t = zip (repeat t)
       tagContent (t, n) = (tagT t $ nodeCameras n, tagT t $ nodeGeometries n) 
       filterGeometry (modelMat, (_,ColladaMesh _ mesh)) = mapMaybe (filterColladaMesh modelMat) mesh
@@ -367,19 +385,11 @@ renderColladaTree tree =
         guard $ hasDynVertex desc "POSITION" (undefined :: V3 Float) -- Filter out geometries without 3D-positions
         guard $ hasDynVertex desc "NORMAL" (undefined :: V3 Float)   -- Filter out geometries without 3D-normals
         -- guard $ testAABBprojection modelViewProj aabb /= Outside                -- Frustum cull geometries
-        return $ fmap (\v -> let p = fromJust $ dynVertex v "POSITION" :: V3 Float
-                                 n = fromJust $ dynVertex v "NORMAL" :: V3 Float
+        return $ fmap (\v -> let p = fromJust $ dynVertex v "POSITION"
+                                 n = fromJust $ dynVertex v "NORMAL"
                              in (p, n)
                       ) pstream
-      -- Get the camera and inverted view matrix
-      -- (invView,cam) = head (cameras ++ [(translation (V3 0 0 100) , (Nothing, Perspective "" (ViewSizeY 35) (Z 1 10000)))])
-      
-      --- framebuffer = paint fragmentStream $ newFrameBufferColorDepth (RGB 0) 1
-      -- paint = paintColorRastDepth Lequal True NoBlending (RGB $ V3 1 1 1)
-      -- fragmentStream = fmap (RGB . Vec.vec) $ rasterizeFront primitiveStream
-      -- primitiveStream = mconcat $ concatMap filterGeometry geometries
             
-
 
 boardShader :: ((UniformFormat UniInput V) 
                 -> (V3 VFloat, V3 VFloat, V2 VFloat) 
@@ -450,6 +460,3 @@ lookAt' eye center up =
                yd = -dot ya eye
                zd = dot za eye
      
-
-
-

@@ -150,7 +150,7 @@ main = runContextT (GLFW.defaultHandleConfig { GLFW.configEventPolicy = Nothing 
 
     -- font <- loadFont "VL-PGothic-Regular.ttf"
     collada <- liftIO $ readColladaFile "house.dae"
-    -- let scene = renderColladaTree collada
+    -- let scene = sceneFromCollada collada
 
     liftIO $ do 
         putStrLn (show $ collada)

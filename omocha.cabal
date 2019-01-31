@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: b68920a16173cdd5b404c50d079da1dbb1792a6b020b8d05c9f8fd6d526b763f
+-- hash: 8e099d2d8d7031618cbd6251847b78912f598cd3469d1ee7c2e5e6567ac43c10
 
 name:           omocha
 version:        0.1.1.0
@@ -67,14 +67,14 @@ data-files:
     ./static/images/why.png
 
 executable omocha
-  main-is: src/Main.hs
+  main-is: src/Omocha/Main.hs
   other-modules:
       Paths_omocha
       Omocha.Bitmap
       Omocha.Class
       Omocha.Font
       Omocha.Internal.Finalizer
-      Omocha.Types
+      Omocha.Scene
       Omocha.Collada
   hs-source-dirs:
       ./.

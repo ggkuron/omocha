@@ -21,14 +21,14 @@ executables:
     source-dirs:      
     - .
     - src
-    main:             src/Main.hs
+    main:             src/Omocha/Main.hs
     other-modules:       
     - Paths_omocha
     - Omocha.Bitmap
     - Omocha.Class
     - Omocha.Font
     - Omocha.Internal.Finalizer
-    - Omocha.Types
+    - Omocha.Scene
     - Omocha.Collada
     dependencies:       
     - GPipe >= 2.2.3
