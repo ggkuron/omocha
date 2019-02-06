@@ -1,7 +1,6 @@
 {-# LANGUAGE RankNTypes
   , TypeFamilies
   , StandaloneDeriving
-  , DeriveDataTypeable
   , FlexibleContexts 
   , RecordWildCards
   , MultiWayIf
@@ -39,6 +38,7 @@ import Data.Function
 import Data.Either.Combinators (mapLeft)
 import Data.Maybe (fromJust, mapMaybe, catMaybes, maybeToList)
 import Data.List hiding (union, transpose)
+import Data.Typeable
 import qualified Data.Map as Map
 import qualified Data.Foldable as F
 import Data.Vector (Vector) 
@@ -54,6 +54,7 @@ import Text.XML.HaXml.Posn
 
 import Control.Monad
 import Control.Monad.Except
+import Control.Monad.Trans(lift)
 import Control.Monad.Trans.Except
 import Control.Monad.Writer.Strict
 import Control.Arrow (first, second)
@@ -317,6 +318,7 @@ data ColladaParseError where
     UnexpedtedTag :: Show a => Content a -> ColladaParseError
     XmlError :: String -> ColladaParseError
 
+
 instance Show ColladaParseError where
     show (MissingLinkError semantic id pos) = semantic ++ " element with id '" ++ id ++ "' not found when processing " ++ errorPos pos
     show NotCollada = "Expecting COLLADA top-element" 
@@ -354,8 +356,13 @@ readCollada f s = do p <- mapLeft XmlError $ xmlParse' f s
                      return vs
 
                                                                         
-readColladaFile :: FilePath -> IO (Either ColladaParseError ColladaTree)
-readColladaFile f = readFile f >>= return . readCollada f 
+readColladaFile :: FilePath -> IO ColladaTree
+readColladaFile f = do
+    s <- readFile f 
+    v <- runExceptT $ either throwError return $ readCollada f s
+    case v of
+        Left e -> throwError . userError $ show e
+        Right v -> return v
 
 sid s a = (Just s, a)
 nosid a = (Nothing, a)
@@ -363,7 +370,8 @@ nosid a = (Nothing, a)
 localUrl ('#':id) = Just id
 localUrl _ = Nothing
 
-withError err m = m `mplus` throwError err
+withError err (Left _) = throwError err
+withError err m = m 
 
 makeSID "" = nosid
 makeSID s = sid s
