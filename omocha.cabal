@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 8e099d2d8d7031618cbd6251847b78912f598cd3469d1ee7c2e5e6567ac43c10
+-- hash: fe94c568bad9f1186085545d1172a23112b94c0629c006ceba59da9eb175bd6d
 
 name:           omocha
 version:        0.1.1.0
@@ -91,6 +91,7 @@ executable omocha
     , boundingboxes
     , containers
     , directory
+    , either
     , elerea
     , exception-transformers
     , filepath

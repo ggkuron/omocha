@@ -149,18 +149,19 @@ main = runContextT (GLFW.defaultHandleConfig { GLFW.configEventPolicy = Nothing 
     uniform :: Buffer os (Uniform UniInput) <- newBuffer 1  
 
     -- font <- loadFont "VL-PGothic-Regular.ttf"
-    collada <- liftIO $ readColladaFile "house.dae"
-    -- let scene = sceneFromCollada collada
+    Right collada <- liftIO $ readColladaFile "untitled.dae"
+    let scene = sceneFromCollada collada
 
     liftIO $ do 
         putStrLn (show $ collada)
+        putStrLn (show $ scene)
 
     r <- buildRendering win uniform scene
 
     let renderings = [\vpSize -> do   
                          clearWindowColor win (V4 0 0.25 1 0)
                          clearWindowDepth win 1 
-                         -- r vpSize 
+                         r vpSize 
                      ]
 
     (keyInput, keyInputSink) <- liftIO $ E.external (False, False, False, False)
