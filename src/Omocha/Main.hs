@@ -33,16 +33,10 @@ import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Fix (fix)
 import Control.Monad.Exception (MonadException)
 import Control.Lens
-import Data.Int(Int32)
 import Data.Word (Word32,Word8)
 import Data.Maybe(fromMaybe, fromJust, isJust)
 import Data.Function(on)
-import Data.List (nub)
 import Data.Vector(Vector)
-import Data.Map (Map)
-import qualified Data.Map as Map
-import qualified Data.Vector as V 
-import qualified Linear.Vector as V
 import Control.Monad.IO.Class (MonadIO)
 
 import qualified FRP.Elerea.Param as E

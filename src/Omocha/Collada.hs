@@ -5,6 +5,7 @@
   , RecordWildCards
   , MultiWayIf
   , GADTs
+  , ScopedTypeVariables
 #-}
 module Omocha.Collada (
     readCollada
@@ -50,7 +51,6 @@ import Text.XML.HaXml hiding (Document, when, Reference, (!))
 import qualified Text.XML.HaXml as XML
 import Text.XML.HaXml.Parse
 import Text.XML.HaXml.Posn
-
 
 import Control.Monad
 import Control.Monad.Except
@@ -257,8 +257,6 @@ dynVertex :: Map Semantic a -> Semantic -> Maybe a
 dynVertex m s = Map.lookup s m 
 
 
-
-
 toRadians :: Floating a => a -> a
 toRadians d = d * pi / 180
 
@@ -278,7 +276,6 @@ data Reference = RefNode ColladaTree
 
 type Parser = WriterT [(ID, RefMap -> Reference)] (WriterT [RefMap -> Either ColladaParseError ()] (Either ColladaParseError))
 
-
 runParser :: Parser (Maybe ID) -> Either ColladaParseError Reference
 runParser m = do ((mid, refs), checks) <- runWriterT $ runWriterT m
                  case mid of
@@ -289,9 +286,13 @@ runParser m = do ((mid, refs), checks) <- runWriterT $ runWriterT m
                         return $ fromJust $ getRef id refmap
 
 
+addRefF :: MonadWriter [(t1, t)]  m => t1 -> t -> m ()
 addRefF id ref = tell [(id, ref)]
+
+getRef:: ID -> RefMap -> Maybe Reference
 getRef id a@(RefMap m) = fmap ($a) $ Map.lookup id m
 
+assert :: (MonadTrans t, MonadWriter [t1] m) => t1 -> t m()
 assert f = lift $ tell [f]
 
 data ColladaParseError where
@@ -433,6 +434,7 @@ x -=> f = f x
 
 
 
+parseDoc :: [Content Posn] -> Parser (Maybe ID)
 parseDoc xs = do let sources = xs ==> deep (tagWith (`elem` ["animation", "mesh", "morph", "skin", "spline", "convex_mesh", "brep", "nurbs", "nurbs_surface"])) /> tag "source"
                  mapM_ parseArray $ sources ==> tagged (keep /> tagWith ("_array" `isSuffixOf`) `with` attr "id")
                  mapM_ parseSource sources
@@ -515,7 +517,6 @@ parseNode c | not $ null $ tag "node" c = do
                     geometryFs <- fmap catMaybes $ mapM parseGeometryInstances $ c -=> keep /> tag "instance_geometry"
                     subNodeFs <- fmap catMaybes $ mapM parseNode $ c -=> keep /> (tag "node" `union` tag "instance_node")
                     let treeF refmap = Tree.Node (sid (ColladaNode mid layer transformations (map ($refmap) cameraFs) (map ($refmap) lightFs) (map ($refmap) geometryFs))) (map ($refmap) subNodeFs)
-                    case id of (_:_) -> addRefF id $ RefNode . treeF
                     return $ Just treeF
             | otherwise {- "instance_node" -} = do
                     url <- getReqAttribute "url" c
@@ -657,9 +658,7 @@ parseLight c = do let id = getAttribute "id" c
 ---------------------------------------------------------------
 -- ColladaMesh parsing:
 
-parseColladaMesh :: [Char] 
-    -> Content Posn 
-    -> W ()
+parseColladaMesh :: [Char] -> Content Posn -> Parser ()
 parseColladaMesh id c = do v <- getReqSingleElement "vertices" c
                            vertices <- parseVertices v
                            Control.Monad.unless (null id) $
@@ -670,16 +669,8 @@ parseColladaMesh id c = do v <- getReqSingleElement "vertices" c
                                     let dynPrimLists = map (second ($refmap)) dynPrimListFs in
                                       RefGeometry $ ColladaMesh id (makeDynPrimStream dynPrimLists)
 
-
-
-type W a = WriterT
-             [(ID, RefMap -> Reference)]
-             (WriterT [RefMap -> Either ColladaParseError ()] (Either ColladaParseError))
-             a
-     
-          
-parseVertices :: Content Posn
-    -> W (RefMap -> Map String ([[Float]], Int))
+    
+parseVertices :: Content Posn -> Parser (RefMap -> Map String ([[Float]], Int))
 parseVertices verts = do insF <- fmap (map snd) $ mapM (parseInput False) $ verts -=> keep /> tag "input"
                          let vertsF refmap = Map.unions $ map ($refmap) insF
                          case getAttribute "id" verts of
@@ -716,24 +707,31 @@ parseInput shared i = do source <- getReqAttribute "source" i
               
 parsePrimitives :: (RefMap -> Map String ([[Float]], Int))
     -> Content Posn
-    -> W [((String, PrimitiveTopology Triangles, Maybe [Int]),
-           RefMap -> Map String [[Float]])]
+    -> Parser [((String, PrimitiveTopology Triangles, Maybe [Int]), RefMap -> Map String [[Float]])]
 parsePrimitives vertices p = case fst $ head $ tagged keep p of
                        "triangles" -> parseTriangle TriangleList
                        "trifans" -> parseTriangle TriangleFan
                        "tristrips" -> parseTriangle TriangleStrip
                        "polylist" -> do
-                           inputFs' <- fmap (Map.fromListWith combine) $ mapM (parseInput True) $ p -=> keep /> tag "input"
+                           inputFs' :: Map Int (RefMap -> Map String ([[Float]], Int))
+                                <- fmap (Map.fromListWith combine) $ mapM (parseInput True) $ p -=> keep /> tag "input"
                            let inputFs = if Map.null inputFs'
                                             then Map.singleton 0 vertices
                                             else inputFs'
-                           -- count <- getFromReqAttribute "count" p
-                           mapM (parseP TriangleList inputFs (length vcount)) ps
+                           count <- getFromReqAttribute "count" p
+                           if count == 0
+                                then return []
+                                else do ps' <- case ps of
+                                            _:_:_ -> throwError $ MultipleElement "p" p
+                                            [_] -> return ps
+                                            [] -> throwError $ MissingElement "p" p
+                                            -- _:_ | length ps < count -> throwError $ TooFewElements p
+                                            -- _ -> return $ take count ps
+                                        mapM (parsePoly TriangleList inputFs count) ps'
                        _ -> return mempty
     where 
       parseTriangle :: PrimitiveTopology Triangles 
-        -> W [((String, PrimitiveTopology Triangles, Maybe [Int]),
-               RefMap -> Map String [[Float]])]
+        -> Parser [((String, PrimitiveTopology Triangles, Maybe [Int]), RefMap -> Map String [[Float]])]
       parseTriangle primtype = do
         inputFs' <- fmap (Map.fromListWith combine) $ mapM (parseInput True) $ p -=> keep /> tag "input"
         let inputFs = if Map.null inputFs'
@@ -752,8 +750,6 @@ parsePrimitives vertices p = case fst $ head $ tagged keep p of
       ps :: [Content Posn]
       ps = p -=> keep /> tag "p"
       vcount = p -=> keep /> tag "vcount"
-      combine :: (RefMap -> Map String ([[Float]], Int)) -> (RefMap -> Map String ([[Float]], Int)) -> RefMap -> Map String ([[Float]], Int)
-      combine f g refmap = f refmap `Map.union` g refmap
 
       parseP :: PrimitiveTopology Triangles -> Map Int (RefMap -> Map String ([[Float]], Int)) -> Int -> Content Posn -> Parser ((String, PrimitiveTopology Triangles, Maybe [Int]), RefMap -> Map String [[Float]])
       parseP primtype inputs count p = do 
@@ -769,15 +765,51 @@ parsePrimitives vertices p = case fst $ head $ tagged keep p of
                             _ -> return pl
           case map (first (pLists !!)) $ Map.toList inputs of
                   [(indices,mF)] -> return ((material, primtype, Just indices), Map.map fst . mF)
-                  xs -> return ((material, primtype, Nothing), combine $ map pickIndices xs)
-          where pickIndices (indices, mF) = Map.map pickIndices' . mF
-                      where pickIndices' (xs, len) = let arr = listArray (0,len) xs in map (arr!) indices
-                combine mFs refmap = Map.unions $ map ($refmap) mFs
-                splitIn n = reverse . splitIn' [] n -- [[offset 0], [offset 1], [offset 2]]
-                      where
-                          splitIn' acc 0 xs = acc:splitIn' [] n xs
-                          splitIn' acc _ [] = []
-                          splitIn' acc m (x:xs) = splitIn' (x:acc) (m-1) xs
+                  xs -> return ((material, primtype, Nothing), combine2 $ map pickIndices xs)
+
+combine2 mFs refmap = Map.unions $ map ($refmap) mFs
+
+pickIndices :: ([Int], RefMap -> Map String ([[Float]], Int)) -> RefMap -> Map String [[Float]]
+pickIndices (indices, mF) = Map.map (pickIndices' indices) . mF
+
+pickIndices' :: (Ix i, Num i) => [i] -> ([b], i) -> [b]
+pickIndices' indices (xs, len) = let arr = listArray (0,len) xs in map (arr!) indices
+
+
+parsePoly :: PrimitiveTopology Triangles -> Map Int (RefMap -> Map String ([[Float]], Int)) -> Int -> Content Posn -> Parser ((String, PrimitiveTopology Triangles, Maybe [Int]), RefMap -> Map String [[Float]])
+parsePoly primtype inputs count p = do 
+    let pStride = 1 + fst (Map.findMax inputs)
+        material = getAttribute "material" p
+    pLists <- fmap (offsetGrouping pStride . splitIn 3) $ do
+                    pl <- getFromListContents p
+                    case primtype of
+                      TriangleList ->
+                        do when (length pl < count * 3 * pStride) $
+                             throwError $ TooFewIndices p
+                           return $ take (count * 3 * pStride) pl
+                      _ -> return pl
+    case map (first (pLists !!)) $ Map.toList inputs of
+            [(indices,mF)] -> return ((material, primtype, Just indices), Map.map fst . mF)
+            xs -> return ((material, primtype, Nothing), combine $ map pickIndices xs)
+    where 
+        combine mFs refmap = Map.unions $ map ($refmap) mFs
+
+
+
+offsetGrouping n pl = foldl go (replicate n []) $ zip [0..] pl
+    where go acc (i, y) = let m = i `mod` n
+                            in take m acc ++ [(acc !! m) ++ y] ++ drop (m+1) acc
+
+splitIn n = splitIn' [] n -- [[offset 0], [offset 1], [offset 2]]
+      where
+          splitIn' acc 0 xs = reverse acc:splitIn' [] n xs
+          splitIn' acc _ [] = []
+          splitIn' acc m (x:xs) = splitIn' (x:acc) (m-1) xs
+
+
+combine :: (RefMap -> Map String ([[Float]], Int)) -> (RefMap -> Map String ([[Float]], Int)) -> RefMap -> Map String ([[Float]], Int)
+combine f g refmap = f refmap `Map.union` g refmap
+
         
 
 -----------------------------------------------------
@@ -785,6 +817,20 @@ parsePrimitives vertices p = case fst $ head $ tagged keep p of
 
 makeDynPrimStream :: [((String, PrimitiveTopology Triangles, Maybe [Int]), Map [Char] [[Float]])] -> [ColladaMesh]
 makeDynPrimStream = map makePrimGroup . groupBy ((==) `on` fst) . map splitParts
+    where
+    makePrimGroup :: [((String, [Semantic], [Int]), (AABB, ((PrimitiveTopology Triangles, Maybe [Int]), [[Float]])))]
+        -> ColladaMesh
+    makePrimGroup xs@(((material, names, sizes), _):_) = TriangleColladaMesh material desc pstream aabb
+        where 
+              xs' :: [((String, [Semantic], [Int]), ((PrimitiveTopology Triangles, Maybe [Int]), [[Float]]))]
+              xs' = map (second snd) xs
+              aabb :: AABB
+              aabb = mconcat $ map (fst . snd) xs
+              desc :: Map Semantic Int 
+              desc = Map.fromAscList $ zip names sizes
+              pstream :: ColladaMeshPrimitiveArray (PrimitiveTopology Triangles) (Map Semantic [[Float]])
+              pstream = fmap (\f -> Map.fromAscList $ zip names (takeBy sizes f)) $ toStreamUsingLength xs'
+
 
 splitParts :: ((t2, t1, t), Map [Char] [[Float]]) -> ((t2, [[Char]], [Int]), (AABB, ((t1, t), [[Float]])))
 splitParts ((material, primtype, mindices), m) = let mlist = Map.toAscList m
@@ -810,22 +856,9 @@ takeBy :: [Int] -> [a] -> [[a]]
 takeBy (size:sizes) xs = case splitAt size xs of (a,b) -> a : takeBy sizes b
 takeBy [] _ = []
 
-makePrimGroup :: [((String, [Semantic], [Int]), (AABB, ((PrimitiveTopology Triangles, Maybe [Int]), [[Float]])))]
-    -> ColladaMesh
-makePrimGroup xs@(((material, names, sizes), _):_) = TriangleColladaMesh material desc pstream aabb
-    where 
-          xs' :: [((String, [Semantic], [Int]), ((PrimitiveTopology Triangles, Maybe [Int]), [[Float]]))]
-          xs' = map (second snd) xs
-          aabb :: AABB
-          aabb = mconcat $ map (fst . snd) xs
-          desc :: Map Semantic Int 
-          desc = Map.fromAscList $ zip names sizes
-          pstream :: ColladaMeshPrimitiveArray (PrimitiveTopology Triangles) (Map Semantic [[Float]])
-          pstream = fmap (\f -> Map.fromAscList $ zip names (takeBy sizes f)) $ toStreamUsingLength xs'
 
 toStreamUsingLength :: [(t, ((p, Maybe [Int]), [[Float]]))] -> ColladaMeshPrimitiveArray p [[Float]]
 toStreamUsingLength = mconcat . map (toPrimStream . second (second (map id)))
--- withLength n v = v `asTypeOf` Vec.mkVec n (undefined :: Vector Float)
 toPrimStream :: (t, ((p, Maybe [Int]), a)) -> ColladaMeshPrimitiveArray p a
 toPrimStream (_, ((primtype, Just indices), input)) =  ColladaMeshPrimitiveArray $ [ColladaMeshPrimitiveIndexed primtype indices input]
 toPrimStream (_, ((primtype, _), input)) = ColladaMeshPrimitiveArray $ [ColladaMeshPrimitive primtype input]
@@ -879,7 +912,6 @@ sceneFromCollada :: ColladaTree -> Scene
 sceneFromCollada tree = 
     let (cameras, geometries) = F.foldMap tagContent $ topDownTransform nodeMat $ fmap snd tree
         primitiveStream = mconcat $ concatMap filterGeometry geometries :: ColladaMeshPrimitiveArray (PrimitiveTopology Triangles) ([[Float]], [[Float]])
-
     in Scene {
         camera = V3 0 0 0,
         meshes = fmap toMesh (getColladaMeshPrimitiveArray primitiveStream)
