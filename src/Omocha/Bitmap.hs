@@ -1,8 +1,9 @@
 {-# LANGUAGE TemplateHaskell, QuasiQuotes, CPP #-}
 
-module Omocha.Utils (
-  loadBitmapsWith
-, Bitmap(..)
+module Omocha.Bitmap (
+  Bitmap(..)
+  ,liftBitmapIO
+  ,loadBitmapsWith
 ) where
 
 #if !MIN_VERSION_base(4,8,0)
@@ -18,17 +19,18 @@ import qualified Codec.Picture.RGBA8 as C
 import System.Directory
 import System.FilePath
 import System.IO.Unsafe
--- import System.Random
-import System.Environment
+import System.Random (randomIO)
 import Data.Char(isAlphaNum)
 
-newtype Bitmap = Bitmap { bitmapImage :: C.Image C.PixelRGBA8}
+data Bitmap = Bitmap { bitmapImage :: C.Image C.PixelRGBA8, bitmapHash:: Int }
+
+liftBitmapIO :: MonadIO m => C.Image C.PixelRGBA8 -> m Bitmap
+liftBitmapIO b = liftIO $ Bitmap b <$> randomIO
 
 -- | Load an image file.
 readBitmap :: MonadIO m => FilePath -> m Bitmap
 readBitmap path = liftIO $ do
-    putStrLn path
-    Bitmap <$> C.readImageRGBA8 path 
+    Bitmap <$> C.readImageRGBA8 path <*> randomIO
 
 
 -- | The type of the given 'ExpQ' must be @FilePath -> IO FilePath@
