@@ -541,9 +541,10 @@ parseAccessor acc = do
                      return m
                  case m of Just (_,len) | requiredLength > len -> throwError $ SourceSizeTooSmall acc 
                            _ -> return ()
-            return $ \refmap -> RefSource $ case getRef cid refmap of
-                                                 Just (RefArray (Just (source, _len))) -> Just (assembleSource (drop offset source) count stride useParamList, count)
-                                                 _ -> Nothing
+            return $ \refmap -> RefSource $
+                case getRef cid refmap of
+                Just (RefArray (Just (source, _len))) -> Just (assembleSource (drop offset source) count stride useParamList, count)
+                _ -> Nothing
     where parseParam c | null $ tag "param" c = throwError $ UnexpedtedTag c
                        | otherwise = return $ not $ null $ getAttribute "name" c
           assembleSource _ 0 _ _ = []
@@ -552,7 +553,7 @@ parseAccessor acc = do
 
 ---------------------------------------------------------------
 
-parseNode :: XML.Content XML.Posn -> Parser (Maybe (RefMap -> Tree (SID, ColladaNode)))
+parseNode :: XML.Content XML.Posn -> Parser (Maybe (RefMap -> Maybe (Tree (SID, ColladaNode))))
 parseNode c | not $ null $ tag "node" c = do
                     let cid = getAttribute "id" c
                         mid = if cid == "" then Nothing else Just cid
@@ -563,7 +564,7 @@ parseNode c | not $ null $ tag "node" c = do
                     lightFs <- fmap catMaybes $ mapM parseLightInstances $ c -=> keep /> tag "instance_light"                
                     geometryFs <- fmap catMaybes $ mapM parseGeometryInstances $ c -=> keep /> tag "instance_geometry"
                     subNodeFs <- fmap catMaybes $ mapM parseNode $ c -=> keep /> (tag "node" `union` tag "instance_node")
-                    let treeF refmap = Tree.Node (csid (ColladaNode mid layer transformations (map ($refmap) cameraFs) (map ($refmap) lightFs) (map ($refmap) geometryFs))) (map ($refmap) subNodeFs)
+                    let treeF refmap = Just $ Tree.Node (csid (ColladaNode mid layer transformations (catMaybes $ map ($refmap) cameraFs) (catMaybes $ map ($refmap) lightFs) (catMaybes $ map ($refmap) geometryFs))) (catMaybes $ map ($refmap) subNodeFs)
                     return $ Just treeF
             | otherwise {- "instance_node" -} = do
                     url <- getReqAttribute "url" c
@@ -573,12 +574,10 @@ parseNode c | not $ null $ tag "node" c = do
                                 assert $ \refmap -> withError (MissingLinkError "instance_node" cid c) $ do
                                    Just (RefNode _) <- return $ getRef cid refmap
                                    return ()
-                                return $ Just $
-                                  \refmap -> case getRef cid refmap of
-                                      Just (RefNode tree) -> csid tree
+                                return $ Just $ \refmap -> (\(RefNode tree) -> csid tree) <$> getRef cid refmap
                             _ -> return Nothing
 
-parseCameraInstances :: XML.Content XML.Posn -> Parser (Maybe (RefMap -> (SID, Camera)))
+parseCameraInstances :: XML.Content XML.Posn -> Parser (Maybe (RefMap -> Maybe (SID, Camera)))
 parseCameraInstances c = do
     url <- getReqAttribute "url" c
     let csid = makeSID $ getAttribute "sid" c
@@ -588,8 +587,12 @@ parseCameraInstances c = do
             assert $ \ refmap -> withError (MissingLinkError "instance_camera" cid c) $ do 
                Just (RefCamera _) <- return $ getRef cid refmap
                return ()
-            return $ Just $ \ refmap -> case getRef cid refmap of Just (RefCamera content) -> csid content
-parseLightInstances :: XML.Content XML.Posn -> Parser (Maybe (RefMap -> (SID, Light)))
+            return $ Just $
+             \ refmap -> case getRef cid refmap of
+                 Just (RefCamera content) -> Just $ csid content
+                 _ -> Nothing
+
+parseLightInstances :: XML.Content XML.Posn -> Parser (Maybe (RefMap -> Maybe (SID, Light)))
 parseLightInstances c = do
     url <- getReqAttribute "url" c
     let csid = makeSID $ getAttribute "sid" c
@@ -600,10 +603,8 @@ parseLightInstances c = do
                Just (RefLight _) <- return $ getRef cid refmap
                return ()
             return $
-              Just $ \ refmap ->
-                  case getRef cid refmap of
-                      Just (RefLight content) -> csid content
-parseGeometryInstances :: XML.Content XML.Posn -> Parser (Maybe (RefMap -> (SID, Geometry)))
+              Just $ \ refmap -> (\(RefLight content) -> csid content) <$> getRef cid refmap 
+parseGeometryInstances :: XML.Content XML.Posn -> Parser (Maybe (RefMap -> Maybe (SID, Geometry)))
 parseGeometryInstances c = do
     url <- getReqAttribute "url" c
     let csid = makeSID $ getAttribute "sid" c
@@ -615,7 +616,8 @@ parseGeometryInstances c = do
            return ()
         return $ Just $
           \ refmap -> case getRef cid refmap of
-              Just (RefGeometry content) -> csid content
+              Just (RefGeometry content) -> Just $ csid content
+              _ -> Nothing
 ---------------------------------------------------------------
 parseTransformations:: XML.Content XML.Posn -> Parser (Maybe (Maybe String, Transform))
 parseTransformations c = do
@@ -652,7 +654,7 @@ parseVisualColladaTree c = do
     let cid = getAttribute "id" c
     subNodeFs <- fmap catMaybes $ mapM parseNode $ c -=> keep /> tag "node"
     unless (null cid) $
-        addRefF cid $ \refmap -> RefVisualColladaTree $ Tree.Node (nosid $ ColladaNode (Just cid) [] [] [] [] []) $ map ($ refmap) subNodeFs
+        addRefF cid $ \refmap -> RefVisualColladaTree $ Tree.Node (nosid $ ColladaNode (Just cid) [] [] [] [] []) $ catMaybes $ map ($ refmap) subNodeFs
                                                        
 ---------------------------------------------------------------
 
@@ -897,10 +899,10 @@ parsePrimitives vertices p = case fst $ head $ tagged keep p of
 -- Dynamic Vertex
 
 makeDynPrimStream :: [((MaterialName, PrimitiveTopology Triangles, Maybe [Int]), Map Semantic [[Float]])] -> [ColladaMesh]
-makeDynPrimStream = map makePrimGroup . groupBy ((==) `on` fst) . map splitParts
+makeDynPrimStream = catMaybes . map makePrimGroup . groupBy ((==) `on` fst) . map splitParts
     where
-    makePrimGroup :: [((MaterialName, [Semantic]), (AABB, ((PrimitiveTopology Triangles, Maybe [Int]), [[[Float]]])))] -> ColladaMesh
-    makePrimGroup xs@(((material, names), _):_) = TriangleColladaMesh material pstream aabb
+    makePrimGroup :: [((MaterialName, [Semantic]), (AABB, ((PrimitiveTopology Triangles, Maybe [Int]), [[[Float]]])))] -> Maybe ColladaMesh
+    makePrimGroup xs@(((material, names), _):_) = Just $ TriangleColladaMesh material pstream aabb
         where 
               xs' :: [((MaterialName, [Semantic]), ((PrimitiveTopology Triangles, Maybe [Int]), [[[Float]]]))]
               xs' = map (second snd) xs
@@ -908,7 +910,7 @@ makeDynPrimStream = map makePrimGroup . groupBy ((==) `on` fst) . map splitParts
               aabb = mconcat $ map (fst . snd) xs
               pstream :: ColladaMeshPrimitiveArray (PrimitiveTopology Triangles) (Map Semantic [[Float]])
               pstream = fmap (\f -> Map.fromAscList $ zip names f) $ toStreamUsingLength xs'
-
+    makePrimGroup _ = Nothing
 
 splitParts :: ((t2, t1, t), Map Semantic [[Float]]) -> ((t2, [MaterialName]), (AABB, ((t1, t), [[[Float]]])))
 splitParts ((material, primtype, mindices), m) = let mlist = Map.toAscList m
