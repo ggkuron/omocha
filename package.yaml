@@ -54,6 +54,7 @@ library:
     - JuicyPixels-util
     - filepath
     - template-haskell
+    - raw-strings-qq
     - directory
     - lens
     - freetype2 >= 0.1
@@ -76,4 +77,5 @@ tests:
         dependencies:
         - omocha 
         - hspec
+        - raw-strings-qq
 

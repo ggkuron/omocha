@@ -8,7 +8,6 @@
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE RankNTypes #-}
@@ -140,7 +139,7 @@ main = runContextT (GLFW.defaultHandleConfig { GLFW.configEventPolicy = Nothing 
     uniform :: Buffer os (Uniform UniInput) <- newBuffer 1  
 
     -- font <- loadFont "VL-PGothic-Regular.ttf"
-    collada <- liftIO $ readColladaFile "untitled.dae"
+    collada <- liftIO $ readColladaFile "iw.dae"
     let s = sceneFromCollada collada
 
     r <- buildRendering win uniform s

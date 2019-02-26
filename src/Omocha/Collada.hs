@@ -75,6 +75,7 @@ import Control.Monad.Writer.Strict
 import Control.Arrow (first, second)
 import Control.Lens ((^.))
 import Omocha.Scene(Scene(..), Mesh(..), OmochaShaderType(..), DrawVertex(..), RenderInput(..))
+import Omocha.ColladaTestData
 
 
 type ID = String
@@ -114,7 +115,7 @@ data Transform =
          skewTranslation :: V3 Float
     }
     | Translate (V3 Float)
-  deriving (Show, Eq)
+    deriving (Show, Eq)
 
 
 data Camera =
@@ -128,7 +129,7 @@ data Camera =
       orthographicViewSize :: ViewSize,
       orthographicZ :: Z
     }
-  deriving (Show, Eq)
+    deriving (Show, Eq)
 
 
 data ViewSize =
@@ -190,7 +191,7 @@ data ColladaMesh = TriangleColladaMesh {
 data ColladaMeshPrimitive p a =
     ColladaMeshPrimitive p a
     | ColladaMeshPrimitiveIndexed p [Int] a
-  deriving(Show)
+    deriving(Show)
 
 newtype ColladaMeshPrimitiveArray p a = ColladaMeshPrimitiveArray { getColladaMeshPrimitiveArray :: [ColladaMeshPrimitive p a]}
   deriving (Show)
@@ -294,7 +295,6 @@ runParser m = do
 
 addRefF :: MonadWriter [(ID, RefMap -> Reference)]  m => ID -> (RefMap -> Reference) -> m ()
 addRefF cid ref = tell [(cid, ref)]
-
 getRef:: ID -> RefMap -> Maybe Reference
 getRef cid a@(RefMap m) = fmap ($a) $ Map.lookup cid m
 
