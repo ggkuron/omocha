@@ -67,14 +67,14 @@ import Text.XML.HaXml (
 import qualified Text.XML.HaXml as XML
 import qualified Text.XML.HaXml.Parse as XML
 import qualified Text.XML.HaXml.Posn as XML
+-- import Text.XML.HXT.Core
 
 import Control.Monad
 import Control.Monad.Except
-import Control.Monad.Trans(lift)
-import Control.Monad.Writer.Strict
 import Control.Arrow (first, second)
 import Control.Lens ((^.))
 import Omocha.Scene(Scene(..), Mesh(..), OmochaShaderType(..), DrawVertex(..), RenderInput(..))
+
 import Omocha.ColladaTestData
 
 
@@ -173,8 +173,7 @@ data Attenuation = Attenuation {
 } deriving (Show, Eq)
 
 
-data Geometry =  ColladaMesh {
-    meshID :: ID,
+data Geometry =  Geometry {
     meshPrimitives :: [ColladaMesh]
 } deriving (Show)
 
@@ -221,85 +220,22 @@ instance Monoid AABB where
 topDown :: (acc -> x -> (acc, y)) -> acc -> Tree x -> Tree y
 topDown f a (Tree.Node x xs) = case f a x of (acc', y) -> Tree.Node y $ map (topDown f acc') xs
 
--- | Traverse a Tree bottom up, much like 'mapAccumR'. The function recieves the accumulators of all its children and generates one that is passed up to its parent.
---   Useful for accumulating AABBs, etc.
-bottomUp :: ([acc] -> x -> (acc, y)) -> Tree x -> (acc, Tree y)
-bottomUp f (Tree.Node x xs) = case unzip $ map (bottomUp f) xs of (accs, ys) -> case f accs x of (acc', y) -> (acc', Tree.Node y ys)
-
--- | Remove branches of a tree where the function evaluates to 'True'. Useful for selecting LODs, etc.
-prune :: (a -> Bool) -> Tree a -> Maybe (Tree a)
-prune f (Tree.Node x xs) = if f x then Nothing else Just $ Tree.Node x $ mapMaybe (prune f) xs
-
-
----------------------------------
--- | A path where the first string in the list is the closest ID and the rest is all SIDs found in order.
-type SIDPath = [String]
-
--- | Traverse a tree top down accumulating the 'SIDPath' for each node. The projection function enables this to be used on trees that are not 'ColladaTree's.
---   The accumulated 'SIDPath' for a node will include the node's 'SID' at the end, but not its 'ID'. The 'ID' will however be the first 'String' in the
---   'SIDPath's of the children, and the nodes 'SID' won't be included in this case.
-topDownSIDPath :: (x -> (SID, Maybe ID)) -> Tree x -> Tree (SIDPath,x)
-topDownSIDPath f = topDown g [] 
-    where g p x = case f x of
-                    (msid, mid) -> let p' = p ++ maybeToList msid
-                                   in (maybe p' (:[]) mid, (p', x))
-
 -- | Traverse a tree top down accumulating the absolute transform for each node. The projection function enables this to be used on trees that are not 'ColladaTree's.
 --   Use 'nodeMat' to get the @Mat44 Float@ from a node. The accumulated matrix for each node will contain the node's own transforms.
 topDownTransform :: (x -> M44 Float) -> Tree x -> Tree (M44 Float,x)
 topDownTransform f = topDown g identity
     where g t x = let t' = t * f x in (t', (t', x))
 
--- | For each 'SID'-attributed element in a list, apply the provided function. The elements where the function evaluates to 'Nothing' are removed.
-alterSID :: (String -> a -> Maybe a) -> [(SID,a)] -> [(SID,a)]
-alterSID f = mapMaybe alterSID'
-    where
-        alterSID' (msid@(Just csid), x) = fmap ((,) msid) $ f csid x
-        alterSID' a = Just a
-        
 
 toRadians :: Floating a => a -> a
 toRadians d = d * pi / 180
 
 
-newtype RefMap = RefMap (Map ID (RefMap -> Reference))
+type CArray = ([Float], Int)
+type CSource = ([[Float]], Int)
+type CVertice = ([[Float]], Int)
+type CVertices = Map Semantic CVertice
 
-data Reference = RefNode ColladaTree
-               | RefArray (Maybe ([Float], Int))
-               | RefSource (Maybe ([[Float]], Int))
-               | RefVertices (Map String ([[Float]], Int))
-               | RefVisualColladaTree ColladaTree
-               | RefCamera Camera
-               | RefLight Light
-               | RefGeometry Geometry
-
-
-
-type Parser = WriterT 
-                [(ID, RefMap -> Reference)]
-                (WriterT 
-                    [RefMap -> Either ColladaParseError ()]
-                    (Either ColladaParseError)
-                )
-
-runParser :: Parser (Maybe ID) -> Either ColladaParseError Reference
-runParser m = do 
-    ((mid, refs), checks) <- runWriterT $ runWriterT m
-    case mid of
-       Nothing -> return $ RefVisualColladaTree $ Tree.Node (nosid $ ColladaNode Nothing [] [] [] [] []) []
-       Just cid -> do
-           let refmap = RefMap $ Map.fromList refs
-           mapM_ ($ refmap) checks
-           return $ fromJust $ getRef cid refmap
-
-
-addRefF :: MonadWriter [(ID, RefMap -> Reference)]  m => ID -> (RefMap -> Reference) -> m ()
-addRefF cid ref = tell [(cid, ref)]
-getRef:: ID -> RefMap -> Maybe Reference
-getRef cid a@(RefMap m) = fmap ($a) $ Map.lookup cid m
-
-assert :: (MonadTrans t, MonadWriter [t1] m) => t1 -> t m()
-assert f = lift $ tell [f]
 
 data ColladaParseError where
     MissingLinkError :: Show a => Semantic -> ID -> XML.Content a -> ColladaParseError
@@ -307,6 +243,7 @@ data ColladaParseError where
     NotCollada :: ColladaParseError
     MissingAttribute :: Show a => String -> XML.Content a -> ColladaParseError
     MissingElement :: Show a => String -> XML.Content a -> ColladaParseError
+    UnknownElement :: Show a => String -> XML.Content a -> ColladaParseError
     MultipleElement :: Show a => String -> XML.Content a -> ColladaParseError
     MalformedAttribute :: Show a => String -> XML.Content a -> ColladaParseError
     MalformedContent :: Show a => XML.Content a -> ColladaParseError
@@ -332,6 +269,7 @@ instance Show ColladaParseError where
     show (MissingAttribute s c) = "Missing attribute " ++ s ++ " in " ++ errorPos c
     show (MultipleElement el c) = "Multiple " ++ el ++ " elements in " ++ errorPos c
     show (MissingElement el c) =  "Missing " ++ el ++ " elements in " ++ errorPos c
+    show (UnknownElement el c) =  "Unknown element " ++ el ++ " elements in " ++ errorPos c
     show (MalformedAttribute cattr c) = "Malformed " ++ cattr ++ " attribute in " ++ errorPos c
     show (MalformedContent c) = "Malformed contents of " ++ errorPos c
     show (TooFewElements c) = "Too few elements in " ++ errorPos c 
@@ -354,14 +292,13 @@ errorPos (XML.CElem (XML.Elem n _ _) p) = show n ++ " element in " ++ show p ++ 
 errorPos _ = "unknown position"
 
 
-readCollada :: String -> String -> Either ColladaParseError ColladaTree
+readCollada :: String -> String -> ParseResult ColladaTree
 readCollada f s = do
-    p <- mapLeft XmlError $ XML.xmlParse' f s
-    xs <- withError NotCollada $ do 
+    p <- mapLeft (return . XmlError) $ XML.xmlParse' f s
+    xs <- withError [NotCollada] $ do 
         XML.Document _ _ (XML.Elem (XML.N "COLLADA") _ xs) _ <- return p
         return xs
-    RefVisualColladaTree vs <- runParser $ parseDoc xs
-    return vs
+    parseDoc xs
 
                                                                         
 readColladaFile :: FilePath -> IO ColladaTree
@@ -396,63 +333,61 @@ changeTreeSID s (Tree.Node (_, node) xs) = Tree.Node (sid s node) xs
 
 getAttribute :: forall a. String -> XML.Content a -> String
 getAttribute s = fst . head . attributed s keep
-getReqAttribute :: String -> XML.Content XML.Posn -> Parser String
+getReqAttribute :: String -> XML.Content XML.Posn -> ParseResult String
 getReqAttribute s c = case getAttribute s c of
-                        "" -> throwError $ MissingAttribute s c
+                        "" -> Left $ [MissingAttribute s c]
                         a -> return a
 
-getStringContent :: forall i. XML.Content i -> String
+getStringContent :: XML.Content XML.Posn -> String
 getStringContent = unwords . mapMaybe fst . textlabelled XML.children
 
-getReqSingleElement :: forall a m. (MonadError ColladaParseError m, Show a) => String -> XML.Content a -> m (XML.Content a)
+getReqSingleElement :: forall a. (Show a) => String -> XML.Content a -> ParseResult (XML.Content a)
 getReqSingleElement el c = case c -=> keep /> tag el of
-                            [] -> throwError $ MissingElement el c
+                            [] -> Left [MissingElement el c]
                             [e] -> return e
-                            _ -> throwError $ MultipleElement el c
+                            _ -> Left [MultipleElement el c]
 
-getFromReqAttribute :: forall a. (Read a) => String -> XML.Content XML.Posn -> Parser a
+getFromReqAttribute :: forall a. (Read a) => String -> XML.Content XML.Posn -> ParseResult a
 getFromReqAttribute cattr c = do
     a <- getReqAttribute cattr c
-    fromString (MalformedAttribute cattr c) a
+    fromString [MalformedAttribute cattr c] a
 
-getFromAttributeDef :: forall a a1 m. (Show a, MonadError ColladaParseError m, Read a1) =>
-    String -> a1 -> XML.Content a -> m a1
+getFromAttributeDef :: forall a. (Read a) =>
+    String -> a -> XML.Content XML.Posn -> ParseResult a
 getFromAttributeDef cattr def c = do
     let a = getAttribute cattr c
     if null a
         then return def
-        else fromString (MalformedAttribute cattr c) a
+        else fromString [MalformedAttribute cattr c] a
 
-getFromSingleElementDef :: forall a1 a m. (Read a1, MonadError ColladaParseError m, Show a) =>
-     String -> a1 -> XML.Content a -> m a1
+getFromSingleElementDef :: forall a. (Read a) => String -> a -> XML.Content XML.Posn -> ParseResult a
 getFromSingleElementDef el def c = case c -=> keep /> tag el of
                                     [] -> return def
                                     [e] -> getFromContents e
-                                    _ -> throwError $ MultipleElement el c
+                                    _ -> Left [MultipleElement el c]
 
-getFromListContents :: forall a b m. (MonadError ColladaParseError m, Read b, Show a) => XML.Content a -> m [b]
-getFromListContents c = fromList (MalformedContent c) $ getStringContent c
-getFromContents :: forall a i m. (Show i,  MonadError ColladaParseError m, Read a) =>
-    XML.Content i -> m a
-getFromContents c = fromString (MalformedContent c) $ getStringContent c
+getFromListContents :: forall a. (Read a) => XML.Content XML.Posn -> ParseResult [a]
+getFromListContents c = fromList [MalformedContent c] $ getStringContent c
 
-getFromListLengthContents :: forall a a1 m. (Show a1, Read a, MonadError ColladaParseError m) => 
-    Int -> XML.Content a1 -> m [a]
+getFromContents :: forall a. (Read a) => XML.Content XML.Posn -> ParseResult a
+getFromContents c = fromString [MalformedContent c] $ getStringContent c
+
+getFromListLengthContents :: forall a. (Read a ) => Int -> XML.Content XML.Posn -> ParseResult [a]
 getFromListLengthContents n c = do
     xs <- getFromListContents c
     if length xs == n
         then return xs
         else if length xs < n 
-                then throwError $ TooFewElements c 
-                else throwError $ TooManyElements c
+                then Left [TooFewElements c]
+                else Left [TooManyElements c]
 
-fromList :: forall a e m. (Read a, MonadError e m) => e -> String -> m [a]
+fromList :: forall a. (Read a) => [ColladaParseError]  -> String -> ParseResult [a]
 fromList err = mapM (fromString err) . words
 
-fromString :: forall a e m. (Read a, MonadError e m) => e -> String -> m a
+fromString :: forall a. (Read a) => [ColladaParseError] -> String -> ParseResult a
 fromString err = parse . reads
     where parse [(a,"")] = return a
-          parse _ = throwError err
+          parse _ = Left err
 
 fromListToVec :: forall a. [a] -> V3 a
 fromListToVec = V.fromV . fromJust . V.fromVector . V.fromList
@@ -470,156 +405,151 @@ xs ==> f = concatMap f xs
 x -=> f = f x
 
 
-
-parseDoc :: [XML.Content XML.Posn] -> Parser (Maybe ID)
+parseDoc :: [XML.Content XML.Posn] -> ParseResult ColladaTree 
 parseDoc xs = do
     let sources = xs ==> deep (tagWith (`elem` ["animation", "mesh", "morph", "skin", "spline", "convex_mesh", "brep", "nurbs", "nurbs_surface"])) /> tag "source"
-    mapM_ parseArray $ sources ==> tagged (keep /> tagWith ("_array" `isSuffixOf`) `with` attr "id")
-    mapM_ parseSource sources
-    mapM_ parseCamera $ xs ==> tag "library_cameras" /> tag "camera" `with` attr "id"
-    mapM_ parseGeometry $ xs ==> tag "library_geometries" /> tag "geometry"
-    mapM_ parseLight $ xs ==> tag "library_lights" /> tag "light" `with` attr "id"
-    mapM_ parseNode $ xs ==> tag "library_nodes" /> tag "node"
-    mapM_ parseVisualColladaTree $ xs ==> tag "library_visual_scenes" /> tag "visual_scene"
-    (url,c) <- case xs ==> attributed "url" (tag "scene" /> tag "instance_visual_scene") of
-          [] -> throwError MissingInstanceVisualSceneElement
+    as <- mapM parseArray $ sources ==> tagged (keep /> tagWith ("_array" `isSuffixOf`) `with` attr "id")
+    ss <- mapM (parseSource $ Map.fromList as) sources
+    cs <- mapM parseCamera $ xs ==> tag "library_cameras" /> tag "camera" `with` attr "id"
+    gs <- mapM (parseGeometry $ Map.fromList ss) $ xs ==> tag "library_geometries" /> tag "geometry"
+    ls <- mapM parseLight $ xs ==> tag "library_lights" /> tag "light" `with` attr "id"
+    ns <- mapM (parseNode Map.empty (Map.fromList cs) (Map.fromList ls) (Map.fromList gs)) $ xs ==> tag "library_nodes" /> tag "node"
+    vs <- mapM (parseVisualColladaTree (Map.fromList ns) (Map.fromList cs) (Map.fromList ls) (Map.fromList gs)) $ xs ==> tag "library_visual_scenes" /> tag "visual_scene"
+    (url, c) <- case xs ==> attributed "url" (tag "scene" /> tag "instance_visual_scene") of
+          [] -> Left [MissingInstanceVisualSceneElement]
           [x] -> return x
-          _ -> throwError MultipleInstanceVisualSceneElement
+          _ -> Left [MultipleInstanceVisualSceneElement]
     case localUrl url of
-           Nothing -> return Nothing
+           Nothing -> Left [XmlError "url not found"]
            Just lurl -> do
-               assert $ \refmap -> withError (MissingLinkError "visual_scene" lurl c) $ do 
-                   Just (RefVisualColladaTree _) <- return $ getRef lurl refmap
-                   return ()
-               return $ Just lurl
-
+               case Map.lookup lurl (Map.fromList vs) of
+                   Just t -> return t
+                   _ -> Left [MissingLinkError "visual_scene" lurl c]
 ---------------------------------------------------------------
 
 
-parseArray :: (ID, XML.Content XML.Posn) -> Parser ()
+parseArray :: (ID, XML.Content XML.Posn) -> ParseResult (ID, CArray)
 parseArray (s, arr) = do 
     arrRef <- case s of 
                "float_array" -> do
                    count <- getFromReqAttribute "count" arr
                    xs <- getFromListContents arr
                    let len = length xs
-                   when (len /= count)
-                       $ throwError $ ArrayLengthMismatch arr
-                   return $ Just (xs :: [Float], len)
-               _ -> return Nothing
-    addRefF (getAttribute "id" arr) (const (RefArray arrRef))
+                   if len /= count
+                   then Left [ArrayLengthMismatch arr]
+                   else return $ (xs :: [Float], len)
+               _ -> Left []
+    return (getAttribute "id" arr, arrRef)
 
 ---------------------------------------------------------------
           
-parseSource :: XML.Content XML.Posn -> Parser ()
-parseSource s = do
+parseSource :: Map ID CArray -> XML.Content XML.Posn -> ParseResult (ID, CSource)
+parseSource ma s = do
     cid <- getReqAttribute "id" s
     sRef <- case s -=> keep /> tag "technique_common" of
-                 [] -> return (const (RefSource Nothing))
+                 [] -> Left []
                  tc:_ -> do
                     acc <- getReqSingleElement "accessor" tc
-                    parseAccessor acc
-    addRefF cid sRef
+                    parseAccessor ma acc
+    return (cid, sRef)
 
-parseAccessor :: XML.Content XML.Posn -> Parser (RefMap -> Reference)
-parseAccessor acc = do
-    arrUrl <- getReqAttribute "source" acc
-    case localUrl arrUrl of
-         Nothing -> return (const (RefSource Nothing))
-         Just cid -> do
-            count <- getFromReqAttribute "count" acc
-            offset <- getFromAttributeDef "offset" 0 acc
-            stride <- getFromAttributeDef "stride" 1 acc
-            useParamList <- mapM parseParam $ acc -=> keep /> elm
-            let paramLength = length useParamList
-            when (paramLength > stride)
-                $ throwError $ StrideAttributeTooLow acc                              
-            let requiredLength = offset + stride * (count-1) + paramLength
-            assert $ \refmap -> do
-                 m <- withError (MissingLinkError "*_array" cid acc) $ do 
-                     Just (RefArray m) <- return $ getRef cid refmap
-                     return m
-                 case m of Just (_,len) | requiredLength > len -> throwError $ SourceSizeTooSmall acc 
-                           _ -> return ()
-            return $ \refmap -> RefSource $
-                case getRef cid refmap of
-                Just (RefArray (Just (source, _len))) -> Just (assembleSource (drop offset source) count stride useParamList, count)
-                _ -> Nothing
-    where parseParam c | null $ tag "param" c = throwError $ UnexpedtedTag c
-                       | otherwise = return $ not $ null $ getAttribute "name" c
-          assembleSource _ 0 _ _ = []
-          assembleSource source count stride useParamList = case splitAt stride source of (vertex, rest) -> map snd (filter fst (zip useParamList vertex)) : assembleSource rest (count - 1) stride useParamList
+parseAccessor :: Map ID CArray -> XML.Content XML.Posn -> ParseResult CSource
+parseAccessor ma acc = do
+  arrUrl <- getReqAttribute "source" acc
+  case localUrl arrUrl of
+       Nothing -> Left []
+       Just cid -> do
+          count <- getFromReqAttribute "count" acc
+          offset <- getFromAttributeDef "offset" 0 acc
+          stride <- getFromAttributeDef "stride" 1 acc
+          useParamList <- mapM parseParam $ acc -=> keep /> elm
+          let paramLength = length useParamList
+          if paramLength > stride
+            then Left [StrideAttributeTooLow acc]
+            else do
+                let requiredLength = offset + stride * (count-1) + paramLength
+                case Map.lookup cid ma of
+                  Just (source, len) | requiredLength > len -> Left [SourceSizeTooSmall acc]
+                                     | otherwise ->  return (assembleSource (drop offset source) count stride useParamList, count)
+                  _ -> Left [MissingLinkError "*_array" cid acc]
+  where 
+    parseParam c | null $ tag "param" c = Left [UnexpedtedTag c]
+                 | otherwise = return $ not $ null $ getAttribute "name" c
+    assembleSource _ 0 _ _ = []
+    assembleSource source count stride useParamList = case splitAt stride source of (vertex, rest) -> map snd (filter fst (zip useParamList vertex)) : assembleSource rest (count - 1) stride useParamList
 
 
 ---------------------------------------------------------------
 
-parseNode :: XML.Content XML.Posn -> Parser (Maybe (RefMap -> Maybe (Tree (SID, ColladaNode))))
-parseNode c | not $ null $ tag "node" c = do
-                    let cid = getAttribute "id" c
-                        mid = if cid == "" then Nothing else Just cid
-                        csid = makeSID $ getAttribute "sid" c
-                        layer = words $ getAttribute "layer" c
-                    transformations <- fmap catMaybes $ mapM parseTransformations $ XML.children c
-                    cameraFs <- fmap catMaybes $ mapM parseCameraInstances $ c -=> keep /> tag "instance_camera"
-                    lightFs <- fmap catMaybes $ mapM parseLightInstances $ c -=> keep /> tag "instance_light"                
-                    geometryFs <- fmap catMaybes $ mapM parseGeometryInstances $ c -=> keep /> tag "instance_geometry"
-                    subNodeFs <- fmap catMaybes $ mapM parseNode $ c -=> keep /> (tag "node" `union` tag "instance_node")
-                    let treeF refmap = Just $ Tree.Node (csid (ColladaNode mid layer transformations (catMaybes $ map ($refmap) cameraFs) (catMaybes $ map ($refmap) lightFs) (catMaybes $ map ($refmap) geometryFs))) (catMaybes $ map ($refmap) subNodeFs)
-                    return $ Just treeF
-            | otherwise {- "instance_node" -} = do
-                    url <- getReqAttribute "url" c
-                    let csid = changeTreeSID $ getAttribute "sid" c
-                    case localUrl url of
-                            Just cid -> do
-                                assert $ \refmap -> withError (MissingLinkError "instance_node" cid c) $ do
-                                   Just (RefNode _) <- return $ getRef cid refmap
-                                   return ()
-                                return $ Just $ \refmap -> (\(RefNode tree) -> csid tree) <$> getRef cid refmap
-                            _ -> return Nothing
+parseNode :: 
+    Map ID ColladaTree
+    -> Map ID Camera
+    -> Map ID Light
+    -> Map ID Geometry
+    -> XML.Content XML.Posn
+    -> ParseResult (ID, ColladaTree)
+parseNode t mc ml mg c | not $ null $ tag "node" c = do
+                               let cid = getAttribute "id" c
+                                   mid = if cid == "" then Nothing else Just cid
+                                   csid = makeSID $ getAttribute "sid" c
+                                   layer = words $ getAttribute "layer" c
+                               transformations <- mapM parseTransformations $ XML.children c
+                               cameraFs <- mapM (parseCameraInstances mc) $ c -=> keep /> tag "instance_camera"
+                               lightFs <- mapM (parseLightInstances ml) $ c -=> keep /> tag "instance_light"                
+                               geometryFs <- mapM (parseGeometryInstances mg) $ c -=> keep /> tag "instance_geometry"
+                               subNodeFs <- mapM (parseNode t mc ml mg) $ c -=> keep /> (tag "node" `union` tag "instance_node")
+                               let treeF = Tree.Node (csid  $ ColladaNode mid layer (catMaybes transformations) cameraFs lightFs geometryFs) (map snd subNodeFs)
+                               return (cid, treeF)
+                       | otherwise {- "instance_node" -} = do
+                               url <- getReqAttribute "url" c
+                               let csid = changeTreeSID $ getAttribute "sid" c
+                               case localUrl url of
+                                       Just cid -> do
+                                           case Map.lookup cid t of
+                                             Just t' -> return $ (cid, csid t')
+                                             _ -> Left [MissingLinkError "instance_node" cid c]
+                                       _ -> Left []
 
-parseCameraInstances :: XML.Content XML.Posn -> Parser (Maybe (RefMap -> Maybe (SID, Camera)))
-parseCameraInstances c = do
+parseCameraInstances :: Map ID Camera 
+    -> XML.Content XML.Posn 
+    -> ParseResult (SID, Camera)
+parseCameraInstances mc c = do
     url <- getReqAttribute "url" c
     let csid = makeSID $ getAttribute "sid" c
     case localUrl url of
-        Nothing -> return Nothing
+        Nothing -> Left []
         Just cid -> do
-            assert $ \ refmap -> withError (MissingLinkError "instance_camera" cid c) $ do 
-               Just (RefCamera _) <- return $ getRef cid refmap
-               return ()
-            return $ Just $
-             \ refmap -> case getRef cid refmap of
-                 Just (RefCamera content) -> Just $ csid content
-                 _ -> Nothing
+            case Map.lookup cid mc of
+                 Just (content) -> return $ csid content
+                 _ -> Left [MissingLinkError "instance_camera" cid c]
 
-parseLightInstances :: XML.Content XML.Posn -> Parser (Maybe (RefMap -> Maybe (SID, Light)))
-parseLightInstances c = do
+
+parseLightInstances :: Map ID Light 
+    -> XML.Content XML.Posn 
+    -> ParseResult (SID, Light)
+parseLightInstances refmap c = do
     url <- getReqAttribute "url" c
     let csid = makeSID $ getAttribute "sid" c
     case localUrl url of
-         Nothing -> return Nothing
-         Just cid -> do
-            assert $ \ refmap -> withError (MissingLinkError "instance_light" cid c) $ do 
-               Just (RefLight _) <- return $ getRef cid refmap
-               return ()
-            return $
-              Just $ \ refmap -> (\(RefLight content) -> csid content) <$> getRef cid refmap 
-parseGeometryInstances :: XML.Content XML.Posn -> Parser (Maybe (RefMap -> Maybe (SID, Geometry)))
-parseGeometryInstances c = do
+         Nothing -> Left []
+         Just cid -> case Map.lookup cid refmap of
+                        Just content -> return $ csid content
+                        _ -> Left [MissingLinkError "instance_light" cid c]
+
+parseGeometryInstances :: Map ID Geometry 
+    -> XML.Content XML.Posn 
+    -> ParseResult (SID, Geometry)
+parseGeometryInstances refmap c =do
     url <- getReqAttribute "url" c
     let csid = makeSID $ getAttribute "sid" c
     case localUrl url of
-      Nothing -> return Nothing
+      Nothing -> Left []
       Just cid -> do
-        assert $ \ refmap -> withError (MissingLinkError "instance_camera" cid c) $ do 
-           Just (RefGeometry _) <- return $ getRef cid refmap
-           return ()
-        return $ Just $
-          \ refmap -> case getRef cid refmap of
-              Just (RefGeometry content) -> Just $ csid content
-              _ -> Nothing
+          case Map.lookup cid refmap of
+              Just content -> return $ csid content
+              _ -> Left [MissingLinkError "instance_camera" cid c]
 ---------------------------------------------------------------
-parseTransformations:: XML.Content XML.Posn -> Parser (Maybe (Maybe String, Transform))
+parseTransformations:: XML.Content XML.Posn -> ParseResult (Maybe (SID, Transform))
 parseTransformations c = do
     let csid = makeSID $ getAttribute "sid" c
     case fst $ head $ tagged keep c of
@@ -627,38 +557,46 @@ parseTransformations c = do
             xs <- getFromListLengthContents 9 c
             let (eye,rest) = splitAt 3 xs
                 (int, up) = splitAt 3 rest
-            return $ Just $ csid $ LookAt (fromListToVec eye) (fromListToVec int) (fromListToVec up)
+            return $ Just $ (csid $ LookAt (fromListToVec eye) (fromListToVec int) (fromListToVec up))
         "matrix" -> do
             mat <- getFromListLengthContents 16 c
-            return $ Just $ csid $ Matrix $ fromListToMat44 mat
+            return $ Just $ (csid $ Matrix $ fromListToMat44 mat)
         "rotate" -> do
             xs <- getFromListLengthContents 4 c
             let (rot,[a]) = splitAt 3 xs
-            return $ Just $ csid $ Rotate (fromListToVec rot) a
+            return $ Just $ (csid $ Rotate (fromListToVec rot) a)
         "scale" -> do
             v <- getFromListLengthContents 3 c
-            return $ Just $ csid $ Scale $ fromListToVec v
+            return $ Just $ (csid $ Scale $ fromListToVec v)
         "skew" -> do
             xs <- getFromListLengthContents 7 c
             let ([a],rest) = splitAt 1 xs
                 (rot, trans) = splitAt 3 rest
-            return $ Just $ csid $ Skew a (fromListToVec rot) (fromListToVec trans)
+            return $ Just $ (csid $ Skew a (fromListToVec rot) (fromListToVec trans))
         "translate" -> do
             v <- getFromListLengthContents 3 c
-            return $ Just $ csid $ Translate $ fromListToVec v
-        _ -> return Nothing
+            return $ Just (csid $ Translate $ fromListToVec v)
+        t -> return Nothing
 ---------------------------------------------------------------
 
-parseVisualColladaTree :: XML.Content XML.Posn -> Parser ()
-parseVisualColladaTree c = do
+parseVisualColladaTree ::
+    Map ID ColladaTree
+    -> Map ID Camera
+    -> Map ID Light
+    -> Map ID Geometry
+    -> XML.Content XML.Posn 
+    -> ParseResult (ID, ColladaTree)
+parseVisualColladaTree mt mc ml mg c = do
     let cid = getAttribute "id" c
-    subNodeFs <- fmap catMaybes $ mapM parseNode $ c -=> keep /> tag "node"
-    unless (null cid) $
-        addRefF cid $ \refmap -> RefVisualColladaTree $ Tree.Node (nosid $ ColladaNode (Just cid) [] [] [] [] []) $ catMaybes $ map ($ refmap) subNodeFs
+    subNodeFs <- mapM (parseNode mt mc ml mg) $ c -=> keep /> tag "node"
+    if not $ null cid
+       then Right (cid, Tree.Node (nosid $ ColladaNode (Just cid) [] [] [] [] []) (map snd subNodeFs))
+       else Left [ MissingAttribute "id" c ]
                                                        
 ---------------------------------------------------------------
 
-parseCamera :: forall a m. (MonadWriter [(String, RefMap -> Reference)] m, Show a, MonadError ColladaParseError m) => XML.Content a -> m ()
+parseCamera :: XML.Content XML.Posn 
+    -> ParseResult (ID, Camera)
 parseCamera c = do
     let cid = getAttribute "id" c
     optics <- getReqSingleElement "optics" c
@@ -666,16 +604,16 @@ parseCamera c = do
     camera <- case (tech -=> keep /> tag "perspective", tech -=> keep /> tag "ortographic") of
                  ([persp], []) -> do
                     fov <- parseViewSize (persp -=> keep /> tag "xfov") (persp -=> keep /> tag "yfov") (persp -=> keep /> tag "aspect_ratio")
-                                         (MissingValidPers persp)
+                                         [MissingValidPers persp]
                     z <- parseZ persp
                     return $ Perspective cid fov z
                  ([], [orth]) -> do
                     mag <- parseViewSize (orth -=> keep /> tag "xmag") (orth -=> keep /> tag "ymag") (orth -=> keep /> tag "aspect_ratio")
-                                         (MissingValidOrth orth)
+                                         [MissingValidOrth orth]
                     z <- parseZ orth
                     return $ Orthographic cid mag z
-                 _ -> throwError $ MissingView tech
-    addRefF cid $ const $ RefCamera camera
+                 _ -> Left [MissingView tech]
+    return (cid, camera)
   where 
     parseViewSize [x] [] [] _  = do
         x' <- getFromContents x
@@ -705,18 +643,17 @@ parseCamera c = do
         zfar <- getFromContents far
         return $ Z znear zfar
                                               
-parseGeometry :: XML.Content XML.Posn
-    -> WriterT 
-         [(ID, RefMap -> Reference)]
-         (WriterT [RefMap ->  Either ColladaParseError ()] (Either ColladaParseError))
-         ()
-parseGeometry c = do
-    verticess <- mapM (getReqSingleElement "vertices") $ c -=> keep /> XML.cat [tag "convex_mesh", tag "brep"]
-    mapM_ parseVertices verticess
-    mesh <- getReqSingleElement "mesh" c
-    parseColladaMesh (getAttribute "id" c) mesh
+parseGeometry ::
+   Map ID CSource
+   -> XML.Content XML.Posn -> ParseResult (ID, Geometry)
+parseGeometry sm c = do
+   vertices <- mapM (getReqSingleElement "vertices") $ c -=> keep /> XML.cat [tag "convex_mesh", tag "brep"]
+   vm <- mapM (parseVertices sm Map.empty) vertices
+   mesh <- getReqSingleElement "mesh" c
+   parseColladaMesh sm (Map.fromList vm) (getAttribute "id" c) mesh
                      
-parseLight :: XML.Content XML.Posn -> Parser ()
+parseLight :: XML.Content XML.Posn 
+    -> ParseResult (ID, Light)
 parseLight c = do
     let cid = getAttribute "id" c
     tech <- getReqSingleElement "technique_common" c
@@ -737,8 +674,8 @@ parseLight c = do
                     ang <- getFromSingleElementDef "falloff_angle" 180 c
                     exp' <- getFromSingleElementDef "falloff_exponent" 0 c
                     return $ Spot cid color att ang exp'
-                  _ -> throwError $ LightError tech
-    addRefF cid $ const $ RefLight light
+                  _ -> Left [LightError tech]
+    return (cid, light)
   where
     parseSubColor a = do
         color <- getReqSingleElement "color" a
@@ -753,60 +690,66 @@ parseLight c = do
 ---------------------------------------------------------------
 -- ColladaMesh parsing:
 
-parseColladaMesh :: ID -> XML.Content XML.Posn -> Parser ()
-parseColladaMesh cid c = do
-    v <- getReqSingleElement "vertices" c
-    vertices <- parseVertices v
-    Control.Monad.unless (null cid) $ do
-        dynPrimListFs <- fmap concat $
-                           mapM (parsePrimitives vertices) $ XML.children c
-        addRefF cid $
-          \ refmap ->
-            let dynPrimLists = map (second ($refmap)) dynPrimListFs in
-              RefGeometry $ ColladaMesh cid (makeDynPrimStream dynPrimLists)
+parseColladaMesh :: 
+    Map ID CSource
+    -> Map ID CVertices
+    -> ID 
+    -> XML.Content XML.Posn 
+    -> ParseResult (ID, Geometry)
+parseColladaMesh sm vm cid c = do
+  v <- getReqSingleElement "vertices" c
+  vs <- parseVertices sm vm v
+  if not $ null cid 
+    then do
+      dynPrimListFs <- fmap concat $ mapM (parsePrimitives sm vs) $ XML.children c
+      return (cid, Geometry (makeDynPrimStream dynPrimListFs))
+    else Left [MissingAttribute cid v]
+
+type ParseResult = Either [ColladaParseError] 
 
     
-parseVertices :: XML.Content XML.Posn -> Parser (RefMap -> Map String ([[Float]], Int))
-parseVertices verts = do
-    insF <- fmap (map snd) $ mapM (parseInput False) $ verts -=> keep /> tag "input"
-    let vertsF refmap = Map.unions $ map ($refmap) insF
+parseVertices ::
+    Map ID CSource
+    -> Map ID CVertices
+    -> XML.Content XML.Posn 
+    -> ParseResult (ID, CVertices)
+parseVertices sm vm verts = do
+    insF <- fmap (map snd) $ mapM (parseInput False sm vm) $ verts -=> keep /> tag "input"
+    let vertsF = Map.unions insF
     case getAttribute "id" verts of
-       "" -> return ()
-       cid -> addRefF cid $ RefVertices . vertsF 
-    return vertsF
+       "" -> Left [MissingAttribute "id" verts]
+       cid -> return (cid, vertsF)
 
-parseInput :: Bool -> XML.Content XML.Posn -> Parser (Int, RefMap -> Map String ([[Float]], Int))
-parseInput shared i = do
+parseInput :: Bool
+ -> Map ID CSource
+ -> Map ID CVertices
+ -> XML.Content XML.Posn 
+ -> ParseResult (Int, CVertices)
+parseInput shared sm vs i = do
     source <- getReqAttribute "source" i
     ~offset <- if shared
               then getFromReqAttribute "offset" i
               else return undefined
     case localUrl source of
-       Nothing -> return (offset, const Map.empty)
+       Nothing -> return (offset, Map.empty)
        Just cid -> do
            semantic <- getReqAttribute "semantic" i
            let set = if shared then getAttribute "set" i else ""
-           assert $ \refmap -> case (shared, semantic, getRef cid refmap) of
-                                    (_, "VERTEX", Just (RefVertices _)) -> return ()
-                                    (_, "VERTEX", _) -> throwError $ MissingLinkError "vertices" cid i
-                                    (_, _, Just (RefSource _)) -> return ()
-                                    _ -> throwError $ MissingLinkError "source" cid i
-           let f refmap
-                     = case (shared, semantic, getRef cid refmap) of
-                           (_, "VERTEX", Just (RefVertices m)) -> Map.mapKeysMonotonic
-                                                                       (++ set)
-                                                                       m
-                           (_, _, Just (RefSource (Just csource))) -> Map.singleton
-                                                                       (semantic ++ set)
-                                                                       csource
-                           _ -> Map.empty
+           f <- case semantic of
+                     "VERTEX" -> case Map.lookup cid vs of
+                                   Just v -> return $ Map.mapKeysMonotonic (++ set) v
+                                   _ -> Left [MissingLinkError "vertices" cid i]
+                     _ -> case Map.lookup cid sm of
+                            Just s -> return $ Map.singleton (semantic ++ set) s
+                            _ -> Left [MissingLinkError "source" cid i]
            return (offset, f)
                                                                        
               
-parsePrimitives :: (RefMap -> Map Semantic ([[Float]], Int))
+parsePrimitives :: Map ID CSource
+    -> (ID, CVertices)
     -> XML.Content XML.Posn
-    -> Parser [((MaterialName, PrimitiveTopology Triangles, Maybe [Int]), RefMap -> Map Semantic [[Float]])]
-parsePrimitives vertices p = case fst $ head $ tagged keep p of
+    -> ParseResult [((MaterialName, PrimitiveTopology Triangles, Maybe [Int]), Map Semantic [[Float]])]
+parsePrimitives sm vs@(_, vertices) p = case fst $ head $ tagged keep p of
                        "triangles" -> parseTriangle TriangleList
                        "trifans" -> parseTriangle TriangleFan
                        "tristrips" -> parseTriangle TriangleStrip
@@ -815,46 +758,46 @@ parsePrimitives vertices p = case fst $ head $ tagged keep p of
     where 
       ps :: [XML.Content XML.Posn]
       ps = p -=> keep /> tag "p"
-      combine :: (RefMap -> Map String ([[Float]], Int)) -> (RefMap -> Map String ([[Float]], Int)) -> RefMap -> Map String ([[Float]], Int)
-      combine f g refmap = f refmap `Map.union` g refmap
-      combine' mFs refmap = Map.unions $ map ($refmap) mFs
+      combine :: (Map Semantic CVertice) -> (Map Semantic CVertice) ->  Map Semantic CVertice
+      combine f g = f `Map.union` g
+      combine' mFs = Map.unions $ mFs
       parseTriangle :: PrimitiveTopology Triangles 
-        -> Parser [((MaterialName, PrimitiveTopology Triangles, Maybe [Int]), RefMap -> Map String [[Float]])]
+        -> ParseResult [((MaterialName, PrimitiveTopology Triangles, Maybe [Int]), Map Semantic [[Float]])]
       parseTriangle primtype = do
-        inputFs' <- fmap (Map.fromListWith combine) $ mapM (parseInput True) $ p -=> keep /> tag "input"
-        let inputFs = if Map.null inputFs'
+        inputFs' <- mapM (parseInput True sm (Map.fromList [vs])) $ p -=> keep /> tag "input"
+        let inputFs = if null inputFs'
                          then Map.singleton 0 vertices
-                         else inputFs'
+                        else Map.fromList inputFs'
         count <- getFromReqAttribute "count" p
         if count == 0
              then return []
              else do
                 ps' <- case (primtype, ps) of
-                    (TriangleList, _:_:_) -> throwError $ MultipleElement "p" p
+                    (TriangleList, _:_:_) -> Left [MultipleElement "p" p]
                     (TriangleList, [_]) -> return ps
-                    (TriangleList, []) -> throwError $ MissingElement "p" p
-                    (_, _:_) | length ps < count -> throwError $ TooFewElements p
+                    (TriangleList, []) -> Left [MissingElement "p" p]
+                    (_, _:_) | length ps < count -> Left [TooFewElements p]
                     _ -> return $ take count ps
                 mapM (parsePoint primtype inputFs count) ps'
          where
-           parsePoint :: PrimitiveTopology Triangles -> Map Int (RefMap -> Map String ([[Float]], Int)) -> Int -> XML.Content XML.Posn -> Parser ((MaterialName, PrimitiveTopology Triangles, Maybe [Int]), RefMap -> Map Semantic [[Float]])
+           parsePoint :: PrimitiveTopology Triangles -> Map Int CVertices -> Int -> XML.Content XML.Posn -> ParseResult ((MaterialName, PrimitiveTopology Triangles, Maybe [Int]), Map Semantic [[Float]])
            parsePoint cprimtype inputs count p' = do 
-               let pStride = 1 + fst (Map.findMax inputs)
-                   material = getAttribute "material" p'
+               let pStride = 1 + (fst $ Map.findMax inputs) :: Int
+               let material = getAttribute "material" p'
                pLists <- fmap (splitIn pStride) $ do
                                pl <- getFromListContents p'
                                case cprimtype of
                                  TriangleList -> do
-                                    when (length pl < count * 3 * pStride) $ throwError $ TooFewIndices p'
+                                    when (length pl < count * 3 * pStride) $ Left [TooFewIndices p']
                                     return $ take (count * 3 * pStride) pl
                                  _ -> return pl
                case map (first (pLists !!)) $ Map.toList inputs of
-                       [(indices,mF)] -> return ((material, cprimtype, Just indices), Map.map fst . mF)
+                       [(indices, mF)] -> return ((material, cprimtype, Just indices), Map.map fst mF)
                        xs -> return ((material, cprimtype, Nothing), combine' $ map pickIndices xs)
-      parsePolylist :: Parser [((MaterialName, PrimitiveTopology Triangles, Maybe [Int]), RefMap -> Map String [[Float]])]
+      parsePolylist :: ParseResult [((MaterialName, PrimitiveTopology Triangles, Maybe [Int]), Map String [[Float]])]
       parsePolylist = do
-           inputFs' :: Map Int (RefMap -> Map String ([[Float]], Int))
-                <- fmap (Map.fromListWith combine) $ mapM (parseInput True) $ p -=> keep /> tag "input"
+           inputFs' :: Map Int (Map Semantic ([[Float]], Int))
+                <- fmap (Map.fromListWith combine) $ mapM (parseInput True sm (Map.fromList [vs])) $ p -=> keep /> tag "input"
            let inputFs = if Map.null inputFs'
                             then Map.singleton 0 vertices
                             else inputFs'
@@ -867,30 +810,29 @@ parsePrimitives vertices p = case fst $ head $ tagged keep p of
                     vsizes <- getFromListContents vcount
                     mapM (parsePoint inputFs count vsizes) [ps']
         where
-          parsePoint :: Map Int (RefMap -> Map Semantic ([[Float]], Int))
+          parsePoint :: Map Int (Map Semantic ([[Float]], Int))
            -> Int 
            -> [Int]
            -> XML.Content XML.Posn 
-           -> Parser ((MaterialName, PrimitiveTopology Triangles, Maybe [Int]), RefMap -> Map Semantic [[Float]])
+           -> ParseResult ((MaterialName, PrimitiveTopology Triangles, Maybe [Int]), Map Semantic [[Float]])
           parsePoint inputs _count vsizes p' = do 
               let pStride = 1 + fst (Map.findMax inputs)
                   material = getAttribute "material" p'
               pLists <- fmap (splitIn pStride) $ do
                               pl <- getFromListContents p'
                               when (length pl < sum vsizes * pStride) $
-                                throwError $ TooFewIndices p'
+                                Left [TooFewIndices p']
                               return $ take (sum vsizes * pStride) pl
               case map (first (pLists !!)) $ Map.toList inputs of
-                      [(indices,mF)] -> return ((material, TriangleList, Just indices), Map.map fst . mF)
+                      [(indices,mF)] -> return ((material, TriangleList, Just indices), Map.map fst mF)
                       xs -> return ((material, TriangleList, Nothing), combine' $ map pickIndices xs)
 
             
-      pickIndices :: ([Int], RefMap -> Map MaterialName ([[Float]], Int)) -> RefMap -> Map Semantic [[Float]]
-      pickIndices (indices, mF) = Map.map (pickIndices' indices) . mF
+      pickIndices :: ([Int], Map MaterialName ([[Float]], Int)) -> Map Semantic [[Float]]
+      pickIndices (indices, mF) = Map.map (pickIndices' indices) mF
           where
           pickIndices' :: (Ix i, Num i) => [i] -> ([b], i) -> [b]
           pickIndices' indices' (xs, len) = let arr = listArray (0,len) xs in map (arr!) indices'
-
 
 
         
@@ -1008,7 +950,7 @@ sceneFromCollada tree =
       toMesh (ColladaMeshPrimitiveIndexed _ indices vertices) = Mesh [ DrawVertex (aToV3 v) (aToV3 n) (V2 0 0) | (v, n) <- zip (fst vertices) (snd vertices)] (Just indices) (V3 0 0 0) Nothing BoardShader
       tagT t = zip (repeat t)
       tagContent (t, n) = (tagT t $ nodeCameras n, tagT t $ nodeGeometries n) 
-      filterGeometry (modelMat, (_,ColladaMesh _ mesh)) = mapMaybe (filterColladaMesh modelMat) mesh
+      filterGeometry (modelMat, (_,Geometry mesh)) = mapMaybe (filterColladaMesh modelMat) mesh
       filterColladaMesh _modelMat (TriangleColladaMesh _ pstream _aabb) = do
         -- guard $ testAABBprojection modelViewProj aabb /= Outside                -- Frustum cull geometries
         return $ fmap (\v -> let p = fromJust $ Map.lookup "POSITION" v
