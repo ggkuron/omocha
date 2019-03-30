@@ -1,0 +1,5 @@
+[
+    CElem (Elem (N "input") [(N "semantic",VERTEX),(N "source",#Cube_001-mesh-vertices),(N "offset",0)] []) file untitled.dae  at line 83 col 11,
+    CElem (Elem (N "input") [(N "semantic",NORMAL),(N "source",#Cube_001-mesh-normals),(N "offset",1)] []) file untitled.dae  at line 84 col 11,
+    CElem (Elem (N "input") [(N "semantic",TEXCOORD),(N "source",#Cube_001-mesh-map-0),(N "offset",2),(N "set",0)] []) file untitled.dae  at line 85 col 11
+]

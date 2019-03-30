@@ -65,6 +65,7 @@ library:
     - vector
     - random
     - HaXml
+    - hxt
     - array
     - transformers
     - exception-transformers

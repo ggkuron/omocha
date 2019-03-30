@@ -1,0 +1,54 @@
+
+Node {
+    rootLabel = (
+        Nothing,
+        Just "Scene"[][]
+    ), 
+    subForest = [
+        Node {
+            rootLabel = (
+                Nothing,
+                Just "Cube" 
+                []
+                [
+                    (
+                        Nothing,
+                        ColladaMesh {
+                            meshID = "Cube_001-mesh",
+                            meshPrimitives = [
+                                TriangleColladaMesh {
+                                    meshMaterial = "",
+                                    meshDescription = fromList [
+                                        ("NORMAL",3),
+                                        ("POSITION",3),
+                                        ("TEXCOORD0",3)
+                                    ], 
+                                    meshPrimitiveStream = ColladaMeshPrimitiveArray {
+                                        getColladaMeshPrimitiveArray = [
+                                            ColladaMeshPrimitive 
+                                                TriangleList 
+                                                ( fromList [
+                                                    ("NORMAL" ,[
+                                                        [0.0,-1.0,0.0,7.99155e-7,0.0,-1.0,-0.8570746,0.0,0.5151924],
+                                                        [7.792813,4.171588,3.745798,3.556886,-4.590883,3.745798,4.12902,-4.171588,3.745798],
+                                                        [0.391951,0.5286254,0.391951,0.5286254,0.391951,0.5286254]
+                                                    ]),
+                                                    ("POSITION",[]),
+                                                    ("TEXCOORD0",[])
+                                                ])
+                                        ]
+                                    }, 
+                                    meshAABB = AABB {
+                                        aabbMin = V3 3.556886 (-4.590883) 3.745798, 
+                                        aabbMax = V3 7.792813 4.171588 3.745798
+                                    }
+                                }
+                            ]
+                        }
+                    )
+                ]
+            ),
+            subForest = []
+        }
+    ]
+}

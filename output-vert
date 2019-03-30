@@ -1,0 +1,1 @@
+CElem (Elem (N "vertices") [(N "id",Cube_001-mesh-vertices)] [CString False "\n          " file untitled.dae  at line 79 col 47,CElem (Elem (N "input") [(N "semantic",POSITION),(N "source",#Cube_001-mesh-positions)] []) file untitled.dae  at line 80 col 11,CString False "\n        " file untitled.dae  at line 80 col 73]) file untitled.dae  at line 79 col 9

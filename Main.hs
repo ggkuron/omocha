@@ -15,7 +15,7 @@
 module Main where   
 
 import Omocha.Bitmap
-import Omocha.Font
+-- import Omocha.Font
 import Omocha.Collada
 import Omocha.Scene
 
@@ -52,8 +52,6 @@ getImage :: Bitmap -> (V2 Int, P.Image P.PixelRGBA8)
 getImage bmp = let img = bitmapImage bmp
                    size = V2 (P.imageWidth img) (P.imageHeight img)
                 in (size, img)
-
-
 
 
 scene :: Scene
@@ -138,8 +136,8 @@ main = runContextT (GLFW.defaultHandleConfig { GLFW.configEventPolicy = Nothing 
     win <- newWindow (WindowFormatColorDepth RGBA8 Depth16) (GLFW.defaultWindowConfig "omocha")
     uniform :: Buffer os (Uniform UniInput) <- newBuffer 1  
 
-    -- font <- loadFont "VL-PGothic-Regular.ttf"
-    collada <- liftIO $ readColladaFile "untitled.dae"
+-- font <- loadFont "VL-PGothic-Regular.ttf"
+    Just collada <- liftIO $ readColladaFile "untitled.dae"
     let s = sceneFromCollada collada
 
     r <- buildRendering win uniform s

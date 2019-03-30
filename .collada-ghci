@@ -1,0 +1,61 @@
+:l src/Omocha/Collada.hs
+:set -XFlexibleContexts
+:set -XScopedTypeVariables
+-- :set -fbreak-on-exception
+let fileName = "untitled.dae"
+s <- readFile fileName
+Left xmlErr = xmlParse' fileName s
+Right xml = xmlParse' fileName s
+let XML.Document _ _ (Elem (N "COLLADA") _ xs) _ = xml
+let sources = xs ==> deep (tagWith (`elem` ["animation", "mesh", "morph", "skin", "spline", "convex_mesh", "brep", "nurbs", "nurbs_surface"])) /> tag "source"
+let sArrays = sources ==> tagged (keep /> tagWith ("_array" `isSuffixOf`) `with` attr "id")
+let sGeo =  xs ==> tag "library_geometries" /> tag "geometry"
+let sNode = xs ==> tag "library_nodes" /> tag "node"
+-- Right verticess <- mapM (getReqSingleElement "vertices") $ sGeo -=> keep /> cat [tag "convex_mesh", tag "brep"]
+let getR (Right v) = v
+let geo = sGeo !! 0
+let m = getReqSingleElement "mesh" geo
+let mesh = getR . getR $ runExceptT m
+let id = getAttribute "id" geo
+let verts = getR $ getReqSingleElement "vertices" mesh
+let vinputs = verts -=> keep /> tag "input"
+let vi = vinputs !! 0 
+let source = getAttribute "source" vi
+let Just vulr = localUrl source
+let vsem = getAttribute "semantic" vi
+let cs = children mesh
+let poly = cs !! 9
+let vin = poly -=> keep /> tag "input"
+let positon = vin !! 0
+let normal = vin !! 1
+let ps = poly -=> keep /> tag "p"
+parse [(a,"")] = a
+fromString = parse . reads
+let p = ps !! 0
+combine :: (RefMap -> Map String ([[Float]], Int)) -> (RefMap -> Map String ([[Float]], Int)) -> RefMap -> Map String ([[Float]], Int)
+combine f g refmap = f refmap `Map.union` g refmap
+
+let inputFs' :: Map Int (RefMap -> Map String ([[Float]], Int)) = fst $ fst $ getR $ runWriterT $ runWriterT $ fmap (Map.fromListWith combine) $ mapM (parseInput True) $ vin
+let cont = getStringContent p
+let pl :: [Int]  = map fromString $  words  cont
+let pLists :: [[Int]] =  splitIn 3 $ pl
+let pss :: [([Int], RefMap -> Map String ([[Float]], Int))] = map (first (pLists !!)) $ Map.toList inputFs'
+
+let doc = parseDoc xs
+let ((mid, refs), checks) = getR $ runWriterT $ runWriterT doc
+let refmap = RefMap $ Map.fromList refs
+let vs = parseVertices verts
+let vertices = fst $ fst $ getR $ runWriterT $ runWriterT $ vs
+let prims =  mapM (parsePrimitives  vertices) cs
+-- let prim = fst $ fst $ getR $ runWriterT $ runWriterT $ parsePrimitives vertices mesh
+let prim = fst $ fst $ getR $ runWriterT $ runWriterT $ prims
+let dynPrimList = (concat $ fst $ fst $ getR $ runWriterT $ runWriterT prims) !! 0
+let dynPrimLists = (second ($refmap)) dynPrimList
+let mds = makeDynPrimStream [dynPrimLists]
+let xs = (groupBy ((==) `on` fst) $ map splitParts [dynPrimLists]) !! 0
+let (((material, names, sizes), _):_) = xs
+let xs' = map (second snd) xs
+
+
+-- readCollada fileName s
+
