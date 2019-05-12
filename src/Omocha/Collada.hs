@@ -288,6 +288,7 @@ parseDoc = proc xs -> do
 
     listA $ deep $
         isElem 
+        >>> hasAttr "id"
         >>> catA [ hasName "animation"
                  , hasName "mesh"
                  , hasName "morph"
@@ -299,11 +300,13 @@ parseDoc = proc xs -> do
                  , hasName "nurbs_surface"
                  ] /> hasName "source"
         >>> (
-            (getChildren 
-             >>> hasNameWith (\qn -> "_array" `isSuffixOf` localPart qn)
-             >>> hasAttr "id"
-             >>> parseArray
-            ) &&& parseSource
+            ((this 
+               &&& (
+                  getChildren 
+                  >>> hasNameWith (\qn -> "_array" `isSuffixOf` localPart qn)
+            )) >>> parseArray)
+            &&&
+            parseSource
         ) -< c
 
     listA $ getChildren
@@ -367,19 +370,22 @@ parseDoc = proc xs -> do
 ---------------------------------------------------------------
 
 
-parseArray :: ParseState XmlTree ()
-parseArray = proc a -> do 
-    name <- getName -< a
-    cid <- getAttrValue0 "id" -< a
-    count <- getAttrValue0 "count" `withDefault` "-1" -< a
+parseArray :: ParseState (XmlTree, XmlTree) ()
+parseArray = proc (r, a) -> do 
+    (name, (count, ~xs))
+      <- getName 
+         &&& (getAttrValue0 "count" `withDefault` "-1")
+         &&& getFromListContents
+      -< a
+    cid <- getAttrValue0 "id" -< r
     case name of 
      "float_array" -> do
-         xs <- getFromListContents -< a
          let len = length xs
          if len /= (read count)
          then issueErr "Length of array not the same as the value of count attribute" -< ()
          else do
-            changeUserState (\(cid, as, len) s -> Map.insert cid (RefArray (as, len)) s) -< (cid, xs, len)
+            traceLog ("array :" ++  cid ++ " " ++  (show xs)) -<< a
+            changeUserState (\(cid, xs, len) s -> Map.insert cid (RefArray (xs, len)) s) -< (cid, xs, len)
             returnA -< ()
      _ -> issueErr "unknown array" -< ()
 
@@ -387,12 +393,15 @@ parseArray = proc a -> do
           
 parseSource :: ParseState XmlTree ()
 parseSource = proc x -> do
-    cid <- getAttrValue "id" -< x 
-    source <- keepWhen
-      (getChildren >>> hasName "technique_common")
-      (getChildren >>> hasName "accessor" >>> parseAccessor)
-      (arr . const $ Nothing)
-      -< x
+    (cid, source)
+     <- getAttrValue "id"
+        &&& 
+        (keepWhen
+            (getChildren >>> hasName "technique_common")
+            (getChildren >>> hasName "accessor" >>> parseAccessor)
+            (arr . const $ Nothing)
+        )
+        -< x
     case source of
       Just s -> do
          changeUserState (\(cid, s) ss -> Map.insert cid (RefSource s) ss) >>> unitA -< (cid, s)
@@ -659,26 +668,27 @@ parseLight = proc c -> do
     directional <- listA $ getChildren >>> hasName "directional" -< tech
     point <- listA $ getChildren >>> hasName "point" -< tech
     spot <- listA $ getChildren >>> hasName "spot" -< tech
-    light <- case (ambient, directional, point, spot) of
-               ([a],[],[],[]) -> do
-                 color <- parseSubColor -< a
-                 returnA -< Just $ Ambient cid color
-               ([],[a],[],[]) -> do
-                 color <- parseSubColor -< a
-                 returnA -< Just $ Directional cid color
-               ([],[],[a],[]) -> do
-                 color <- parseSubColor -< a
-                 att <- parseSubAttenuation -< a
-                 returnA -< Just $ Point cid color att
-               ([],[],[],[a]) -> do
-                 color <- parseSubColor -< a
-                 att <- parseSubAttenuation -< a
-                 ang <- getChildren >>> getAttrValue0 "falloff_angle" `withDefault` "180" >>> arr read -< c
-                 exp' <- getChildren >>> getAttrValue0 "falloff_exponent" `withDefault` "0" >>> arr read -< c
-                 returnA -< Just $ Spot cid color att ang exp'
-               _ -> do
-                issueErr "LightError" -< tech
-                returnA -< Nothing
+    light
+      <- case (ambient, directional, point, spot) of
+           ([a],[],[],[]) -> do
+             color <- parseSubColor -< a
+             returnA -< Just $ Ambient cid color
+           ([],[a],[],[]) -> do
+             color <- parseSubColor -< a
+             returnA -< Just $ Directional cid color
+           ([],[],[a],[]) -> do
+             color <- parseSubColor -< a
+             att <- parseSubAttenuation -< a
+             returnA -< Just $ Point cid color att
+           ([],[],[],[a]) -> do
+             color <- parseSubColor -< a
+             att <- parseSubAttenuation -< a
+             ang <- getChildren >>> getAttrValue0 "falloff_angle" `withDefault` "180" >>> arr read -< c
+             exp' <- getChildren >>> getAttrValue0 "falloff_exponent" `withDefault` "0" >>> arr read -< c
+             returnA -< Just $ Spot cid color att ang exp'
+           _ -> do
+            issueErr "LightError" -< tech
+            returnA -< Nothing
     case light of
         Just l -> changeUserState (\_ s -> Map.insert cid (RefLight l) s) -<< ()
         _ -> issueErr "not found" -< ()
@@ -698,36 +708,40 @@ parseLight = proc c -> do
 
 parseColladaMesh :: ParseState (ID, XmlTree) ()
 parseColladaMesh = proc (cid, c) -> do
-  v <- getChildren >>> hasName "vertices" -< c
-  children <- getChildren -< c    
-  vertices <- parseVertices -< v 
   if not $ null cid 
-    then do
-      dynPrimListFs <- parsePrimitives -< (vertices, children)
-      (changeUserState 
-        (\(cid, dynPrimListFs) s -> Map.insert cid (RefGeometry $ Geometry $ makeDynPrimStream dynPrimListFs) s))
-        >>> unitA -< (cid, dynPrimListFs)
-    else do
-      issueErr ("MissingAttribute " ++ cid) -<< c
-      returnA -< ()
+  then do
+    dynPrimListFs
+      <- ((getChildren >>> hasName "vertices"
+           >>> parseVertices)
+          &&& getChildren) >>> parsePrimitives -< c
+    (changeUserState 
+      (\(cid, dynPrimListFs) s -> Map.insert cid (RefGeometry $ Geometry $ makeDynPrimStream dynPrimListFs) s))
+      >>> unitA -< (cid, dynPrimListFs)
+  else do
+    issueErr ("MissingAttribute " ++ cid) -<< c
+    returnA -< ()
 
 type ParseResult a = ParseState XmlTree a
 
     
 parseVertices :: ParseState XmlTree CVertices
 parseVertices = proc verts -> do
-    inputs <- getChildren >>> hasName "input" -< verts
-    ins <- parseInput False -< inputs 
-    attrId <- getAttrValue "id" -< verts
+    (ins, attrId)
+     <- (getChildren 
+         >>> hasName "input"
+         >>> parseInput False)
+        &&& getAttrValue "id"
+      -< verts
     case ins of
       (Just inf') -> do
           insF <- arr snd -< inf'
+          traceMsg 1 $ ("vinput: " ++ (attrId) ++ " " ++ (show insF)) -<< attrId
           case attrId of
              "" -> do
                issueErr "MissingAttribute" -< verts
                returnA -< insF
              cid -> do
-               changeUserState (\_ s -> Map.insert cid (RefVertices insF) s) -<< ()
+               changeUserState (\(cid, insF) s -> Map.insert cid (RefVertices insF) s) -< (cid, insF)
                returnA -< Map.empty
       _ -> returnA -< Map.empty
     -- let vertsF = Map.unions insF
@@ -752,13 +766,17 @@ parseInput shared = proc i -> do
            case semantic of
                 "VERTEX" ->
                     case Map.lookup cid state of
-                         Just (RefVertices v) -> returnA -< Just (read offset', Map.mapKeysMonotonic (++ set') v)
+                         Just (RefVertices v) -> do
+                             traceMsg 1 $ ("v: " ++ (show v)) -<< v
+                             returnA -< Just (read offset', Map.mapKeysMonotonic (++ set') v)
                          _ -> do
                            issueErr ("MissingLinkError vertices: " ++ cid) -<< i
                            returnA -< Nothing
                 _ ->
                     case Map.lookup cid state of
-                         Just (RefSource s) -> returnA -< Just $ (read offset', Map.singleton (semantic ++ set') s)
+                         Just (RefSource s) -> do
+                             traceMsg 1 $ ("s: " ++ (show s)) -<< s
+                             returnA -< Just $ (read offset', Map.singleton (semantic ++ set') s)
                          _ -> do
                              issueErr ("MissingLinkError source: " ++ cid) -<< i
                              returnA -< Nothing
@@ -842,8 +860,7 @@ parsePrimitives = proc a@(_, p) -> do
                          else inputFs
           if read count == 0
           then returnA -< []
-          else do
-              listA $ parsePoint -< (inputFs', vsizes, ps')
+          else listA $ parsePoint -< (inputFs', vsizes, ps')
         where
           parsePoint :: 
             ParseState 
@@ -863,6 +880,8 @@ parsePrimitives = proc a@(_, p) -> do
                               let taken = take (sum vsizes * pStride) pl
                               returnA -< taken
               let pLists = splitIn pStride contents
+              -- traceLog ("pLists : " ++ show pLists)
+              --  &&& (traceLog ("inputs: " ++ show (inputs))) -<< p'
               case map (first (pLists !!)) $ Map.toList inputs of
                       [(indices,mF)] -> returnA -< ((material, TriangleList, Just indices), Map.map fst mF)
                       xs -> returnA -< ((material, TriangleList, Nothing), combine' $ map pickIndices xs)
