@@ -23,6 +23,10 @@ import System.Random (randomIO)
 import Data.Char(isAlphaNum)
 
 data Bitmap = Bitmap { bitmapImage :: C.Image C.PixelRGBA8, bitmapHash:: Int }
+instance Eq Bitmap where
+    a == b = bitmapHash a == bitmapHash b
+instance Show Bitmap where
+    show = show . bitmapHash 
 
 liftBitmapIO :: MonadIO m => C.Image C.PixelRGBA8 -> m Bitmap
 liftBitmapIO b = liftIO $ Bitmap b <$> randomIO

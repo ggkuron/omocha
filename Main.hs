@@ -138,6 +138,7 @@ main = runContextT (GLFW.defaultHandleConfig { GLFW.configEventPolicy = Nothing 
 
 -- font <- loadFont "VL-PGothic-Regular.ttf"
     Just collada <- liftIO $ readColladaFile "untitled.dae"
+    liftIO $ putStrLn $ show collada
     let s = sceneFromCollada collada
 
     r <- buildRendering win uniform s

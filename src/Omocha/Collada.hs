@@ -343,8 +343,6 @@ parseDoc = proc xs -> do
                     (issueErr "library_visual_scenes is not found" >>> unitA)
           ] -< c
 
-    traceMsg 1 $ "childrens" -< xs
-
     url <- keepWhen
                (getChildren >>> hasName "scene" 
                     >>> (
@@ -355,8 +353,6 @@ parseDoc = proc xs -> do
                (singleOnly >>> getAttrValue0 "url")
                (issueErr "scene node is not found " >>> (arr . const) "")
                -< c
-
-    traceMsg 1 $ "url count" -< url
 
     state <- getUserState -< ()
     case localUrl url of
@@ -639,12 +635,14 @@ parseCamera = proc c -> do
                                               
 parseGeometry :: ParseState XmlTree ()
 parseGeometry = proc x -> do
-   -- keepWhen (getChildren >>> hasName "vertices" >>> singleOnly) 
-   --     (keepWhen 
-   --          (getChildren >>> (hasName "convex_mesh" <+> hasName "brep"))
-   --          (parseVertices >>> unitA)
-   --          (issueErr "vertices root not found v2" >>> unitA))
-   --     (issueErr "vertices not found v1" >>> unitA) -< x
+   listA $
+       keepWhen 
+         (getChildren >>> hasName "vertices" >>> singleOnly) 
+         (keepWhen 
+              (getChildren >>> (hasName "convex_mesh" <+> hasName "brep"))
+              (parseVertices >>> unitA)
+              (issueErr "vertices root not found v2" >>> unitA))
+         (issueErr "vertices not found v1" >>> unitA) -< x
    ifA 
        (getChildren >>> hasName "mesh" >>> singleOnly)
        ((getAttrValue "id"
@@ -736,43 +734,44 @@ parseVertices = proc verts -> do
 
 parseInput :: Bool -> ParseState XmlTree (Maybe (Int, CVertices))
 parseInput shared = proc i -> do
-    source <- getAttrValue "source" -< i
-    ~offset <- if shared
-               then getAttrValue "offset" -< i
-               else returnA -< ""
+    (semantic, (source, (offset, set)))
+     <- getAttrValue0 "semantic"
+            &&& getAttrValue0 "source"
+            &&& getAttrValue "offset"
+            &&& getAttrValue "set" -< i
+
+    traceMsg 1 $ ("semantic: " ++ semantic) -<< i
+    let offset' = if shared then offset else ""
     case localUrl source of
-       Nothing -> returnA -< Just (read offset, Map.empty)
+       Nothing -> do
+          issueErr ("Missing source: " ++ source) -<< i
+          returnA -< Just (read offset', Map.empty)
        Just cid -> do
-           semantic <- getAttrValue "semantic" -< i
-           set <- if shared
-             then getAttrValue "set" -< i
-             else returnA -< ""
+           let set' = if shared then set else ""
            state <- getUserState -< ()
            case semantic of
                 "VERTEX" ->
                     case Map.lookup cid state of
-                         Just (RefVertices v) -> returnA -< Just (read offset, Map.mapKeysMonotonic (++ set) v)
+                         Just (RefVertices v) -> returnA -< Just (read offset', Map.mapKeysMonotonic (++ set') v)
                          _ -> do
                            issueErr ("MissingLinkError vertices: " ++ cid) -<< i
                            returnA -< Nothing
                 _ ->
                     case Map.lookup cid state of
-                         Just (RefSource s) -> returnA -< Just $ (read offset, Map.singleton (semantic ++ set) s)
+                         Just (RefSource s) -> returnA -< Just $ (read offset', Map.singleton (semantic ++ set') s)
                          _ -> do
                              issueErr ("MissingLinkError source: " ++ cid) -<< i
                              returnA -< Nothing
               
-      -- changeUserState (\_ s -> Map.insert cid (RefGeometry $ Geometry $ makeDynPrimStream dynPrimListFs) s) -<< ()
-
 parsePrimitives :: ParseState (CVertices, XmlTree) [((MaterialName, PrimitiveTopology Triangles, Maybe [Int]), Map Semantic [[Float]])]
 parsePrimitives = proc a@(_, p) -> do
     name <- getName -< p
     case name of
-        "triangles" -> parseTriangle TriangleList -< a
-        "trifans" -> parseTriangle TriangleFan -< a
-        "tristrips" -> parseTriangle TriangleStrip -< a
-        "polylist" -> parsePolylist -< a
-        _ -> returnA -< mempty
+      "triangles" -> parseTriangle TriangleList -< a
+      "trifans" -> parseTriangle TriangleFan -< a
+      "tristrips" -> parseTriangle TriangleStrip -< a
+      "polylist" -> parsePolylist -< a
+      _ -> returnA -< mempty
     where 
       combine :: (Map Semantic CVertice) -> (Map Semantic CVertice) ->  Map Semantic CVertice
       combine f g = f `Map.union` g
@@ -791,19 +790,19 @@ parsePrimitives = proc a@(_, p) -> do
         else do
            ps' <- listA $ getChildren >>> hasName "p" -< p
            case (primtype, ps') of
-               (TriangleList, _:_:_) -> do
-                   issueErr "MultipleElement p" -< p
-                   returnA -< []
-               (TriangleList, [_]) -> unlistA >>> listA (parsePoint primtype inputFs count) -<< ps'
-               (TriangleList, []) -> do
-                   issueErr "MissingElement p" -< p
-                   returnA -< []
-               (_, _:_) | length ps' < count -> do
-                   issueErr "TooFewElements p" -< p
-                   returnA -< []
-               _ -> do
-                   ps'' <- arr $ take count -<< ps'
-                   unlistA >>> listA (parsePoint primtype inputFs count) -<< ps''
+             (TriangleList, _:_:_) -> do
+                 issueErr "MultipleElement p" -< p
+                 returnA -< []
+             (TriangleList, [_]) -> unlistA >>> listA (parsePoint primtype inputFs count) -<< ps'
+             (TriangleList, []) -> do
+                 issueErr "MissingElement p" -< p
+                 returnA -< []
+             (_, _:_) | length ps' < count -> do
+                 issueErr "TooFewElements p" -< p
+                 returnA -< []
+             _ -> do
+                 ps'' <- arr $ take count -<< ps'
+                 unlistA >>> listA (parsePoint primtype inputFs count) -<< ps''
          where
            parsePoint :: PrimitiveTopology Triangles 
              -> Map Int CVertices 
@@ -811,8 +810,9 @@ parsePrimitives = proc a@(_, p) -> do
              -> ParseResult ((MaterialName, PrimitiveTopology Triangles, Maybe [Int]), Map Semantic [[Float]])
            parsePoint cprimtype inputs count = proc p' -> do 
                let pStride = 1 + (fst $ Map.findMax inputs) :: Int
-               material <- getAttrValue "material" -< p'
-               pl <- getFromListContents -< p'
+               (material, pl)
+                <- getAttrValue "material"
+                     &&& getFromListContents  -< p'
                contents <- case cprimtype of
                              TriangleList -> do
                                 if (length pl < count * 3 * pStride)
@@ -829,40 +829,40 @@ parsePrimitives = proc a@(_, p) -> do
                        xs -> returnA -< ((material, cprimtype, Nothing), combine' $ map pickIndices xs)
       parsePolylist :: ParseState (CVertices, XmlTree) [((MaterialName, PrimitiveTopology Triangles, Maybe [Int]), Map String [[Float]])]
       parsePolylist = proc (vertices, p) -> do
-           input <- getChildren >>> hasName "input" -< p
-           inputFs' <- listA (parseInput True)
-                       >>> arr catMaybes 
-                       >>> arr (Map.fromListWith combine) -< input 
-
-           let inputFs = if Map.null inputFs'
+          (inputFs, (count, (ps', vsizes)))
+            <- ((listA $ getChildren >>> hasName "input" >>> parseInput True)
+               >>> arr (Map.fromListWith combine . catMaybes)
+               )
+               &&& getAttrValue "count"
+               &&& (getChildren >>> hasName "p")
+               &&& (getChildren >>> hasName "vcount" >>> getFromListContents)
+               -< p 
+          let inputFs' = if Map.null inputFs
                          then Map.singleton 0 vertices
-                         else inputFs'
-           count <- getAttrValue0 "count" >>> arr read -< p
-
-           if count == 0
-           then returnA -< []
-           else do
-             ps' <- listA $ getChildren >>> hasName "p" -< p
-             vcount <- getChildren >>> hasName "vcount" -< p
-             vsizes <- getFromListContents -< vcount
-             unlistA >>> listA (parsePoint inputFs count vsizes) -<< ps'
+                         else inputFs
+          if read count == 0
+          then returnA -< []
+          else do
+              listA $ parsePoint -< (inputFs', vsizes, ps')
         where
-          parsePoint :: Map Int (Map Semantic ([[Float]], Int))
-           -> Int 
-           -> [Int]
-           -> ParseResult ((MaterialName, PrimitiveTopology Triangles, Maybe [Int]), Map Semantic [[Float]])
-          parsePoint inputs _count vsizes = proc p' -> do 
+          parsePoint :: 
+            ParseState 
+              (Map Int (Map Semantic ([[Float]], Int)), [Int], XmlTree)
+              ((MaterialName, PrimitiveTopology Triangles, Maybe [Int]), Map Semantic [[Float]])
+          parsePoint = proc p'@(inputs, vsizes, ps') -> do 
               let pStride = 1 + fst (Map.findMax inputs)
-              material <- getAttrValue "material" -< p'
-              pl <- getFromListContents -< p'
+              (material, pl)
+               <- getAttrValue "material"
+                  &&& getFromListContents
+                  -< ps'
               contents <- if length pl < sum vsizes * pStride 
-                            then do
-                                issueErr "TooFewIndices" -< p'
-                                returnA -< []
-                            else do
-                                taken <- arr $ take (sum vsizes * pStride) -<< pl
-                                returnA -< taken
-              pLists <- arr (splitIn pStride) -<< contents
+                          then do
+                              issueErr "TooFewIndices" -< p'
+                              returnA -< []
+                          else do
+                              let taken = take (sum vsizes * pStride) pl
+                              returnA -< taken
+              let pLists = splitIn pStride contents
               case map (first (pLists !!)) $ Map.toList inputs of
                       [(indices,mF)] -> returnA -< ((material, TriangleList, Just indices), Map.map fst mF)
                       xs -> returnA -< ((material, TriangleList, Nothing), combine' $ map pickIndices xs)

@@ -79,4 +79,5 @@ tests:
         - omocha 
         - hspec
         - raw-strings-qq
+        - GPipe >= 2.2.3
 

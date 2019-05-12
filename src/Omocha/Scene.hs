@@ -87,7 +87,7 @@ data DrawVertex = DrawVertex {
                     dvPosition :: V3 Float,
                     dvNormal :: V3 Float,
                     dvUv :: V2 Float
-                } deriving (Show)
+                } deriving (Show, Eq)
 
 
 data Mesh = Mesh {
@@ -96,7 +96,7 @@ data Mesh = Mesh {
               offset :: V3 Float,
               textureImage :: Maybe Bitmap,
               shaderType :: OmochaShaderType
-          }
+          } deriving (Eq)
 
 instance Show Mesh where
     show Mesh{..} = show vertices ++ show indices ++ show shaderType
@@ -108,7 +108,7 @@ data OmochaShaderType = BoardShader | TargetBoard
 data Scene = Scene {
                meshes :: [Mesh],
                camera :: V3 Float
-           } deriving (Show)
+           } deriving (Show, Eq)
 
 
 type VBuffer = (B3 Float, B3 Float, B2 Float)
