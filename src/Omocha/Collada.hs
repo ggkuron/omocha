@@ -288,7 +288,6 @@ parseDoc = proc xs -> do
 
     listA $ deep $
         isElem 
-        >>> hasAttr "id"
         >>> catA [ hasName "animation"
                  , hasName "mesh"
                  , hasName "morph"
@@ -299,15 +298,7 @@ parseDoc = proc xs -> do
                  , hasName "nurbs"
                  , hasName "nurbs_surface"
                  ] /> hasName "source"
-        >>> (
-            ((this 
-               &&& (
-                  getChildren 
-                  >>> hasNameWith (\qn -> "_array" `isSuffixOf` localPart qn)
-            )) >>> parseArray)
-            &&&
-            parseSource
-        ) -< c
+        >>> parseSource -< c
 
     listA $ getChildren
         >>> choiceA 
@@ -370,21 +361,20 @@ parseDoc = proc xs -> do
 ---------------------------------------------------------------
 
 
-parseArray :: ParseState (XmlTree, XmlTree) ()
-parseArray = proc (r, a) -> do 
-    (name, (count, ~xs))
+parseArray :: ParseState XmlTree ()
+parseArray = proc a -> do 
+    (name, (cid, (count, ~xs)))
       <- getName 
+         &&& getAttrValue0 "id" 
          &&& (getAttrValue0 "count" `withDefault` "-1")
          &&& getFromListContents
       -< a
-    cid <- getAttrValue0 "id" -< r
     case name of 
      "float_array" -> do
          let len = length xs
          if len /= (read count)
          then issueErr "Length of array not the same as the value of count attribute" -< ()
          else do
-            traceLog ("array :" ++  cid ++ " " ++  (show xs)) -<< a
             changeUserState (\(cid, xs, len) s -> Map.insert cid (RefArray (xs, len)) s) -< (cid, xs, len)
             returnA -< ()
      _ -> issueErr "unknown array" -< ()
@@ -393,15 +383,21 @@ parseArray = proc (r, a) -> do
           
 parseSource :: ParseState XmlTree ()
 parseSource = proc x -> do
+    listA $
+      getChildren 
+      >>> hasNameWith (\qn -> "_array" `isSuffixOf` localPart qn)
+      >>> parseArray
+      -< x
     (cid, source)
      <- getAttrValue "id"
         &&& 
-        (keepWhen
+        (
+          keepWhen
             (getChildren >>> hasName "technique_common")
             (getChildren >>> hasName "accessor" >>> parseAccessor)
             (arr . const $ Nothing)
-        )
-        -< x
+        ) -< x
+
     case source of
       Just s -> do
          changeUserState (\(cid, s) ss -> Map.insert cid (RefSource s) ss) >>> unitA -< (cid, s)
@@ -412,38 +408,47 @@ parseAccessor = proc acc -> do
   arrUrl <- getAttrValue "source" -< acc
   case localUrl arrUrl of
        Nothing -> do 
-         traceLog "url not found: " -< arrUrl
+         traceLog "source id is not found: " -< arrUrl
          returnA -< Nothing
        Just cid -> do
-          count <- getAttrValue "count" >>> arr read -< acc
-          offset <- getAttrValue0 "offset" `withDefault` "0" >>> arr read -< acc
-          stride <- getAttrValue0 "stride" `withDefault` "1" >>> arr read -< acc
-          params <- getChildren >>> isElem -< acc
-          useParamList <- listA $ hasAttr "param" >>> getAttrValue "name" >>> arr (not . null) -< params
-          let paramLength = length useParamList
-          if paramLength > stride
-            then do
-                traceLog "StrideAttributeTooLow" -< stride
-                returnA -< Nothing
-            else do
-                let requiredLength = offset + stride * (count-1) + paramLength
-                state <- getUserState -< ()
-                case Map.lookup cid state of
-                  Just (RefArray (source, len)) -> if (requiredLength > len) 
-                                        then issueErr "SourceSizeTooSmall" -< Nothing
-                                        else arr
-                                                (\(source, offset, count, stride, useParamList) ->
-                                                     Just $ (assembleSource 
-                                                               (drop offset source)
-                                                               count 
-                                                               stride 
-                                                               useParamList,
-                                                               count
-                                                            ))
-                                              -< (source, offset, count, stride, useParamList)
-                  _ -> do
-                   traceMsg 1 ("state: " ++ (show state)) -<< ()
-                   issueErr ("MissingLinkError *_array: " ++ cid) -<< Nothing
+         (count, (offset, (stride, useParamList)))
+           <- (getAttrValue "count" >>> arr read)
+              &&& (getAttrValue0 "offset" `withDefault` "0" >>> arr read) 
+              &&& (getAttrValue0 "stride" `withDefault` "1" >>> arr read)
+              &&& (listA $ getChildren 
+                   >>> isElem
+                   >>> hasAttr "param" 
+                   >>> getAttrValue "name"
+                   >>> arr (not . null))
+              -< acc
+         let paramLength = length useParamList
+         if paramLength > stride
+         then do
+             traceLog "StrideAttributeTooLow" -< stride
+             returnA -< Nothing
+         else do
+             let requiredLength = offset + stride * (count-1) + paramLength
+             state <- getUserState -< ()
+             case Map.lookup cid state of
+               Just (RefArray (source, len)) ->
+                 if (requiredLength > len) 
+                 then issueErr "SourceSizeTooSmall" -< Nothing
+                 else do
+                     traceMsg 1 ("source: " ++ (show source)) -<< ()
+                     traceMsg 1 ("assembled: " ++ (show $ assembleSource (drop offset source) count stride useParamList)) -<< ()
+                     arr
+                         (\(source, offset, count, stride, useParamList) ->
+                              Just $ (assembleSource 
+                                        (drop offset source)
+                                        count 
+                                        stride 
+                                        useParamList,
+                                        count
+                                     ))
+                       -< (source, offset, count, stride, useParamList)
+               _ -> do
+                traceMsg 1 ("state: " ++ (show state)) -<< ()
+                issueErr ("MissingLinkError *_array: " ++ cid) -<< Nothing
   where 
     assembleSource _ 0 _ _ = []
     assembleSource source count stride useParamList = case splitAt stride source of
@@ -764,22 +769,22 @@ parseInput shared = proc i -> do
            let set' = if shared then set else ""
            state <- getUserState -< ()
            case semantic of
-                "VERTEX" ->
-                    case Map.lookup cid state of
-                         Just (RefVertices v) -> do
-                             traceMsg 1 $ ("v: " ++ (show v)) -<< v
-                             returnA -< Just (read offset', Map.mapKeysMonotonic (++ set') v)
-                         _ -> do
-                           issueErr ("MissingLinkError vertices: " ++ cid) -<< i
-                           returnA -< Nothing
-                _ ->
-                    case Map.lookup cid state of
-                         Just (RefSource s) -> do
-                             traceMsg 1 $ ("s: " ++ (show s)) -<< s
-                             returnA -< Just $ (read offset', Map.singleton (semantic ++ set') s)
-                         _ -> do
-                             issueErr ("MissingLinkError source: " ++ cid) -<< i
-                             returnA -< Nothing
+             "VERTEX" ->
+               case Map.lookup cid state of
+                    Just (RefVertices v) -> do
+                        traceMsg 1 $ ("v: " ++ (show v)) -<< v
+                        returnA -< Just (read offset', Map.mapKeysMonotonic (++ set') v)
+                    _ -> do
+                      issueErr ("MissingLinkError vertices: " ++ cid) -<< i
+                      returnA -< Nothing
+             _ ->
+               case Map.lookup cid state of
+                    Just (RefSource s) -> do
+                        traceMsg 1 $ ("s: " ++ (show s)) -<< s
+                        returnA -< Just $ (read offset', Map.singleton (semantic ++ set') s)
+                    _ -> do
+                        issueErr ("MissingLinkError source: " ++ cid) -<< i
+                        returnA -< Nothing
               
 parsePrimitives :: ParseState (CVertices, XmlTree) [((MaterialName, PrimitiveTopology Triangles, Maybe [Int]), Map Semantic [[Float]])]
 parsePrimitives = proc a@(_, p) -> do
