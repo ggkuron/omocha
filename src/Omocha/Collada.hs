@@ -213,16 +213,11 @@ data Reference = RefNode ColladaTree
 readColladaFile :: FilePath -> IO (Maybe ColladaTree)
 readColladaFile f = do
     (_, r) <- runIOSLA (
-                        readDocument [ withValidate yes
-                                     , withTrace 2
-                                     ] f 
-                        >>> configSysVars [ withTrace 4]
-                        >>> parseDoc 
-                        >>> errorMsgStderr
+                         readDocument [ withValidate yes ] f 
+                         >>> parseDoc 
+                         >>> errorMsgStderr
                        )
                        (initialState Map.empty) ()
-    putStrLn $ show r
-    putStrLn $ (show . length) r
     return $ (listToMaybe . catMaybes) r
 
 localUrl :: ID -> Maybe ID
@@ -417,7 +412,7 @@ parseAccessor = proc acc -> do
               &&& (getAttrValue0 "stride" `withDefault` "1" >>> arr read)
               &&& (listA $ getChildren 
                    >>> isElem
-                   >>> hasAttr "param" 
+                   >>> hasName "param" 
                    >>> getAttrValue "name"
                    >>> arr (not . null))
               -< acc
@@ -434,8 +429,6 @@ parseAccessor = proc acc -> do
                  if (requiredLength > len) 
                  then issueErr "SourceSizeTooSmall" -< Nothing
                  else do
-                     traceMsg 1 ("source: " ++ (show source)) -<< ()
-                     traceMsg 1 ("assembled: " ++ (show $ assembleSource (drop offset source) count stride useParamList)) -<< ()
                      arr
                          (\(source, offset, count, stride, useParamList) ->
                               Just $ (assembleSource 
@@ -447,7 +440,6 @@ parseAccessor = proc acc -> do
                                      ))
                        -< (source, offset, count, stride, useParamList)
                _ -> do
-                traceMsg 1 ("state: " ++ (show state)) -<< ()
                 issueErr ("MissingLinkError *_array: " ++ cid) -<< Nothing
   where 
     assembleSource _ 0 _ _ = []
@@ -740,7 +732,6 @@ parseVertices = proc verts -> do
     case ins of
       (Just inf') -> do
           insF <- arr snd -< inf'
-          traceMsg 1 $ ("vinput: " ++ (attrId) ++ " " ++ (show insF)) -<< attrId
           case attrId of
              "" -> do
                issueErr "MissingAttribute" -< verts
@@ -759,7 +750,6 @@ parseInput shared = proc i -> do
             &&& getAttrValue "offset"
             &&& getAttrValue "set" -< i
 
-    traceMsg 1 $ ("semantic: " ++ semantic) -<< i
     let offset' = if shared then offset else ""
     case localUrl source of
        Nothing -> do
@@ -772,7 +762,6 @@ parseInput shared = proc i -> do
              "VERTEX" ->
                case Map.lookup cid state of
                     Just (RefVertices v) -> do
-                        traceMsg 1 $ ("v: " ++ (show v)) -<< v
                         returnA -< Just (read offset', Map.mapKeysMonotonic (++ set') v)
                     _ -> do
                       issueErr ("MissingLinkError vertices: " ++ cid) -<< i
@@ -780,7 +769,6 @@ parseInput shared = proc i -> do
              _ ->
                case Map.lookup cid state of
                     Just (RefSource s) -> do
-                        traceMsg 1 $ ("s: " ++ (show s)) -<< s
                         returnA -< Just $ (read offset', Map.singleton (semantic ++ set') s)
                     _ -> do
                         issueErr ("MissingLinkError source: " ++ cid) -<< i
@@ -885,8 +873,6 @@ parsePrimitives = proc a@(_, p) -> do
                               let taken = take (sum vsizes * pStride) pl
                               returnA -< taken
               let pLists = splitIn pStride contents
-              -- traceLog ("pLists : " ++ show pLists)
-              --  &&& (traceLog ("inputs: " ++ show (inputs))) -<< p'
               case map (first (pLists !!)) $ Map.toList inputs of
                       [(indices,mF)] -> returnA -< ((material, TriangleList, Just indices), Map.map fst mF)
                       xs -> returnA -< ((material, TriangleList, Nothing), combine' $ map pickIndices xs)
