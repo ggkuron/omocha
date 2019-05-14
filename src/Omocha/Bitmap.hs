@@ -33,15 +33,14 @@ liftBitmapIO b = liftIO $ Bitmap b <$> randomIO
 
 -- | Load an image file.
 readBitmap :: MonadIO m => FilePath -> m Bitmap
-readBitmap path = liftIO $ do
-    Bitmap <$> C.readImageRGBA8 path <*> randomIO
+readBitmap path = liftIO $ Bitmap <$> C.readImageRGBA8 path <*> randomIO
 
 
 -- | The type of the given 'ExpQ' must be @FilePath -> IO FilePath@
 -- FIXME: This may cause name duplication if there are multiple non-alphanumeric file names.
 loadBitmapsWith :: ExpQ -> FilePath -> Q [Dec]
 loadBitmapsWith getFullPath path = do
-    loc <- (</>path) <$> takeDirectory <$> loc_filename <$> location
+    loc <- ((</>path) . takeDirectory ) . loc_filename <$> location
     paths <- runIO $ getFileList loc
 
     sequence $ do

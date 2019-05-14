@@ -42,11 +42,11 @@ import Graphics.GPipe (
     )
 
 import Data.Array (Ix, (!), listArray)
-import Data.Map (Map)
+import Data.Map.Strict (Map)
 import Data.Function (on)
 import Data.Maybe (fromJust, mapMaybe, catMaybes, listToMaybe)
 import Data.List hiding (union, transpose)
-import qualified Data.Map as Map
+import qualified Data.Map.Strict as Map
 import qualified Data.Foldable as F
 import qualified Data.Vector as V 
 import qualified Linear.V as V
@@ -151,7 +151,7 @@ data Attenuation = Attenuation {
 } deriving (Show, Eq)
 
 
-data Geometry =  Geometry {
+newtype Geometry =  Geometry {
     meshPrimitives :: [ColladaMesh]
 } deriving (Show)
 
@@ -213,11 +213,16 @@ data Reference = RefNode ColladaTree
 readColladaFile :: FilePath -> IO (Maybe ColladaTree)
 readColladaFile f = do
     (_, r) <- runIOSLA (
-                         readDocument [ withValidate yes ] f 
-                         >>> parseDoc 
-                         >>> errorMsgStderr
+                        readDocument [ withValidate yes
+                                     , withTrace 2
+                                     ] f 
+                        >>> configSysVars [ withTrace 4]
+                        >>> parseDoc 
+                        >>> errorMsgStderr
                        )
                        (initialState Map.empty) ()
+    print r
+    print (length r)
     return $ (listToMaybe . catMaybes) r
 
 localUrl :: ID -> Maybe ID
@@ -236,7 +241,7 @@ getFromContents = getChildren
 getFromListLengthContents :: forall a. (Read a) => Int -> ParseState XmlTree [a]
 getFromListLengthContents n = proc c -> do
     xs <- getFromListContents -< c
-    if (length xs == n)
+    if length xs == n
     then returnA -< xs
     else if length xs < n
          then issueErr "TooFewElements" -< xs
@@ -272,7 +277,7 @@ singleOnly :: ParseState XmlTree XmlTree
 singleOnly = this 
 
 keepWhen :: forall a b cat d. ArrowIf cat => cat a b -> cat b d -> cat a d -> cat a d
-keepWhen a b c = ifA a (a >>> b) c
+keepWhen a b = ifA a (a >>> b)
 
 type ReferenceMap = Map ID Reference
 type ParseState a b = IOStateArrow ReferenceMap a b
@@ -459,113 +464,145 @@ makeSID s = sid s
 
 parseNode :: ParseState XmlTree (Maybe ColladaTree)
 parseNode = proc c -> do  
-    hasANodeName <- hasName "node" >>> arr (not.null) -< c
-    if hasANodeName
-      then do
-        cid <- getAttrValue "id" -< c
-        csid <- getAttrValue "sid" >>> arr makeSID -< c
-        layer <- getAttrValue "layer" >>> arr words -<  c
-        let mid = if cid == "" then Nothing else Just cid
-        transformations <- listA $ getChildren >>> parseTransformations -< c
-        cameraFs <- listA $ getChildren >>> hasName "instance_camera" >>> parseCameraInstances -< c 
-        lightFs <- listA $ getChildren >>> hasName "instance_light" >>> parseLightInstances -< c 
-        geometryFs <- listA $ getChildren >>> hasName "instance_geometry" >>> parseGeometryInstances -< c 
-        subNodeFs <- listA $ getChildren >>> (hasName "node" <+> hasName "instance_node") >>> parseNode -< c 
-        let node = csid $ ColladaNode mid layer (catMaybes transformations) (catMaybes cameraFs) (catMaybes lightFs) (catMaybes geometryFs)
-        returnA -< Just $ NTree node $ catMaybes subNodeFs
-      else do
-        url <- getAttrValue "url" -< c
-        case localUrl url of
-                Just cid -> do
-                    state <- getUserState -< ()
-                    case Map.lookup cid state of
-                      Just (RefNode t') -> returnA -< Just t'
-                      _ -> do
-                         issueErr "MissingLinkError instance_node" -< ()
-                         returnA -< Nothing
-                _ -> do
-                     issueErr "empty" -< ()
-                     returnA -< Nothing
+    traceMsg 1 $ "n0:" -< ()
+    ifA 
+      (hasName "node")
+      (proc c -> do
+         traceMsg 1 $ "n1:" -< ()
+         (cid, (csid, (layer, (transformations, (cameraFs, (lightFs, (geometryFs, subNodeFs)))))))
+           <- getAttrValue "id"
+              &&&
+              (getAttrValue "sid" >>> arr makeSID)
+              &&&
+              (getAttrValue "layer" >>> arr words)
+              &&&
+              (listA $ getChildren >>> parseTransformations)
+              &&&
+              (listA $ getChildren >>> hasName "instance_camera" >>> parseCameraInstances)
+              &&&
+              (listA $ getChildren >>> hasName "instance_light" >>> parseLightInstances)
+              &&&
+              (listA $ getChildren >>> hasName "instance_geometry" >>> parseGeometryInstances)
+              &&&
+              (listA $  (traceMsg 1 "nchild") >>> getChildren >>> (hasName "node" <+> hasName "instance_node") >>> parseNode)
+           -< c
+         traceMsg 1 $ "n1':" ++ cid -<< ()
+         let mid = if cid == "" then Nothing else Just cid
+             node = csid $ ColladaNode mid layer (catMaybes transformations) (catMaybes cameraFs) (catMaybes lightFs) (catMaybes geometryFs)
+         returnA -< Just $ NTree node $ catMaybes subNodeFs
+      )
+      (proc c -> do
+         traceMsg 1 $ "n2:" -< ()
+         url <- getAttrValue "url" -< c
+         case localUrl url of
+           Just cid -> do
+               state <- getUserState -< ()
+               case Map.lookup cid state of
+                 Just (RefNode t') -> returnA -< Just t'
+                 _ -> do
+                    issueErr "MissingLinkError instance_node" -< ()
+                    returnA -< Nothing
+           _ -> do
+                issueErr "empty" -< ()
+                returnA -< Nothing
+      ) -< c
 
 parseCameraInstances :: ParseResult (Maybe Camera)
 parseCameraInstances = proc c -> do
+    traceMsg 1 $ "cameraI:" -< ()
     url <- getAttrValue "url" -< c
     case localUrl url of
-        Nothing -> issueWarn "" -< Nothing
-        Just cid -> do
-            state <- getUserState -< ()
-            case Map.lookup cid state of
-                 Just (RefCamera camera) -> returnA -< Just camera
-                 _ -> do
-                     issueErr "MissingLinkError instance_camera" -< c
-                     returnA -< Nothing
+      Nothing -> issueWarn "" -< Nothing
+      Just cid -> do
+          state <- getUserState -< ()
+          case Map.lookup cid state of
+               Just (RefCamera camera) -> returnA -< Just camera
+               _ -> do
+                   issueErr "MissingLinkError instance_camera" -< c
+                   returnA -< Nothing
 
 parseLightInstances :: ParseResult (Maybe Light)
 parseLightInstances = proc c -> do
-    url <- getAttrValue "url" -< c
-    case localUrl url of
-         Nothing -> returnA -< Nothing
-         Just cid -> do
-             state <- getUserState -< ()
-             case Map.lookup cid state of
-                Just (RefLight l) -> returnA -< Just l
-                _ -> do
-                    issueErr "MissingLinkError instance_light" -< c
-                    returnA -< Nothing
-
-parseGeometryInstances :: ParseResult (Maybe Geometry)
-parseGeometryInstances = proc c -> do
+    traceMsg 1 $ "lightI:" -< ()
     url <- getAttrValue "url" -< c
     case localUrl url of
       Nothing -> returnA -< Nothing
       Just cid -> do
-          state <- getUserState -< ()
-          case Map.lookup cid state of
-              Just (RefGeometry g) -> returnA -< Just g
-              _ -> do
-                issueErr "MissingLinkError instance_camera" -< c
-                returnA -< Nothing
----------------------------------------------------------------
+        state <- getUserState -< ()
+        case Map.lookup cid state of
+          Just (RefLight l) -> returnA -< Just l
+          _ -> do
+              issueErr "MissingLinkError instance_light" -< c
+              returnA -< Nothing
+
+parseGeometryInstances :: ParseResult (Maybe Geometry)
+parseGeometryInstances = proc c -> do
+    traceMsg 1 $ "geoI:" -< ()
+    url <- getAttrValue "url" -< c
+    case localUrl url of
+      Nothing -> do
+        issueErr ("Missing url: " ++ url) -<< c
+        returnA -< Nothing
+      Just cid -> do
+        traceMsg 1 $ "geoI':" ++ cid -<< ()
+        state <- getUserState -< ()
+        traceMsg 1 $ "geoI':" ++ (show $ Map.size state) -<< ()
+        case Map.lookup cid state of
+          Just (RefGeometry g) -> do 
+            traceMsg 1 $ "geoI'':" -< ()
+            returnA -< Just g
+          _ -> do
+            issueErr ("MissingLinkError instance geometry: " ++ url) -<< c
+            returnA -< Nothing
+-------------------------------------------------------------
 parseTransformations:: ParseResult (Maybe Transform)
 parseTransformations = proc c -> do
+    traceMsg 1 $ "trans0:" -< ()
     name <- getName -< c
     case name of
-        "lookat" -> do
-            xs <- getFromListLengthContents 9 -< c
-            let (eye,rest) = splitAt 3 xs
-                (int, up) = splitAt 3 rest
-            returnA -< Just $ LookAt (fromListToVec eye) (fromListToVec int) (fromListToVec up)
-        "matrix" -> do
-            mat <- getFromListLengthContents 16 -< c
-            returnA -< Just $ Matrix $ fromListToMat44 mat
-        "rotate" -> do
-            xs <- getFromListLengthContents 4 -< c
-            let (rot,[a]) = splitAt 3 xs
-            returnA -< Just $ Rotate (fromListToVec rot) a
-        "scale" -> do
-            v <- getFromListLengthContents 3 -< c
-            returnA -< Just $ Scale $ fromListToVec v
-        "skew" -> do
-            xs <- getFromListLengthContents 7 -< c
-            let ([a],rest) = splitAt 1 xs
-                (rot, trans) = splitAt 3 rest
-            returnA -< Just $ Skew a (fromListToVec rot) (fromListToVec trans)
-        "translate" -> do
-            v <- getFromListLengthContents 3 -< c
-            returnA -< Just $ Translate $ fromListToVec v
-        _ -> returnA -< Nothing
+      "lookat" -> do
+          xs <- getFromListLengthContents 9 -< c
+          let (eye,rest) = splitAt 3 xs
+              (int, up) = splitAt 3 rest
+          returnA -< Just $ LookAt (fromListToVec eye) (fromListToVec int) (fromListToVec up)
+      "matrix" -> do
+          mat <- getFromListLengthContents 16 -< c
+          returnA -< Just $ Matrix $ fromListToMat44 mat
+      "rotate" -> do
+          xs <- getFromListLengthContents 4 -< c
+          let (rot,[a]) = splitAt 3 xs
+          returnA -< Just $ Rotate (fromListToVec rot) a
+      "scale" -> do
+          v <- getFromListLengthContents 3 -< c
+          returnA -< Just $ Scale $ fromListToVec v
+      "skew" -> do
+          xs <- getFromListLengthContents 7 -< c
+          let ([a],rest) = splitAt 1 xs
+              (rot, trans) = splitAt 3 rest
+          returnA -< Just $ Skew a (fromListToVec rot) (fromListToVec trans)
+      "translate" -> do
+          v <- getFromListLengthContents 3 -< c
+          returnA -< Just $ Translate $ fromListToVec v
+      _ -> returnA -< Nothing
 ---------------------------------------------------------------
 
 parseVisualColladaTree :: ParseState XmlTree ()
 parseVisualColladaTree = proc c -> do
-    cid <- getAttrValue "id" -< c
-    node <- getChildren >>> hasName "node" -< c
-    subNodeFs <- listA parseNode -< node
+    (cid, subNodeFs)
+      <- getAttrValue "id"
+         &&& (
+           listA $ getChildren 
+           >>> hasName "node"
+           >>> parseNode
+         )
+       -< c
     if not $ null cid
-       then changeUserState (\_ s -> Map.insert cid (RefVisualColladaTree $ NTree (nosid $ ColladaNode (Just cid) [] [] [] [] []) (catMaybes subNodeFs)) s) -<< ()
-       else do
-        issueErr "MissingAttribute id" -< c 
-        returnA -< ()
+    then do
+      changeUserState (\(cid, subNodeFs) s -> Map.insert cid (RefVisualColladaTree $ NTree (nosid $ ColladaNode (Just cid) [] [] [] [] []) (catMaybes subNodeFs)) s) -< (cid, subNodeFs)
+      returnA -< ()
+    else do
+      issueErr "MissingAttribute id" -< c 
+      returnA -< ()
                                                        
 ---------------------------------------------------------------
 
@@ -579,59 +616,60 @@ parseCamera = proc c -> do
     tech <- getChildren >>> hasName "technique_common" >>> singleOnly -< optics
     persp <- listA $ getChildren >>> hasName "perspective" -< tech 
     orth <- listA $ getChildren >>> hasName "ortographic" -< tech
-    camera <- case (persp, orth) of
-             ([p], []) -> do
-                xfov <- listA $ getChildren >>> hasName "xfov" -< p
-                yfov <- listA $ getChildren >>> hasName "yfov" -< p 
-                aspectRatio <- listA $ getChildren >>> hasName "aspect_ratio" -< p
-                fov <- parseViewSize "MissingValidPers persp" -< (xfov, yfov, aspectRatio)
-                case fov of
-                    Just f -> do
-                        z <- parseZ -< p
-                        returnA -< Just $ Perspective cid f z
-                    _ -> returnA -< Nothing
-             ([], [orth']) -> do
-                xmag <- listA $ getChildren >>> hasName "xmag" -< orth'
-                ymag <- listA $ getChildren >>> hasName "ymag" -< orth'
-                ratio <- listA $ getChildren >>> hasName "aspect_ratio" -< orth'
-                mag <- parseViewSize "MissingValidOrth" -< (xmag, ymag , ratio)
-                case mag of
-                    Just m -> do
-                        z <- parseZ -< orth'
-                        returnA -< Just $ Orthographic cid m z
-                    _ -> returnA -< Nothing
-             _ -> do
-                issueErr "MissingView" -< tech
-                returnA -< Nothing
+    camera 
+      <- case (persp, orth) of
+           ([p], []) -> do
+              xfov <- listA $ getChildren >>> hasName "xfov" -< p
+              yfov <- listA $ getChildren >>> hasName "yfov" -< p 
+              aspectRatio <- listA $ getChildren >>> hasName "aspect_ratio" -< p
+              fov <- parseViewSize "MissingValidPers persp" -< (xfov, yfov, aspectRatio)
+              case fov of
+                  Just f -> do
+                      z <- parseZ -< p
+                      returnA -< Just $ Perspective cid f z
+                  _ -> returnA -< Nothing
+           ([], [orth']) -> do
+              xmag <- listA $ getChildren >>> hasName "xmag" -< orth'
+              ymag <- listA $ getChildren >>> hasName "ymag" -< orth'
+              ratio <- listA $ getChildren >>> hasName "aspect_ratio" -< orth'
+              mag <- parseViewSize "MissingValidOrth" -< (xmag, ymag , ratio)
+              case mag of
+                  Just m -> do
+                      z <- parseZ -< orth'
+                      returnA -< Just $ Orthographic cid m z
+                  _ -> returnA -< Nothing
+           _ -> do
+              issueErr "MissingView" -< tech
+              returnA -< Nothing
     case camera of
         Just camera' -> changeUserState (\_ s -> Map.insert cid (RefCamera camera') s) -<< ()
         _ -> issueErr "not found" -< ()
   where 
     parseViewSize errMsg = proc a -> do
         case a of
-            ([x], [], []) -> do
-                x' <- getFromContents -< x
-                returnA -< Just $ ViewSizeX x'
-            ([], [y], []) -> do
-                y' <- getFromContents -< y
-                returnA -< Just $ ViewSizeY y'
-            ([x], [y], []) -> do
-                x' <- getFromContents -< x
-                y' <- getFromContents -< y
-                returnA -< Just $ ViewSizeXY (V2 x' y')
-            ([x], [], [a']) -> do
-                x' <- getFromContents -< x
-                a'' <- getFromContents -< a'
-                let y' = x' / a''
-                returnA -< Just $ ViewSizeXY (V2 x' y')
-            ([], [y], [a']) -> do
-                y' <- getFromContents -< y
-                a'' <- getFromContents -< a'
-                let x' = y' * a''
-                returnA -< Just $ ViewSizeXY (V2 x' y')
-            _ -> do
-                issueErr errMsg -< ()
-                returnA -< Nothing
+          ([x], [], []) -> do
+              x' <- getFromContents -< x
+              returnA -< Just $ ViewSizeX x'
+          ([], [y], []) -> do
+              y' <- getFromContents -< y
+              returnA -< Just $ ViewSizeY y'
+          ([x], [y], []) -> do
+              x' <- getFromContents -< x
+              y' <- getFromContents -< y
+              returnA -< Just $ ViewSizeXY (V2 x' y')
+          ([x], [], [a']) -> do
+              x' <- getFromContents -< x
+              a'' <- getFromContents -< a'
+              let y' = x' / a''
+              returnA -< Just $ ViewSizeXY (V2 x' y')
+          ([], [y], [a']) -> do
+              y' <- getFromContents -< y
+              a'' <- getFromContents -< a'
+              let x' = y' * a''
+              returnA -< Just $ ViewSizeXY (V2 x' y')
+          _ -> do
+              issueErr errMsg -< ()
+              returnA -< Nothing
     parseZ = proc p -> do
         near <- getChildren >>> hasName "znear" >>> singleOnly -< p
         znear <- getFromContents -< near
@@ -653,7 +691,7 @@ parseGeometry = proc x -> do
        (getChildren >>> hasName "mesh" >>> singleOnly)
        ((getAttrValue "id"
          &&& (getChildren >>> hasName "mesh" >>> singleOnly))
-          >>> parseColladaMesh)
+         >>> parseColladaMesh)
        (issueErr "mesh pair not found" >>> unitA)
        -< x
                      
@@ -746,33 +784,36 @@ parseInput :: Bool -> ParseState XmlTree (Maybe (Int, CVertices))
 parseInput shared = proc i -> do
     (semantic, (source, (offset, set)))
      <- getAttrValue0 "semantic"
-            &&& getAttrValue0 "source"
-            &&& getAttrValue "offset"
-            &&& getAttrValue "set" -< i
+        &&& getAttrValue0 "source"
+        &&& getAttrValue "offset"
+        &&& getAttrValue "set" -< i
 
+    traceMsg 1 $ ("semantic: " ++ semantic) -<< i
     let offset' = if shared then offset else ""
     case localUrl source of
        Nothing -> do
-          issueErr ("Missing source: " ++ source) -<< i
-          returnA -< Just (read offset', Map.empty)
+         issueErr ("Missing source: " ++ source) -<< i
+         returnA -< Just (read offset', Map.empty)
        Just cid -> do
-           let set' = if shared then set else ""
-           state <- getUserState -< ()
-           case semantic of
-             "VERTEX" ->
-               case Map.lookup cid state of
-                    Just (RefVertices v) -> do
-                        returnA -< Just (read offset', Map.mapKeysMonotonic (++ set') v)
-                    _ -> do
-                      issueErr ("MissingLinkError vertices: " ++ cid) -<< i
-                      returnA -< Nothing
-             _ ->
-               case Map.lookup cid state of
-                    Just (RefSource s) -> do
-                        returnA -< Just $ (read offset', Map.singleton (semantic ++ set') s)
-                    _ -> do
-                        issueErr ("MissingLinkError source: " ++ cid) -<< i
-                        returnA -< Nothing
+         let set' = if shared then set else ""
+         state <- getUserState -< ()
+         case semantic of
+           "VERTEX" ->
+             case Map.lookup cid state of
+               Just (RefVertices v) -> do
+                   traceMsg 1 $ ("v: ") -<< v
+                   returnA -< Just (read offset', Map.mapKeysMonotonic (++ set') v)
+               _ -> do
+                 issueErr ("MissingLinkError vertices: " ++ cid) -<< i
+                 returnA -< Nothing
+           _ ->
+             case Map.lookup cid state of
+               Just (RefSource s) -> do
+                   traceMsg 1 $ ("s: ") -<< s
+                   returnA -< Just $ (read offset', Map.singleton (semantic ++ set') s)
+               _ -> do
+                   issueErr ("MissingLinkError source: " ++ cid) -<< i
+                   returnA -< Nothing
               
 parsePrimitives :: ParseState (CVertices, XmlTree) [((MaterialName, PrimitiveTopology Triangles, Maybe [Int]), Map Semantic [[Float]])]
 parsePrimitives = proc a@(_, p) -> do
@@ -790,30 +831,41 @@ parsePrimitives = proc a@(_, p) -> do
       parseTriangle :: PrimitiveTopology Triangles 
         -> ParseState (CVertices, XmlTree) [((MaterialName, PrimitiveTopology Triangles, Maybe [Int]), Map Semantic [[Float]])]
       parseTriangle primtype = proc (vertices, p) -> do
-        input <- getChildren >>> hasName "input" -< p
-        inputFs' <- listA (parseInput True) >>> arr catMaybes -< input
+        (inputFs', (count, ~ps'))
+          <- (
+               listA (getChildren
+               >>> hasName "input" 
+               >>> parseInput True) >>> arr catMaybes
+             )
+             &&&
+             (
+                getAttrValue "count" >>> arr read
+             )
+             &&&
+             (
+                listA $ getChildren >>> hasName "p"
+             )
+             -< p
         let inputFs = if null inputFs'
                       then Map.singleton 0 vertices
                       else Map.fromList inputFs'
-        count <- getAttrValue "count" >>> arr read -< p
         if count == 0
         then returnA -< []
         else do
-           ps' <- listA $ getChildren >>> hasName "p" -< p
-           case (primtype, ps') of
-             (TriangleList, _:_:_) -> do
-                 issueErr "MultipleElement p" -< p
-                 returnA -< []
-             (TriangleList, [_]) -> unlistA >>> listA (parsePoint primtype inputFs count) -<< ps'
-             (TriangleList, []) -> do
-                 issueErr "MissingElement p" -< p
-                 returnA -< []
-             (_, _:_) | length ps' < count -> do
-                 issueErr "TooFewElements p" -< p
-                 returnA -< []
-             _ -> do
-                 ps'' <- arr $ take count -<< ps'
-                 unlistA >>> listA (parsePoint primtype inputFs count) -<< ps''
+          case (primtype, ps') of
+            (TriangleList, _:_:_) -> do
+                issueErr "MultipleElement p" -< p
+                returnA -< []
+            (TriangleList, [_]) -> unlistA >>> listA (parsePoint primtype inputFs count) -<< ps'
+            (TriangleList, []) -> do
+                issueErr "MissingElement p" -< p
+                returnA -< []
+            (_, _:_) | length ps' < count -> do
+                issueErr "TooFewElements p" -< p
+                returnA -< []
+            _ -> do
+                ps'' <- arr $ take count -<< ps'
+                unlistA >>> listA (parsePoint primtype inputFs count) -<< ps''
          where
            parsePoint :: PrimitiveTopology Triangles 
              -> Map Int CVertices 
@@ -865,13 +917,14 @@ parsePrimitives = proc a@(_, p) -> do
                <- getAttrValue "material"
                   &&& getFromListContents
                   -< ps'
-              contents <- if length pl < sum vsizes * pStride 
-                          then do
-                              issueErr "TooFewIndices" -< p'
-                              returnA -< []
-                          else do
-                              let taken = take (sum vsizes * pStride) pl
-                              returnA -< taken
+              contents 
+               <- if length pl < sum vsizes * pStride 
+                  then do
+                      issueErr "TooFewIndices" -< p'
+                      returnA -< []
+                  else do
+                      let taken = take (sum vsizes * pStride) pl
+                      returnA -< taken
               let pLists = splitIn pStride contents
               case map (first (pLists !!)) $ Map.toList inputs of
                       [(indices,mF)] -> returnA -< ((material, TriangleList, Just indices), Map.map fst mF)
