@@ -48,7 +48,7 @@ import Data.Maybe (fromJust, mapMaybe, catMaybes, listToMaybe)
 import Data.List hiding (union, transpose)
 import qualified Data.Map.Strict as Map
 import qualified Data.Foldable as F
-import qualified Data.Vector as V 
+import qualified Data.Vector as Vec
 import qualified Linear.V as V
 import Linear.Matrix hiding (transpose)
 import Text.XML.HXT.Core
@@ -57,6 +57,7 @@ import Data.Tree.NTree.TypeDefs
 
 import Control.Lens ((^.))
 import Omocha.Scene(Scene(..), Mesh(..), OmochaShaderType(..), DrawVertex(..), RenderInput(..))
+-- import qualified Data.Vector.Unboxed
 
 
 type ID = String
@@ -160,22 +161,22 @@ deriving instance Show a => Show (PrimitiveTopology a)
 
 data ColladaMesh = TriangleColladaMesh {
     meshMaterial :: String,
-    meshPrimitiveStream :: ColladaMeshPrimitiveArray (PrimitiveTopology Triangles) (Map Semantic [[Float]]),
+    meshPrimitiveStream :: ColladaMeshPrimitiveArray (PrimitiveTopology Triangles) (Map Semantic (Vec.Vector (Vec.Vector Float))),
     meshAABB :: AABB
 } deriving (Show)
 
 
 data ColladaMeshPrimitive p a =
     ColladaMeshPrimitive p a
-    | ColladaMeshPrimitiveIndexed p [Int] a
+    | ColladaMeshPrimitiveIndexed p (Vec.Vector Int) a
     deriving(Show)
 
-newtype ColladaMeshPrimitiveArray p a = ColladaMeshPrimitiveArray { getColladaMeshPrimitiveArray :: [ColladaMeshPrimitive p a]}
+newtype ColladaMeshPrimitiveArray p a = ColladaMeshPrimitiveArray { getColladaMeshPrimitiveArray :: Vec.Vector (ColladaMeshPrimitive p a)}
   deriving (Show)
 
 instance Monoid (ColladaMeshPrimitiveArray p a) where
-    mempty = ColladaMeshPrimitiveArray []
-    mappend (ColladaMeshPrimitiveArray a) (ColladaMeshPrimitiveArray b) = ColladaMeshPrimitiveArray (a ++ b)
+    mempty = ColladaMeshPrimitiveArray Vec.empty
+    mappend (ColladaMeshPrimitiveArray a) (ColladaMeshPrimitiveArray b) = ColladaMeshPrimitiveArray (a Vec.++ b)
 instance Functor (ColladaMeshPrimitiveArray p) where
     fmap f (ColladaMeshPrimitiveArray xs) = ColladaMeshPrimitiveArray $ fmap g xs
       where g (ColladaMeshPrimitive p a) = ColladaMeshPrimitive p (f a)
@@ -190,13 +191,13 @@ instance Monoid AABB where
     mempty = AABB (V3 inf inf inf) (V3 (-inf) (-inf) (-inf))
     mappend (AABB minA maxA) (AABB minB maxB) = AABB (zipAsVector min minA minB) (zipAsVector max maxA maxB)
         where 
-        zipAsVector minMax a b =  V.fromV . fromJust . V.fromVector $ V.zipWith minMax (V.toVector $ V.toV a) (V.toVector $ V.toV b)
+        zipAsVector minMax a b =  V.fromV . fromJust . V.fromVector $ Vec.zipWith minMax (V.toVector $ V.toV a) (V.toVector $ V.toV b)
 
 
 
-type CArray = ([Float], Int)
-type CSource = ([[Float]], Int)
-type CVertice = ([[Float]], Int)
+type CArray = (Vec.Vector Float, Int)
+type CSource = (Vec.Vector (Vec.Vector Float), Int)
+type CVertice = (Vec.Vector (Vec.Vector Float), Int)
 type CVertices = Map Semantic CVertice
 
 data Reference = RefNode ColladaTree
@@ -249,8 +250,8 @@ getFromListLengthContents n = proc c -> do
 
 fromList :: forall b. (Read b) => String -> ParseState String [b]
 fromList e = listA $ arr words 
-                     >>> unlistA 
-                     >>> fromString e
+                    >>> unlistA 
+                    >>> fromString e
 
 fromString :: forall b. (Read b) => String -> ParseState String b
 fromString e = proc x -> do
@@ -260,7 +261,7 @@ fromString e = proc x -> do
         _ -> issueErr e -<< read ""
 
 fromListToVec :: forall a. [a] -> V3 a
-fromListToVec = V.fromV . fromJust . V.fromVector . V.fromList
+fromListToVec = V.fromV . fromJust . V.fromVector . Vec.fromList
 
 fromListToMat44 :: forall a. [a] -> M44 a
 fromListToMat44 xs = V4 (V4 (xs!!0)  (xs!!1)  (xs!!2)  (xs!!3))
@@ -367,11 +368,11 @@ parseArray = proc a -> do
       <- getName 
          &&& getAttrValue0 "id" 
          &&& (getAttrValue0 "count" `withDefault` "-1")
-         &&& getFromListContents
+         &&& (getFromListContents >>> arr Vec.fromList)
       -< a
     case name of 
      "float_array" -> do
-         let len = length xs
+         let len = Vec.length xs
          if len /= (read count)
          then issueErr "Length of array not the same as the value of count attribute" -< ()
          else do
@@ -415,11 +416,11 @@ parseAccessor = proc acc -> do
            <- (getAttrValue "count" >>> arr read)
               &&& (getAttrValue0 "offset" `withDefault` "0" >>> arr read) 
               &&& (getAttrValue0 "stride" `withDefault` "1" >>> arr read)
-              &&& (listA $ getChildren 
+              &&& ((listA $ getChildren 
                    >>> isElem
                    >>> hasName "param" 
                    >>> getAttrValue "name"
-                   >>> arr (not . null))
+                   >>> arr (not . null)) >>> arr Vec.fromList)
               -< acc
          let paramLength = length useParamList
          if paramLength > stride
@@ -437,7 +438,7 @@ parseAccessor = proc acc -> do
                      arr
                          (\(source, offset, count, stride, useParamList) ->
                               Just $ (assembleSource 
-                                        (drop offset source)
+                                        (Vec.drop offset source)
                                         count 
                                         stride 
                                         useParamList,
@@ -447,9 +448,9 @@ parseAccessor = proc acc -> do
                _ -> do
                 issueErr ("MissingLinkError *_array: " ++ cid) -<< Nothing
   where 
-    assembleSource _ 0 _ _ = []
-    assembleSource source count stride useParamList = case splitAt stride source of
-                                                        (vertex, rest) -> map snd (filter fst (zip useParamList vertex)) : assembleSource rest (count - 1) stride useParamList
+    assembleSource _ 0 _ _ = Vec.empty
+    assembleSource source count stride useParamList = case Vec.splitAt stride source of
+                                                        (vertex, rest) -> Vec.map snd (Vec.filter fst (Vec.zip useParamList vertex)) `Vec.cons` assembleSource rest (count - 1) stride useParamList
 
 ---------------------------------------------------------------
 
@@ -815,7 +816,7 @@ parseInput shared = proc i -> do
                    issueErr ("MissingLinkError source: " ++ cid) -<< i
                    returnA -< Nothing
               
-parsePrimitives :: ParseState (CVertices, XmlTree) [((MaterialName, PrimitiveTopology Triangles, Maybe [Int]), Map Semantic [[Float]])]
+parsePrimitives :: ParseState (CVertices, XmlTree) [((MaterialName, PrimitiveTopology Triangles, Maybe (Vec.Vector Int)), Map Semantic (Vec.Vector (Vec.Vector Float)))]
 parsePrimitives = proc a@(_, p) -> do
     name <- getName -< p
     case name of
@@ -829,7 +830,7 @@ parsePrimitives = proc a@(_, p) -> do
       combine f g = f `Map.union` g
       combine' mFs = Map.unions $ mFs
       parseTriangle :: PrimitiveTopology Triangles 
-        -> ParseState (CVertices, XmlTree) [((MaterialName, PrimitiveTopology Triangles, Maybe [Int]), Map Semantic [[Float]])]
+        -> ParseState (CVertices, XmlTree) [((MaterialName, PrimitiveTopology Triangles, Maybe (Vec.Vector Int)), Map Semantic (Vec.Vector (Vec.Vector Float)))]
       parseTriangle primtype = proc (vertices, p) -> do
         (inputFs', (count, ~ps'))
           <- (
@@ -870,27 +871,27 @@ parsePrimitives = proc a@(_, p) -> do
            parsePoint :: PrimitiveTopology Triangles 
              -> Map Int CVertices 
              -> Int 
-             -> ParseResult ((MaterialName, PrimitiveTopology Triangles, Maybe [Int]), Map Semantic [[Float]])
+             -> ParseResult ((MaterialName, PrimitiveTopology Triangles, Maybe (Vec.Vector Int)), Map Semantic (Vec.Vector (Vec.Vector Float)))
            parsePoint cprimtype inputs count = proc p' -> do 
                let pStride = 1 + (fst $ Map.findMax inputs) :: Int
                (material, pl)
                 <- getAttrValue "material"
-                     &&& getFromListContents  -< p'
+                     &&& (getFromListContents >>> arr Vec.fromList) -< p'
                contents <- case cprimtype of
                              TriangleList -> do
                                 if (length pl < count * 3 * pStride)
                                 then do
                                     issueErr "TooFewIndices" -< p'
-                                    returnA -< []
+                                    returnA -< Vec.empty
                                 else do
-                                    taken <- arr $ take (count * 3 * pStride) -<< pl
+                                    taken <- arr $ Vec.take (count * 3 * pStride) -<< pl
                                     returnA -< taken
                              _ -> returnA -< pl
                pLists <- arr (splitIn pStride) -<< contents
-               case map (first (pLists !!)) $ Map.toList inputs of
+               case map (first (pLists Vec.!)) $ Map.toList inputs of
                        [(indices, mF)] -> returnA -< ((material, cprimtype, Just indices), Map.map fst mF)
                        xs -> returnA -< ((material, cprimtype, Nothing), combine' $ map pickIndices xs)
-      parsePolylist :: ParseState (CVertices, XmlTree) [((MaterialName, PrimitiveTopology Triangles, Maybe [Int]), Map String [[Float]])]
+      parsePolylist :: ParseState (CVertices, XmlTree) [((MaterialName, PrimitiveTopology Triangles, Maybe (Vec.Vector Int)), Map String (Vec.Vector (Vec.Vector Float)))]
       parsePolylist = proc (vertices, p) -> do
           (inputFs, (count, (ps', vsizes)))
             <- ((listA $ getChildren >>> hasName "input" >>> parseInput True)
@@ -898,7 +899,7 @@ parsePrimitives = proc a@(_, p) -> do
                )
                &&& getAttrValue "count"
                &&& (getChildren >>> hasName "p")
-               &&& (getChildren >>> hasName "vcount" >>> getFromListContents)
+               &&& (getChildren >>> hasName "vcount" >>> getFromListContents >>> arr Vec.fromList)
                -< p 
           let inputFs' = if Map.null inputFs
                          then Map.singleton 0 vertices
@@ -909,90 +910,92 @@ parsePrimitives = proc a@(_, p) -> do
         where
           parsePoint :: 
             ParseState 
-              (Map Int (Map Semantic ([[Float]], Int)), [Int], XmlTree)
-              ((MaterialName, PrimitiveTopology Triangles, Maybe [Int]), Map Semantic [[Float]])
+              (Map Int (Map Semantic ((Vec.Vector (Vec.Vector Float)), Int)), Vec.Vector Int, XmlTree)
+              ((MaterialName, PrimitiveTopology Triangles, Maybe (Vec.Vector Int)), Map Semantic (Vec.Vector (Vec.Vector Float)))
           parsePoint = proc p'@(inputs, vsizes, ps') -> do 
               let pStride = 1 + fst (Map.findMax inputs)
               (material, pl)
                <- getAttrValue "material"
-                  &&& getFromListContents
+                  &&& (getFromListContents >>> arr Vec.fromList)
                   -< ps'
               contents 
                <- if length pl < sum vsizes * pStride 
                   then do
                       issueErr "TooFewIndices" -< p'
-                      returnA -< []
+                      returnA -< Vec.empty
                   else do
-                      let taken = take (sum vsizes * pStride) pl
+                      let taken = Vec.take (sum vsizes * pStride) pl
                       returnA -< taken
               let pLists = splitIn pStride contents
-              case map (first (pLists !!)) $ Map.toList inputs of
+              case map (first (pLists Vec.!)) $ Map.toList inputs of
                       [(indices,mF)] -> returnA -< ((material, TriangleList, Just indices), Map.map fst mF)
                       xs -> returnA -< ((material, TriangleList, Nothing), combine' $ map pickIndices xs)
 
             
-      pickIndices :: ([Int], Map MaterialName ([[Float]], Int)) -> Map Semantic [[Float]]
+      pickIndices :: (Vec.Vector Int, Map MaterialName (Vec.Vector (Vec.Vector Float), Int)) -> Map Semantic (Vec.Vector (Vec.Vector Float))
       pickIndices (indices, mF) = Map.map (pickIndices' indices) mF
           where
-          pickIndices' :: (Ix i, Num i) => [i] -> ([b], i) -> [b]
-          pickIndices' indices' (xs, len) = let a = listArray (0,len) xs in map (a!) indices'
+          pickIndices' :: (Ix i, Num i) => Vec.Vector i -> (Vec.Vector b, i) -> Vec.Vector b
+          pickIndices' indices' (xs, len) = let a = listArray (0,len) (Vec.toList xs)
+                                             in Vec.map (a!) indices'
 
-
-        
 
 -----------------------------------------------------
 -- Dynamic Vertex
 
-makeDynPrimStream :: [((MaterialName, PrimitiveTopology Triangles, Maybe [Int]), Map Semantic [[Float]])] -> [ColladaMesh]
+makeDynPrimStream :: [((MaterialName, PrimitiveTopology Triangles, Maybe (Vec.Vector Int)), Map Semantic (Vec.Vector (Vec.Vector Float)))] -> [ColladaMesh]
 makeDynPrimStream = catMaybes . map makePrimGroup . groupBy ((==) `on` fst) . map splitParts
     where
-    makePrimGroup :: [((MaterialName, [Semantic]), (AABB, ((PrimitiveTopology Triangles, Maybe [Int]), [[[Float]]])))] -> Maybe ColladaMesh
-    makePrimGroup xs@(((material, names), _):_) = Just $ TriangleColladaMesh material pstream aabb
+      makePrimGroup :: [((MaterialName, [Semantic]), (AABB, ((PrimitiveTopology Triangles, Maybe (Vec.Vector Int)), (Vec.Vector (Vec.Vector (Vec.Vector Float))))))] -> Maybe ColladaMesh
+      makePrimGroup xs@(((material, names), _):_) = Just $ TriangleColladaMesh material pstream aabb
         where 
-              xs' :: [((MaterialName, [Semantic]), ((PrimitiveTopology Triangles, Maybe [Int]), [[[Float]]]))]
-              xs' = map (second snd) xs
-              aabb :: AABB
-              aabb = mconcat $ map (fst . snd) xs
-              pstream :: ColladaMeshPrimitiveArray (PrimitiveTopology Triangles) (Map Semantic [[Float]])
-              pstream = fmap (\f -> Map.fromAscList $ zip names f) $ toStreamUsingLength xs'
-    makePrimGroup _ = Nothing
+          xs' :: [((MaterialName, [Semantic]), ((PrimitiveTopology Triangles, Maybe (Vec.Vector Int)), (Vec.Vector (Vec.Vector (Vec.Vector Float)))))]
+          xs' = map (second snd) xs
+          aabb :: AABB
+          aabb = mconcat $ map (fst . snd) xs
+          pstream :: ColladaMeshPrimitiveArray (PrimitiveTopology Triangles) (Map Semantic (Vec.Vector (Vec.Vector Float)))
+          pstream = fmap (\f -> Map.fromAscList $ zip names f) $ toStreamUsingLength xs'
+            where  
+            toStreamUsingLength :: [(t, ((p, Maybe (Vec.Vector Int)), Vec.Vector (Vec.Vector (Vec.Vector Float))))] -> ColladaMeshPrimitiveArray p (Vec.Vector (Vec.Vector (Vec.Vector Float)))
+            toStreamUsingLength = mconcat . map (toPrimStream . second (second (Vec.map id)))
+              where
+              toPrimStream :: (t, ((p, Maybe (Vec.Vector Int)), a)) -> ColladaMeshPrimitiveArray p a
+              toPrimStream (_, ((primtype, Just indices), input)) =  ColladaMeshPrimitiveArray $ Vec.singleton (ColladaMeshPrimitiveIndexed primtype indices input)
+              toPrimStream (_, ((primtype, _), input)) = ColladaMeshPrimitiveArray $ Vec.singleton (ColladaMeshPrimitive primtype input)
+      makePrimGroup _ = Nothing
+      splitParts :: ((t2, t1, t), Map Semantic (Vec.Vector (Vec.Vector Float))) -> ((t2, [MaterialName]), (AABB, ((t1, t), [Vec.Vector (Vec.Vector Float)])))
+      splitParts ((material, primtype, mindices), m) = let mlist = Map.toAscList m
+                                                           ins = map snd mlist
+                                                           names = map fst mlist
+                                                           input = ins
+                                                           aabb = makeAABB $ Map.lookup "POSITION" m
+                                                       in ((material, names), (aabb,((primtype, mindices), input))) 
 
-splitParts :: ((t2, t1, t), Map Semantic [[Float]]) -> ((t2, [MaterialName]), (AABB, ((t1, t), [[[Float]]])))
-splitParts ((material, primtype, mindices), m) = let mlist = Map.toAscList m
-                                                     ins = map snd mlist
-                                                     names = map fst mlist
-                                                     input = ins
-                                                     aabb = makeAABB $ Map.lookup "POSITION" m
-                                                 in ((material, names), (aabb,((primtype, mindices), input))) 
 
+makeAABB :: Maybe (Vec.Vector (Vec.Vector Float)) -> AABB
+makeAABB _ = AABB (V3 (-inf) (-inf) (-inf)) (V3 inf inf inf)
 
-makeAABB :: Maybe [[Float]] -> AABB
-makeAABB Nothing = AABB (V3 (-inf) (-inf) (-inf)) (V3 inf inf inf)
-makeAABB (Just xs) = mconcat $ map pointToAABB xs
-                where pointToAABB (x:y:z:_) = let p = V3 x y z in AABB p p
-                      pointToAABB (x:y:_) = AABB (V3 x y (-inf)) (V3 x y inf)
-                      pointToAABB (x:_) = AABB (V3 x (-inf) (-inf)) (V3 x inf inf)
-                      pointToAABB (_) = AABB (V3 (-inf) (-inf) (-inf)) (V3 inf inf inf)
+-- TODO FIX
+-- makeAABB (Just xs) = mconcat $ Vec.map pointToAABB xs
+--                 where pointToAABB (x:y:z:_) = let p = V3 x y z in AABB p p
+--                       pointToAABB (x:y:_) = AABB (V3 x y (-inf)) (V3 x y inf)
+--                       pointToAABB (x:_) = AABB (V3 x (-inf) (-inf)) (V3 x inf inf)
+--                       pointToAABB (_) = AABB (V3 (-inf) (-inf) (-inf)) (V3 inf inf inf)
 
 inf :: Float
 inf = read "Infinity"                      
-                
 
 -- [[offset 0], [offset 1], [offset 2]]
-splitIn :: forall a. Int -> [a] -> [[a]]
-splitIn n is = foldl go (replicate n []) $ zip [0..] is
+splitIn :: forall a. Int -> Vec.Vector a -> Vec.Vector (Vec.Vector a) 
+splitIn n is = foldr select ([], [], n)  $ zip (cycle [0..n - 1]) is
     where 
-        go :: [[a]] -> (Int, a) -> [[a]]
-        go acc (i, y) = let m = i `mod` n
-                         in take m acc ++ [(acc !! m) ++ [y]] ++ drop (m+1) acc
+      select acc (x@(m, a):_) n | n == m = select  (x:ts, fs, n)
+                                | otherwise = (ts, x:fs, n - 1) : acc
+      select acc [] n | n == 0 = acc
+      select acc (x@(m, a):[]) n | n == 0 = (x:ts, fs, n)
+                                     | otherwise = (ts, x:fs, n)
 
 
-
-toStreamUsingLength :: [(t, ((p, Maybe [Int]), [[[Float]]]))] -> ColladaMeshPrimitiveArray p [[[Float]]]
-toStreamUsingLength = mconcat . map (toPrimStream . second (second (map id)))
-toPrimStream :: (t, ((p, Maybe [Int]), a)) -> ColladaMeshPrimitiveArray p a
-toPrimStream (_, ((primtype, Just indices), input)) =  ColladaMeshPrimitiveArray $ [ColladaMeshPrimitiveIndexed primtype indices input]
-toPrimStream (_, ((primtype, _), input)) = ColladaMeshPrimitiveArray $ [ColladaMeshPrimitive primtype input]
 
 -- | Gets the total transformation matrix of a list of 'Transform' element.
 transformsMat :: [Transform] -> M44 Float
@@ -1041,15 +1044,29 @@ aToV3 a = V3 (a!!0) (a!!2) (a!!1)
 sceneFromCollada :: ColladaTree -> Scene
 sceneFromCollada tree = 
     let (_cameras, geometries) = F.foldMap tagContent tree
-        primitiveStream = mconcat $ concatMap filterGeometry geometries :: ColladaMeshPrimitiveArray (PrimitiveTopology Triangles) ([[Float]], [[Float]])
+        primitiveStream = Vec.concat $ concatMap filterGeometry geometries :: ColladaMeshPrimitiveArray (PrimitiveTopology Triangles) ([[Float]], [[Float]])
     in Scene {
         camera = V3 0 0 0,
-        meshes = fmap toMesh (getColladaMeshPrimitiveArray primitiveStream)
+        meshes = Vec.map toMesh (getColladaMeshPrimitiveArray primitiveStream)
     }
     where
-      toMesh :: ColladaMeshPrimitive (PrimitiveTopology Triangles) ([[Float]], [[Float]]) -> Mesh
-      toMesh (ColladaMeshPrimitive _ vertices) = Mesh [DrawVertex (aToV3 v) (aToV3 n) (V2 0 0) | (v, n) <- zip (fst vertices) (snd vertices) ] Nothing (V3 0 0 0) Nothing BoardShader
-      toMesh (ColladaMeshPrimitiveIndexed _ indices vertices) = Mesh [ DrawVertex (aToV3 v) (aToV3 n) (V2 0 0) | (v, n) <- zip (fst vertices) (snd vertices)] (Just indices) (V3 0 0 0) Nothing BoardShader
+      toMesh :: ColladaMeshPrimitive (PrimitiveTopology Triangles) ((Vec.Vector (Vec.Vector Float)), (Vec.Vector (Vec.Vector Float))) -> Mesh
+      toMesh (ColladaMeshPrimitive _ vertices) 
+        = Mesh 
+            (fmap (\(v, n) -> DrawVertex (aToV3 v) (aToV3 n) (V2 0 0)) (Vec.zip (fst vertices) (snd vertices)))
+            Nothing 
+            (V3 0 0 0)
+            Nothing
+            BoardShader
+      toMesh (ColladaMeshPrimitiveIndexed _ indices vertices)
+       = Mesh 
+          (fmap 
+            (\(v, n) -> DrawVertex (aToV3 v) (aToV3 n) (V2 0 0))
+            (Vec.zip (fst vertices) (snd vertices)))
+          (Just indices)
+          (V3 0 0 0)
+          Nothing
+          BoardShader
       tagT t = zip (repeat t)
       tagContent (t, n) = (tagT t $ nodeCameras n, tagT t $ nodeGeometries n) 
       filterGeometry (modelMat, (Geometry mesh)) = mapMaybe (filterColladaMesh modelMat) mesh

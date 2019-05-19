@@ -46,6 +46,7 @@ library:
     - Omocha.Internal.Finalizer
     - Omocha.Scene
     - Omocha.Collada
+    - Omocha.Model
     source-dirs:     src
     dependencies:
     - either

@@ -81,6 +81,7 @@ import Graphics.GPipe (
     Filter(..)
     )
 import Control.Lens ((^.))
+import qualified Data.Vector as Vec
 
 
 data DrawVertex = DrawVertex {
@@ -91,8 +92,8 @@ data DrawVertex = DrawVertex {
 
 
 data Mesh = Mesh {
-              vertices :: [DrawVertex],
-              indices :: Maybe [Int],
+              vertices :: Vec.Vector DrawVertex,
+              indices :: Maybe (Vec.Vector Int),
               offset :: V3 Float,
               textureImage :: Maybe Bitmap,
               shaderType :: OmochaShaderType
@@ -106,7 +107,7 @@ data OmochaShaderType = BoardShader | TargetBoard
 
 
 data Scene = Scene {
-               meshes :: [Mesh],
+               meshes :: Vec.Vector Mesh,
                camera :: V3 Float
            } deriving (Show, Eq)
 
