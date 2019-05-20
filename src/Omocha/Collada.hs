@@ -944,32 +944,32 @@ parsePrimitives = proc a@(_, p) -> do
 -- Dynamic Vertex
 
 makeDynPrimStream :: [((MaterialName, PrimitiveTopology Triangles, Maybe (Vec.Vector Int)), Map Semantic (Vec.Vector (Vec.Vector Float)))] -> [ColladaMesh]
-makeDynPrimStream = catMaybes . map makePrimGroup . groupBy ((==) `on` fst) . map splitParts
-    where
-      makePrimGroup :: [((MaterialName, [Semantic]), (AABB, ((PrimitiveTopology Triangles, Maybe (Vec.Vector Int)), (Vec.Vector (Vec.Vector (Vec.Vector Float))))))] -> Maybe ColladaMesh
-      makePrimGroup xs@(((material, names), _):_) = Just $ TriangleColladaMesh material pstream aabb
-        where 
-          xs' :: [((MaterialName, [Semantic]), ((PrimitiveTopology Triangles, Maybe (Vec.Vector Int)), (Vec.Vector (Vec.Vector (Vec.Vector Float)))))]
-          xs' = map (second snd) xs
-          aabb :: AABB
-          aabb = mconcat $ map (fst . snd) xs
-          pstream :: ColladaMeshPrimitiveArray (PrimitiveTopology Triangles) (Map Semantic (Vec.Vector (Vec.Vector Float)))
-          pstream = fmap (\f -> Map.fromAscList $ zip names f) $ toStreamUsingLength xs'
-            where  
-            toStreamUsingLength :: [(t, ((p, Maybe (Vec.Vector Int)), Vec.Vector (Vec.Vector (Vec.Vector Float))))] -> ColladaMeshPrimitiveArray p (Vec.Vector (Vec.Vector (Vec.Vector Float)))
-            toStreamUsingLength = mconcat . map (toPrimStream . second (second (Vec.map id)))
-              where
-              toPrimStream :: (t, ((p, Maybe (Vec.Vector Int)), a)) -> ColladaMeshPrimitiveArray p a
-              toPrimStream (_, ((primtype, Just indices), input)) =  ColladaMeshPrimitiveArray $ Vec.singleton (ColladaMeshPrimitiveIndexed primtype indices input)
-              toPrimStream (_, ((primtype, _), input)) = ColladaMeshPrimitiveArray $ Vec.singleton (ColladaMeshPrimitive primtype input)
-      makePrimGroup _ = Nothing
-      splitParts :: ((t2, t1, t), Map Semantic (Vec.Vector (Vec.Vector Float))) -> ((t2, [MaterialName]), (AABB, ((t1, t), [Vec.Vector (Vec.Vector Float)])))
-      splitParts ((material, primtype, mindices), m) = let mlist = Map.toAscList m
-                                                           ins = map snd mlist
-                                                           names = map fst mlist
-                                                           input = ins
-                                                           aabb = makeAABB $ Map.lookup "POSITION" m
-                                                       in ((material, names), (aabb,((primtype, mindices), input))) 
+makeDynPrimStream = catMaybes . map makePrimGroup . V.groupBy ((==) `on` fst) . map splitParts
+  where
+    makePrimGroup :: [((MaterialName, [Semantic]), (AABB, ((PrimitiveTopology Triangles, Maybe (Vec.Vector Int)), (Vec.Vector (Vec.Vector (Vec.Vector Float))))))] -> Maybe ColladaMesh
+    makePrimGroup xs@(((material, names), _):_) = Just $ TriangleColladaMesh material pstream aabb
+      where 
+        xs' :: [((MaterialName, [Semantic]), ((PrimitiveTopology Triangles, Maybe (Vec.Vector Int)), (Vec.Vector (Vec.Vector (Vec.Vector Float)))))]
+        xs' = map (second snd) xs
+        aabb :: AABB
+        aabb = mconcat $ map (fst . snd) xs
+        pstream :: ColladaMeshPrimitiveArray (PrimitiveTopology Triangles) (Map Semantic (Vec.Vector (Vec.Vector Float)))
+        pstream = fmap (\f -> Map.fromAscList $ zip names f) $ toStreamUsingLength xs'
+          where  
+          toStreamUsingLength :: [(t, ((p, Maybe (Vec.Vector Int)), Vec.Vector (Vec.Vector (Vec.Vector Float))))] -> ColladaMeshPrimitiveArray p [Vec.Vector (Vec.Vector Float)]
+          toStreamUsingLength = mconcat . map (toPrimStream . second (second (Vec.map id)))
+            where
+            toPrimStream :: (t, ((p, Maybe (Vec.Vector Int)), a)) -> ColladaMeshPrimitiveArray p a
+            toPrimStream (_, ((primtype, Just indices), input)) =  ColladaMeshPrimitiveArray $ Vec.singleton (ColladaMeshPrimitiveIndexed primtype indices input)
+            toPrimStream (_, ((primtype, _), input)) = ColladaMeshPrimitiveArray $ Vec.singleton (ColladaMeshPrimitive primtype input)
+    makePrimGroup _ = Nothing
+    splitParts :: ((t2, t1, t), Map Semantic (Vec.Vector (Vec.Vector Float))) -> ((t2, [MaterialName]), (AABB, ((t1, t), [Vec.Vector (Vec.Vector Float)])))
+    splitParts ((material, primtype, mindices), m) = let mlist = Map.toAscList m
+                                                         ins = map snd mlist
+                                                         names = map fst mlist
+                                                         input = ins
+                                                         aabb = makeAABB $ Map.lookup "POSITION" m
+                                                     in ((material, names), (aabb,((primtype, mindices), input))) 
 
 
 makeAABB :: Maybe (Vec.Vector (Vec.Vector Float)) -> AABB
@@ -1044,10 +1044,10 @@ aToV3 a = V3 (a!!0) (a!!2) (a!!1)
 sceneFromCollada :: ColladaTree -> Scene
 sceneFromCollada tree = 
     let (_cameras, geometries) = F.foldMap tagContent tree
-        primitiveStream = Vec.concat $ concatMap filterGeometry geometries :: ColladaMeshPrimitiveArray (PrimitiveTopology Triangles) ([[Float]], [[Float]])
+        primitiveStream = concat $ concatMap filterGeometry geometries :: ColladaMeshPrimitiveArray (PrimitiveTopology Triangles) ([[Float]], [[Float]])
     in Scene {
         camera = V3 0 0 0,
-        meshes = Vec.map toMesh (getColladaMeshPrimitiveArray primitiveStream)
+        meshes = map toMesh (getColladaMeshPrimitiveArray primitiveStream)
     }
     where
       toMesh :: ColladaMeshPrimitive (PrimitiveTopology Triangles) ((Vec.Vector (Vec.Vector Float)), (Vec.Vector (Vec.Vector Float))) -> Mesh
