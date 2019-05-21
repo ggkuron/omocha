@@ -18,7 +18,6 @@ import Omocha.Bitmap
 -- import Omocha.Font
 import Omocha.Collada
 import Omocha.Scene
-import Omocha.Model
 
 import Paths_omocha
 import Graphics.GPipe 
@@ -138,9 +137,9 @@ main = runContextT (GLFW.defaultHandleConfig { GLFW.configEventPolicy = Nothing 
     uniform :: Buffer os (Uniform UniInput) <- newBuffer 1  
 
 -- font <- loadFont "VL-PGothic-Regular.ttf"
-    -- Just collada <- liftIO $ readColladaFile "human15.dae"
+    Just collada <- liftIO $ readColladaFile "human15.dae"
     -- liftIO $ putStrLn $ show collada
-    let s = human15 -- sceneFromCollada collada
+    let s = sceneFromCollada collada
 
     r <- buildRendering win uniform s
     r0 <- buildRendering win uniform scene

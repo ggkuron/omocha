@@ -991,7 +991,7 @@ inf = read "Infinity"
 splitIn :: forall a. Int -> Vec.Vector a -> Vec.Vector (Vec.Vector a) 
 splitIn n is = select (Vec.replicate n Vec.empty) $ zip (cycle [0..n - 1]) (Vec.toList is)
     where 
-      select acc (x@(m, a):rest) = select (acc Vec.// [(n, acc Vec.! m `Vec.snoc` a)]) rest
+      select acc (x@(m, a):rest) = select (acc Vec.// [(m, acc Vec.! m `Vec.snoc` a)]) rest
       select acc [] = acc
 
 -- | Gets the total transformation matrix of a list of 'Transform' element.
