@@ -92,8 +92,8 @@ data DrawVertex = DrawVertex {
 
 
 data Mesh = Mesh {
-              vertices :: Vec.Vector DrawVertex,
-              indices :: Maybe (Vec.Vector Int),
+              vertices :: [DrawVertex],
+              indices :: Maybe [Int],
               offset :: V3 Float,
               textureImage :: Maybe Bitmap,
               shaderType :: OmochaShaderType
@@ -107,7 +107,7 @@ data OmochaShaderType = BoardShader | TargetBoard
 
 
 data Scene = Scene {
-               meshes :: Vec.Vector Mesh,
+               meshes :: [Mesh],
                camera :: V3 Float
            } deriving (Show, Eq)
 

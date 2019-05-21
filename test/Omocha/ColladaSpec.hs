@@ -3,6 +3,7 @@ module ColladaSpec (spec) where
 import Test.Hspec
 import Omocha.Collada
 import Control.Monad.IO.Class
+import qualified Data.Vector as V
 import Omocha.Scene(Scene(..), Mesh(..), OmochaShaderType(..), DrawVertex(..), RenderInput(..))
 import Graphics.GPipe (
     V2(..), V3(..), V4(..)
@@ -12,9 +13,9 @@ spec :: Spec
 spec = do
     describe "splitIn" $ do
         it "devide array into n stride groups" $ do
-            splitIn 3 [0..10] `shouldBe` [[0,3,6,9], [1,4,7,10], [2,5,8]]
-            splitIn 2 [0..10] `shouldBe` [[0,2,4,6,8,10], [1,3,5,7,9]]
-            splitIn 1 [0..10] `shouldBe` [[0..10]]
+            splitIn 3 (V.fromList [0..10]) `shouldBe` (V.fromList [(V.fromList [0,3,6,9]), (V.fromList [1,4,7,10]), (V.fromList [2,5,8])])
+            splitIn 2 (V.fromList [0..10]) `shouldBe` (V.fromList [(V.fromList [0,2,4,6,8,10]), (V.fromList [1,3,5,7,9])])
+            splitIn 1 (V.fromList [0..10]) `shouldBe` (V.fromList [(V.fromList [0..10])])
     -- describe "readColladaFile" $ do
     --     it "read from a simple blender dae" $ do
     --         Just collada <- liftIO $ do

@@ -56,6 +56,7 @@ import Text.XML.HXT.Arrow.XmlState.RunIOStateArrow(initialState)
 import Data.Tree.NTree.TypeDefs
 
 import Control.Lens ((^.))
+import Control.Monad (join)
 import Omocha.Scene(Scene(..), Mesh(..), OmochaShaderType(..), DrawVertex(..), RenderInput(..))
 -- import qualified Data.Vector.Unboxed
 
@@ -171,12 +172,12 @@ data ColladaMeshPrimitive p a =
     | ColladaMeshPrimitiveIndexed p (Vec.Vector Int) a
     deriving(Show)
 
-newtype ColladaMeshPrimitiveArray p a = ColladaMeshPrimitiveArray { getColladaMeshPrimitiveArray :: Vec.Vector (ColladaMeshPrimitive p a)}
+newtype ColladaMeshPrimitiveArray p a = ColladaMeshPrimitiveArray { getColladaMeshPrimitiveArray :: [ColladaMeshPrimitive p a]}
   deriving (Show)
 
 instance Monoid (ColladaMeshPrimitiveArray p a) where
-    mempty = ColladaMeshPrimitiveArray Vec.empty
-    mappend (ColladaMeshPrimitiveArray a) (ColladaMeshPrimitiveArray b) = ColladaMeshPrimitiveArray (a Vec.++ b)
+    mempty = ColladaMeshPrimitiveArray []
+    mappend (ColladaMeshPrimitiveArray a) (ColladaMeshPrimitiveArray b) = ColladaMeshPrimitiveArray (a ++ b)
 instance Functor (ColladaMeshPrimitiveArray p) where
     fmap f (ColladaMeshPrimitiveArray xs) = ColladaMeshPrimitiveArray $ fmap g xs
       where g (ColladaMeshPrimitive p a) = ColladaMeshPrimitive p (f a)
@@ -944,26 +945,27 @@ parsePrimitives = proc a@(_, p) -> do
 -- Dynamic Vertex
 
 makeDynPrimStream :: [((MaterialName, PrimitiveTopology Triangles, Maybe (Vec.Vector Int)), Map Semantic (Vec.Vector (Vec.Vector Float)))] -> [ColladaMesh]
-makeDynPrimStream = catMaybes . map makePrimGroup . V.groupBy ((==) `on` fst) . map splitParts
+makeDynPrimStream = catMaybes . map makePrimGroup . groupBy ((==) `on` fst) . map splitParts
   where
-    makePrimGroup :: [((MaterialName, [Semantic]), (AABB, ((PrimitiveTopology Triangles, Maybe (Vec.Vector Int)), (Vec.Vector (Vec.Vector (Vec.Vector Float))))))] -> Maybe ColladaMesh
+    makePrimGroup :: [((MaterialName, [Semantic]), (AABB, ((PrimitiveTopology Triangles, Maybe (Vec.Vector Int)), [Vec.Vector (Vec.Vector Float)])))] -> Maybe ColladaMesh
     makePrimGroup xs@(((material, names), _):_) = Just $ TriangleColladaMesh material pstream aabb
       where 
-        xs' :: [((MaterialName, [Semantic]), ((PrimitiveTopology Triangles, Maybe (Vec.Vector Int)), (Vec.Vector (Vec.Vector (Vec.Vector Float)))))]
+        xs' :: [((MaterialName, [Semantic]), ((PrimitiveTopology Triangles, Maybe (Vec.Vector Int)), [Vec.Vector (Vec.Vector Float)]))]
         xs' = map (second snd) xs
         aabb :: AABB
         aabb = mconcat $ map (fst . snd) xs
         pstream :: ColladaMeshPrimitiveArray (PrimitiveTopology Triangles) (Map Semantic (Vec.Vector (Vec.Vector Float)))
         pstream = fmap (\f -> Map.fromAscList $ zip names f) $ toStreamUsingLength xs'
           where  
-          toStreamUsingLength :: [(t, ((p, Maybe (Vec.Vector Int)), Vec.Vector (Vec.Vector (Vec.Vector Float))))] -> ColladaMeshPrimitiveArray p [Vec.Vector (Vec.Vector Float)]
-          toStreamUsingLength = mconcat . map (toPrimStream . second (second (Vec.map id)))
+          toStreamUsingLength :: [(t, ((p, Maybe (Vec.Vector Int)), [Vec.Vector (Vec.Vector Float)]))] -> ColladaMeshPrimitiveArray p [Vec.Vector (Vec.Vector Float)]
+          toStreamUsingLength = mconcat . map (toPrimStream . second (second id))
             where
             toPrimStream :: (t, ((p, Maybe (Vec.Vector Int)), a)) -> ColladaMeshPrimitiveArray p a
-            toPrimStream (_, ((primtype, Just indices), input)) =  ColladaMeshPrimitiveArray $ Vec.singleton (ColladaMeshPrimitiveIndexed primtype indices input)
-            toPrimStream (_, ((primtype, _), input)) = ColladaMeshPrimitiveArray $ Vec.singleton (ColladaMeshPrimitive primtype input)
+            toPrimStream (_, ((primtype, Just indices), input)) =  ColladaMeshPrimitiveArray [ColladaMeshPrimitiveIndexed primtype indices input]
+            toPrimStream (_, ((primtype, _), input)) = ColladaMeshPrimitiveArray [ColladaMeshPrimitive primtype input]
     makePrimGroup _ = Nothing
-    splitParts :: ((t2, t1, t), Map Semantic (Vec.Vector (Vec.Vector Float))) -> ((t2, [MaterialName]), (AABB, ((t1, t), [Vec.Vector (Vec.Vector Float)])))
+    splitParts :: ((t2, t1, t), Map Semantic (Vec.Vector (Vec.Vector Float)))
+                  -> ((t2, [MaterialName]), (AABB, ((t1, t), [Vec.Vector (Vec.Vector Float)])))
     splitParts ((material, primtype, mindices), m) = let mlist = Map.toAscList m
                                                          ins = map snd mlist
                                                          names = map fst mlist
@@ -987,15 +989,10 @@ inf = read "Infinity"
 
 -- [[offset 0], [offset 1], [offset 2]]
 splitIn :: forall a. Int -> Vec.Vector a -> Vec.Vector (Vec.Vector a) 
-splitIn n is = foldr select ([], [], n)  $ zip (cycle [0..n - 1]) is
+splitIn n is = select (Vec.replicate n Vec.empty) $ zip (cycle [0..n - 1]) (Vec.toList is)
     where 
-      select acc (x@(m, a):_) n | n == m = select  (x:ts, fs, n)
-                                | otherwise = (ts, x:fs, n - 1) : acc
-      select acc [] n | n == 0 = acc
-      select acc (x@(m, a):[]) n | n == 0 = (x:ts, fs, n)
-                                     | otherwise = (ts, x:fs, n)
-
-
+      select acc (x@(m, a):rest) = select (acc Vec.// [(n, acc Vec.! m `Vec.snoc` a)]) rest
+      select acc [] = acc
 
 -- | Gets the total transformation matrix of a list of 'Transform' element.
 transformsMat :: [Transform] -> M44 Float
@@ -1038,13 +1035,16 @@ skew angle a b = m33_to_m44 m
         m = n1 `outer` n3 + identity
 
 
-aToV3 :: forall a. [a] -> V3 a
-aToV3 a = V3 (a!!0) (a!!2) (a!!1)
+aToV3 :: forall a. Vec.Vector a -> V3 a
+aToV3 a = V3 (a Vec.! 0) (a Vec.! 2) (a Vec.! 1)
+
+concatMapM :: Monad m => (a -> m (Vec.Vector b)) -> Vec.Vector a -> m (Vec.Vector b)
+concatMapM f v = join <$> sequence (fmap f v)
 
 sceneFromCollada :: ColladaTree -> Scene
 sceneFromCollada tree = 
     let (_cameras, geometries) = F.foldMap tagContent tree
-        primitiveStream = concat $ concatMap filterGeometry geometries :: ColladaMeshPrimitiveArray (PrimitiveTopology Triangles) ([[Float]], [[Float]])
+        primitiveStream = mconcat $ concatMap filterGeometry geometries :: ColladaMeshPrimitiveArray (PrimitiveTopology Triangles) ((Vec.Vector (Vec.Vector Float)), Vec.Vector  (Vec.Vector Float))
     in Scene {
         camera = V3 0 0 0,
         meshes = map toMesh (getColladaMeshPrimitiveArray primitiveStream)
@@ -1053,17 +1053,15 @@ sceneFromCollada tree =
       toMesh :: ColladaMeshPrimitive (PrimitiveTopology Triangles) ((Vec.Vector (Vec.Vector Float)), (Vec.Vector (Vec.Vector Float))) -> Mesh
       toMesh (ColladaMeshPrimitive _ vertices) 
         = Mesh 
-            (fmap (\(v, n) -> DrawVertex (aToV3 v) (aToV3 n) (V2 0 0)) (Vec.zip (fst vertices) (snd vertices)))
+            [DrawVertex (aToV3 v) (aToV3 n) (V2 0 0) | (v, n) <-  zip (Vec.toList $ fst vertices) (Vec.toList $ snd vertices)]
             Nothing 
             (V3 0 0 0)
             Nothing
             BoardShader
       toMesh (ColladaMeshPrimitiveIndexed _ indices vertices)
        = Mesh 
-          (fmap 
-            (\(v, n) -> DrawVertex (aToV3 v) (aToV3 n) (V2 0 0))
-            (Vec.zip (fst vertices) (snd vertices)))
-          (Just indices)
+          [DrawVertex (aToV3 v) (aToV3 n) (V2 0 0) | (v, n) <- zip (Vec.toList $ fst vertices) (Vec.toList $ snd vertices)]
+          (Just $ Vec.toList indices)
           (V3 0 0 0)
           Nothing
           BoardShader
