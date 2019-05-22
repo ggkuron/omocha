@@ -53,10 +53,10 @@ import qualified Linear.V as V
 import Linear.Matrix hiding (transpose)
 import Text.XML.HXT.Core
 import Text.XML.HXT.Arrow.XmlState.RunIOStateArrow(initialState)
+import Text.Read(readMaybe)
 import Data.Tree.NTree.TypeDefs
 
 import Control.Lens ((^.))
-import Control.Monad (join)
 import Omocha.Scene(Scene(..), Mesh(..), OmochaShaderType(..), DrawVertex(..), RenderInput(..))
 -- import qualified Data.Vector.Unboxed
 
@@ -216,15 +216,11 @@ readColladaFile :: FilePath -> IO (Maybe ColladaTree)
 readColladaFile f = do
     (_, r) <- runIOSLA (
                         readDocument [ withValidate yes
-                                     , withTrace 2
                                      ] f 
-                        >>> configSysVars [ withTrace 4]
                         >>> parseDoc 
                         >>> errorMsgStderr
                        )
                        (initialState Map.empty) ()
-    print r
-    print (length r)
     return $ (listToMaybe . catMaybes) r
 
 localUrl :: ID -> Maybe ID
@@ -256,13 +252,13 @@ fromList e = listA $ arr words
 
 fromString :: forall b. (Read b) => String -> ParseState String b
 fromString e = proc x -> do
-    r <- arr (reads :: ReadS b) -< x
+    r <- arr readMaybe -< x
     case r of
-        [(a, "")] -> returnA -< a
+        Just a -> returnA -< a
         _ -> issueErr e -<< read ""
 
 fromListToVec :: forall a. [a] -> V3 a
-fromListToVec = V.fromV . fromJust . V.fromVector . Vec.fromList
+fromListToVec a = V3 (a!!0) (a!!1) (a!!2)
 
 fromListToMat44 :: forall a. [a] -> M44 a
 fromListToMat44 xs = V4 (V4 (xs!!0)  (xs!!1)  (xs!!2)  (xs!!3))
@@ -438,20 +434,28 @@ parseAccessor = proc acc -> do
                  else do
                      arr
                          (\(source, offset, count, stride, useParamList) ->
-                              Just $ (assembleSource 
+                              Just $ (Vec.fromList $
+                                        assembleSource 
                                         (Vec.drop offset source)
                                         count 
                                         stride 
                                         useParamList,
-                                        count
-                                     ))
+                                      count))
                        -< (source, offset, count, stride, useParamList)
                _ -> do
                 issueErr ("MissingLinkError *_array: " ++ cid) -<< Nothing
   where 
-    assembleSource _ 0 _ _ = Vec.empty
-    assembleSource source count stride useParamList = case Vec.splitAt stride source of
-                                                        (vertex, rest) -> Vec.map snd (Vec.filter fst (Vec.zip useParamList vertex)) `Vec.cons` assembleSource rest (count - 1) stride useParamList
+    assembleSource source count stride useParamList = go [] count source
+      where
+        go acc 0 _ = acc
+        go acc n s
+          = let (vertex, rest) = Vec.splitAt stride s 
+             in (Vec.ifilter 
+                  (\i _ -> case useParamList Vec.!? i of
+                             Just t -> t
+                             _ -> False)
+                vertex) : go acc (n - 1) rest
+
 
 ---------------------------------------------------------------
 
@@ -466,11 +470,9 @@ makeSID s = sid s
 
 parseNode :: ParseState XmlTree (Maybe ColladaTree)
 parseNode = proc c -> do  
-    traceMsg 1 $ "n0:" -< ()
     ifA 
       (hasName "node")
       (proc c -> do
-         traceMsg 1 $ "n1:" -< ()
          (cid, (csid, (layer, (transformations, (cameraFs, (lightFs, (geometryFs, subNodeFs)))))))
            <- getAttrValue "id"
               &&&
@@ -486,15 +488,13 @@ parseNode = proc c -> do
               &&&
               (listA $ getChildren >>> hasName "instance_geometry" >>> parseGeometryInstances)
               &&&
-              (listA $  (traceMsg 1 "nchild") >>> getChildren >>> (hasName "node" <+> hasName "instance_node") >>> parseNode)
+              (listA $ getChildren >>> (hasName "node" <+> hasName "instance_node") >>> parseNode)
            -< c
-         traceMsg 1 $ "n1':" ++ cid -<< ()
          let mid = if cid == "" then Nothing else Just cid
              node = csid $ ColladaNode mid layer (catMaybes transformations) (catMaybes cameraFs) (catMaybes lightFs) (catMaybes geometryFs)
          returnA -< Just $ NTree node $ catMaybes subNodeFs
       )
       (proc c -> do
-         traceMsg 1 $ "n2:" -< ()
          url <- getAttrValue "url" -< c
          case localUrl url of
            Just cid -> do
@@ -511,7 +511,6 @@ parseNode = proc c -> do
 
 parseCameraInstances :: ParseResult (Maybe Camera)
 parseCameraInstances = proc c -> do
-    traceMsg 1 $ "cameraI:" -< ()
     url <- getAttrValue "url" -< c
     case localUrl url of
       Nothing -> issueWarn "" -< Nothing
@@ -525,7 +524,6 @@ parseCameraInstances = proc c -> do
 
 parseLightInstances :: ParseResult (Maybe Light)
 parseLightInstances = proc c -> do
-    traceMsg 1 $ "lightI:" -< ()
     url <- getAttrValue "url" -< c
     case localUrl url of
       Nothing -> returnA -< Nothing
@@ -539,19 +537,15 @@ parseLightInstances = proc c -> do
 
 parseGeometryInstances :: ParseResult (Maybe Geometry)
 parseGeometryInstances = proc c -> do
-    traceMsg 1 $ "geoI:" -< ()
     url <- getAttrValue "url" -< c
     case localUrl url of
       Nothing -> do
         issueErr ("Missing url: " ++ url) -<< c
         returnA -< Nothing
       Just cid -> do
-        traceMsg 1 $ "geoI':" ++ cid -<< ()
         state <- getUserState -< ()
-        traceMsg 1 $ "geoI':" ++ (show $ Map.size state) -<< ()
         case Map.lookup cid state of
           Just (RefGeometry g) -> do 
-            traceMsg 1 $ "geoI'':" -< ()
             returnA -< Just g
           _ -> do
             issueErr ("MissingLinkError instance geometry: " ++ url) -<< c
@@ -559,7 +553,6 @@ parseGeometryInstances = proc c -> do
 -------------------------------------------------------------
 parseTransformations:: ParseResult (Maybe Transform)
 parseTransformations = proc c -> do
-    traceMsg 1 $ "trans0:" -< ()
     name <- getName -< c
     case name of
       "lookat" -> do
@@ -579,7 +572,7 @@ parseTransformations = proc c -> do
           returnA -< Just $ Scale $ fromListToVec v
       "skew" -> do
           xs <- getFromListLengthContents 7 -< c
-          let ([a],rest) = splitAt 1 xs
+          let ([a], rest) = splitAt 1 xs
               (rot, trans) = splitAt 3 rest
           returnA -< Just $ Skew a (fromListToVec rot) (fromListToVec trans)
       "translate" -> do
@@ -688,7 +681,7 @@ parseGeometry = proc x -> do
               (getChildren >>> (hasName "convex_mesh" <+> hasName "brep"))
               (parseVertices >>> unitA)
               (issueErr "vertices root not found v2" >>> unitA))
-         (issueErr "vertices not found v1" >>> unitA) -< x
+         unitA -< x
    ifA 
        (getChildren >>> hasName "mesh" >>> singleOnly)
        ((getAttrValue "id"
@@ -790,7 +783,6 @@ parseInput shared = proc i -> do
         &&& getAttrValue "offset"
         &&& getAttrValue "set" -< i
 
-    traceMsg 1 $ ("semantic: " ++ semantic) -<< i
     let offset' = if shared then offset else ""
     case localUrl source of
        Nothing -> do
@@ -803,7 +795,6 @@ parseInput shared = proc i -> do
            "VERTEX" ->
              case Map.lookup cid state of
                Just (RefVertices v) -> do
-                   traceMsg 1 $ ("v: ") -<< v
                    returnA -< Just (read offset', Map.mapKeysMonotonic (++ set') v)
                _ -> do
                  issueErr ("MissingLinkError vertices: " ++ cid) -<< i
@@ -811,7 +802,6 @@ parseInput shared = proc i -> do
            _ ->
              case Map.lookup cid state of
                Just (RefSource s) -> do
-                   traceMsg 1 $ ("s: ") -<< s
                    returnA -< Just $ (read offset', Map.singleton (semantic ++ set') s)
                _ -> do
                    issueErr ("MissingLinkError source: " ++ cid) -<< i
@@ -989,10 +979,12 @@ inf = read "Infinity"
 
 -- [[offset 0], [offset 1], [offset 2]]
 splitIn :: forall a. Int -> Vec.Vector a -> Vec.Vector (Vec.Vector a) 
-splitIn n is = select (Vec.replicate n Vec.empty) $ zip (cycle [0..n - 1]) (Vec.toList is)
+splitIn n is = select (Vec.replicate n []) $ Vec.imap (\i a -> (i `mod` n, a)) is
     where 
-      select acc (x@(m, a):rest) = select (acc Vec.// [(m, acc Vec.! m `Vec.snoc` a)]) rest
-      select acc [] = acc
+    select acc xs | Vec.null xs = Vec.map (Vec.fromList . reverse) acc
+                  | otherwise = let (h, rest) = Vec.splitAt 1 xs
+                                    (m, a) = h Vec.! 0
+                                in  select (acc Vec.// [(m, a:(acc Vec.! m))]) rest
 
 -- | Gets the total transformation matrix of a list of 'Transform' element.
 transformsMat :: [Transform] -> M44 Float
@@ -1038,8 +1030,6 @@ skew angle a b = m33_to_m44 m
 aToV3 :: forall a. Vec.Vector a -> V3 a
 aToV3 a = V3 (a Vec.! 0) (a Vec.! 2) (a Vec.! 1)
 
-concatMapM :: Monad m => (a -> m (Vec.Vector b)) -> Vec.Vector a -> m (Vec.Vector b)
-concatMapM f v = join <$> sequence (fmap f v)
 
 sceneFromCollada :: ColladaTree -> Scene
 sceneFromCollada tree = 
