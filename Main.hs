@@ -79,11 +79,12 @@ scene = Scene {
       }
 
 
-buildRendering :: forall ctx os m. (ContextHandler ctx, MonadIO m, MonadException m) => 
-               Window os RGBAFloat Depth
-               -> Buffer os (Uniform UniInput)
-               -> Scene 
-               -> ContextT ctx os m (CompiledShader os (V2 Int))
+buildRendering 
+  :: forall ctx os m. (ContextHandler ctx, MonadIO m, MonadException m) => 
+  Window os RGBAFloat Depth
+  -> Buffer os (Uniform UniInput)
+  -> Scene 
+  -> ContextT ctx os m (CompiledShader os (V2 Int))
 buildRendering win uniform Scene{ meshes } = do
     bs <- compileShader $ boardShader (\_ -> id) win uniform
     ts <- compileShader $ boardShader (\uni -> \(p, n, uv) -> (p + viewTarget uni, n, uv)) win uniform
@@ -158,9 +159,11 @@ main = runContextT (GLFW.defaultHandleConfig { GLFW.configEventPolicy = Nothing 
         fps <- do
           sig <- E.transfer 
                     (30, (0,0)) 
-                    (\dt v (x, (v0, t)) -> let t' = dt + t
-                                         in if t' > 1 then ((v-v0)/t', (v, 0)) 
-                                                      else (x, (v0, t'))
+                    (\dt v (x, (v0, t))
+                      -> let t' = dt + t
+                          in if t' > 1
+                             then ((v-v0)/t', (v, 0)) 
+                             else (x, (v0, t'))
                     )
                     frameCount
           return (fst <$> sig)
@@ -168,13 +171,13 @@ main = runContextT (GLFW.defaultHandleConfig { GLFW.configEventPolicy = Nothing 
         target <- E.transfer2 (V3 0 0 0)
                               (\_ (keyH, keyJ, keyK, keyL) mu t -> 
                                   t&_x+~(if 
-                                          | keyL -> -mu
-                                          | keyH -> mu 
-                                          | otherwise ->  0)
+                                         | keyL -> -mu
+                                         | keyH -> mu 
+                                         | otherwise ->  0)
                                    &_z+~(if 
-                                          | keyJ -> -mu
-                                          | keyK -> mu
-                                          | otherwise ->  0)
+                                         | keyJ -> -mu
+                                         | keyK -> mu
+                                         | otherwise ->  0)
                               ) 
                               keyInput moveUnit
         camera' <- E.transfer (V3 0 0.25 1) 
