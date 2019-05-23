@@ -2,8 +2,8 @@
 
 module Omocha.Class where
 
-import Omocha.Internal.Finalizer
-import Control.Monad.IO.Class
+import           Omocha.Internal.Finalizer
+import           Control.Monad.IO.Class
 
 
 class FromFinalizer m where
@@ -12,7 +12,7 @@ class FromFinalizer m where
 instance FromFinalizer (FinalizerT IO) where
     fromFinalizer = id
 
--- | 'liftIO'ã€€variety for 'FromFinalizer'.
+-- | 'liftIO'@variety for 'FromFinalizer'.
 embedIO :: FromFinalizer m => IO a -> m a
 embedIO m = fromFinalizer (liftIO m)
 {-# INLINE embedIO #-}
