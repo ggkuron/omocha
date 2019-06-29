@@ -93,7 +93,6 @@ import           Graphics.GPipe                 ( V2(..)
                                                 , Filter(..)
                                                 )
 import           Control.Lens                   ( (^.) )
-import qualified Data.Vector                   as Vec
 
 
 data DrawVertex = DrawVertex {

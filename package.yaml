@@ -33,6 +33,7 @@ executables:
     - linear
     - transformers
     - exception-transformers
+    - containers
     ghc-options:         
     - -fprint-potential-instances
     - -Wall

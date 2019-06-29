@@ -15,7 +15,8 @@
 module Main where
 
 import           Omocha.Bitmap
--- import Omocha.Font
+-- import Omocha.Font
+
 import           Omocha.Collada
 import           Omocha.Scene
 
@@ -29,11 +30,16 @@ import qualified Codec.Picture                 as P
 import qualified Codec.Picture.Types           as P
 import           Control.Monad                  ( join )
 import           Control.Monad.IO.Class         ( liftIO )
+import           Control.Monad.Trans.Class      ( lift )
 import           Control.Monad.Fix              ( fix )
 import           Control.Monad.Exception        ( MonadException )
 import           Control.Lens            hiding ( indices )
+import Control.Concurrent
 import           Data.Word                      ( Word32 )
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as Map
 import           Control.Monad.IO.Class         ( MonadIO )
+import Data.IORef
 
 import qualified FRP.Elerea.Param              as E
 
@@ -70,7 +76,7 @@ scene = Scene
                ]
                Nothing
                (V3 0 0 0)
-               (Just _maptips_grass_png)
+              (Just _maptips_grass_png)
                BoardShader
              , Mesh
                [ DrawVertex (V3 1 1 0)       (V3 0 1 0) (V2 1 1)
@@ -160,21 +166,7 @@ main =
                          (GLFW.defaultWindowConfig "omocha")
         uniform :: Buffer os (Uniform UniInput) <- newBuffer 1
 
-    -- font <- loadFont "VL-PGothic-Regular.ttf"
-        Just collada <- liftIO $ readColladaFile "untitled.dae"
-        -- liftIO $ putStrLn $ show collada
-        let s = sceneFromCollada collada
-
-        r  <- buildRendering win uniform s
-        r0 <- buildRendering win uniform scene
-
-        let renderings =
-              [ \vpSize -> do
-                  clearWindowColor win (V4 0 0.25 1 0)
-                  clearWindowDepth win 1
-                  r vpSize
-                  r0 vpSize
-              ]
+        -- font <- loadFont "VL-PGothic-Regular.ttf"
 
         (keyInput, keyInputSink) <- liftIO
           $ E.external (False, False, False, False)
@@ -186,7 +178,9 @@ main =
               (30, (0, 0))
               (\dt v (x, (v0, t)) ->
                 let t' = dt + t
-                in  if t' > 1 then ((v - v0) / t', (v, 0)) else (x, (v0, t'))
+                in  if t' > 1 
+                    then ((v - v0) / t', (v, 0)) 
+                    else (x, (v0, t'))
               )
               frameCount
             return (fst <$> sig)
@@ -213,11 +207,33 @@ main =
           camera' <- E.transfer (V3 0 0.25 1)
                                 (\_ t _ -> t & _y +~ (5) & _z -~ (7.5))
                                 target
+          sceneId <- E.transfer 
+                     "iw" 
+                     (\_ i p -> "iw")
+                     target
+          shaderMap <- E.transfer 
+                       (Map.empty :: Map String (CompiledShader os (V2 Int)))
+                       (\_ n shaderMap -> 
+                           case Map.lookup n shaderMap  of
+                             Just _ -> shaderMap
+                             Nothing -> do
+                                c <- liftIO $ do
+                                    Just collada <- readColladaFile "iw.dae"
+                                    return $ sceneFromCollada collada
+                                s' <- lift $ buildRendering win uniform c
+                                Map.insert n s' shaderMap
+                                )
+                       sceneId
+          shader <- E.transfer2
+                    Nothing
+                    (\_ m i s -> Map.lookup i m)
+                    shaderMap sceneId
           return
-            $   renderFrame win uniform renderings
-            <$> camera'
-            <*> target
-            <*> fps
+            $ do
+                renderFrame 
+                  win
+                  uniform 
+                  <$> shader <*> camera' <*> target <*> fps
 
         _ <- liftIO $ GLFW.setTime 0
         fix $ \(~loop) -> do
@@ -256,16 +272,27 @@ readInput win keyInputSink = do
   keyIsPressed :: Input.Key -> ContextT GLFW.Handle os m Bool
   keyIsPressed k = maybe False (== GLFW.KeyState'Pressed) <$> GLFW.getKey win k
 
+
 renderFrame
   :: Window os RGBAFloat Depth
   -> Buffer os (Uniform UniInput)
-  -> [CompiledShader os (V2 Int)]
+  -> Maybe (CompiledShader os (V2 Int))
   -> V3 Float
   -> V3 Float
   -> Double
   -> ContextT GLFW.Handle os IO ()
-renderFrame win uniform renderings camera target fps = do
+renderFrame win uniform shader camera target fps = do
   size <- getFrameBufferSize win
+
+  let renderings = [ \vpSize -> do
+                       clearWindowColor win (V4 0 0.25 1 0)
+                       clearWindowDepth win 1
+
+                       case shader of
+                        Just shader' -> shader' vpSize
+                        _ -> return ()
+                   ]
+
   let viewUpNorm = V3 0 1 0
       normMat    = identity
       uni =
@@ -276,10 +303,11 @@ renderFrame win uniform renderings camera target fps = do
         , viewUpNorm
         , fromRational . toRational $ fps
         )
-
   writeBuffer uniform 0 [uni]
 
-  mapM_ (\r -> render $ r size) renderings
+  mapM_ 
+    (\r -> render $ r size) 
+    renderings
   swapWindowBuffers win
 
 
