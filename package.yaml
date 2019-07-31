@@ -65,7 +65,6 @@ library:
     - mtl >= 2.2
     - vector
     - random
-    - HaXml
     - hxt
     - array
     - transformers

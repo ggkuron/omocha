@@ -28,7 +28,7 @@ import qualified Graphics.GPipe.Context.GLFW.Input
 
 import qualified Codec.Picture                 as P
 import qualified Codec.Picture.Types           as P
-import           Control.Monad                  ( join )
+import           Control.Monad                  ( join, forM_ )
 import           Control.Monad.IO.Class         ( liftIO )
 import           Control.Monad.Trans.Class      ( lift )
 import           Control.Monad.Fix              ( fix )
@@ -169,6 +169,7 @@ main =
         uniform :: Buffer os (Uniform UniInput) <- newBuffer 1
 
         -- font <- loadFont "VL-PGothic-Regular.ttf"
+        shaderMap <- liftIO $ newIORef Map.empty
 
         (keyInput, keyInputSink) <- liftIO
           $ E.external (False, False, False, False)
@@ -214,44 +215,18 @@ main =
                      (\_ _ p -> p)
                      target
 
-          asyncSc <- E.transfer 
-                        (Nothing :: Maybe (String, Async (ContextT GLFW.Handle os IO (CompiledShader os (V2 Int)))))
-                        (\_ sid p -> 
-                          case p of
-                            Just p@(sid', a) | sid == sid' -> Just p 
-                                             | otherwise -> Just (sid,
-                                                                  unsafePerformIO $ do
-                                                                    cancel a
-                                                                    async $ do
-                                                                      Just c <- readColladaFile sid 
-                                                                      return $ buildRendering win uniform (sceneFromCollada c))
-                            Nothing -> Just (sid,
-                                             unsafePerformIO $ async $ do
-                                               Just c <- readColladaFile sid 
-                                               return $ buildRendering win uniform (sceneFromCollada c))
-                        )
-                        sceneId
-
-          shader <- E.transfer
-                    (Nothing:: Maybe (String, (ContextT GLFW.Handle os IO (CompiledShader os (V2 Int)))))
-                    (\_ as p -> case as of
-                                  Just (sid, a) -> case p of
-                                                     Just (sid', a') | sid == sid' -> Just (sid, a')
-                                                                     | otherwise -> unsafePerformIO $ do
-                                                                        a' <- poll a
-                                                                        return $
-                                                                          case a' of
-                                                                          Just (Right r) -> Just (sid, r)
-                                                                          _ -> Nothing
-                                                     _ -> unsafePerformIO $ do
-                                                                        a' <- poll a
-                                                                        return $
-                                                                          case a' of
-                                                                          Just (Right r) -> Just (sid, r)
-                                                                          _ -> Nothing
-                                  _ -> Nothing
+          shader <- E.effectful1
+                    (\s -> do
+                        sm <- readIORef shaderMap
+                        case Map.lookup s sm of
+                            Just shader -> return [shader]
+                            _ -> do
+                                Just c <- readColladaFile s 
+                                let shader = buildRendering win uniform (sceneFromCollada c)
+                                writeIORef shaderMap (Map.insert s shader sm)
+                                return [shader]
                     )
-                    asyncSc
+                    sceneId
           return
             $ do
                 renderFrame 
@@ -300,22 +275,20 @@ readInput win keyInputSink = do
 renderFrame
   :: Window os RGBAFloat Depth
   -> Buffer os (Uniform UniInput)
-  -> Maybe (String, ContextT GLFW.Handle os IO (CompiledShader os (V2 Int)))
+  -> [ContextT GLFW.Handle os IO (CompiledShader os (V2 Int))]
   -> V3 Float
   -> V3 Float
   -> Double
   -> ContextT GLFW.Handle os IO ()
 renderFrame win uniform shader camera target fps = do
   size <- getFrameBufferSize win
-  shader' <- case shader of 
-               Just (_, s) -> s
-               _ -> return $ const $ return ()
+  shader' <- sequence shader 
 
   let renderings = [ \vpSize -> do
                        clearWindowColor win (V4 0 0.25 1 0)
                        clearWindowDepth win 1
 
-                       shader' vpSize
+                       forM_ shader' ($ vpSize)
                    ]
 
   let viewUpNorm = V3 0 1 0
