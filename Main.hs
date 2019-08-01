@@ -215,24 +215,22 @@ main =
                      (\_ _ p -> p)
                      target
 
-          shader <- E.effectful1
-                    (\s -> do
-                        sm <- readIORef shaderMap
-                        case Map.lookup s sm of
-                            Just shader -> return [shader]
+          return $ 
+            (\si c t f -> do
+               sm <- liftIO $ readIORef shaderMap
+               shader <- case Map.lookup si sm of
+                            Just s' -> return [s']
                             _ -> do
-                                Just c <- readColladaFile s 
-                                let shader = buildRendering win uniform (sceneFromCollada c)
-                                writeIORef shaderMap (Map.insert s shader sm)
-                                return [shader]
-                    )
-                    sceneId
-          return
-            $ do
-                renderFrame 
-                  win
-                  uniform 
-                  <$> shader <*> camera' <*> target <*> fps
+                                Just c <- liftIO $ readColladaFile si 
+                                s'' <- buildRendering win uniform (sceneFromCollada c)
+                                liftIO $ writeIORef shaderMap (Map.insert si s'' sm)
+                                return [s'']
+               renderFrame 
+                 win
+                 uniform 
+                 shader c t f
+            ) <$> sceneId <*> camera' <*> target <*> fps
+
 
         _ <- liftIO $ GLFW.setTime 0
         fix $ \(~loop) -> do
@@ -275,20 +273,19 @@ readInput win keyInputSink = do
 renderFrame
   :: Window os RGBAFloat Depth
   -> Buffer os (Uniform UniInput)
-  -> [ContextT GLFW.Handle os IO (CompiledShader os (V2 Int))]
+  -> [CompiledShader os (V2 Int)]
   -> V3 Float
   -> V3 Float
   -> Double
   -> ContextT GLFW.Handle os IO ()
 renderFrame win uniform shader camera target fps = do
   size <- getFrameBufferSize win
-  shader' <- sequence shader 
 
   let renderings = [ \vpSize -> do
                        clearWindowColor win (V4 0 0.25 1 0)
                        clearWindowDepth win 1
 
-                       forM_ shader' ($ vpSize)
+                       forM_ shader ($ vpSize)
                    ]
 
   let viewUpNorm = V3 0 1 0
@@ -303,9 +300,7 @@ renderFrame win uniform shader camera target fps = do
         )
   writeBuffer uniform 0 [uni]
 
-  mapM_ 
-    (\r -> render $ r size) 
-    renderings
+  mapM_ (\r -> render $ r size) renderings
   swapWindowBuffers win
 
 
