@@ -3,7 +3,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE MultiWayIf #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE RecursiveDo #-}
@@ -29,7 +28,7 @@ import qualified Graphics.GPipe.Context.GLFW.Input
 import qualified Codec.Picture                 as P
 import qualified Codec.Picture.Types           as P
 import           Control.Monad                  ( join, forM_ )
-import           Control.Monad.IO.Class         ( liftIO )
+import           Control.Monad.IO.Class         ( liftIO, MonadIO )
 import           Control.Monad.Trans.Class      ( lift )
 import           Control.Monad.Fix              ( fix )
 import           Control.Monad.Exception        ( MonadException )
@@ -38,9 +37,7 @@ import Control.Concurrent
 import           Data.Word                      ( Word32 )
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
-import           Control.Monad.IO.Class         ( MonadIO )
 import Data.IORef
-import System.IO.Unsafe (unsafePerformIO)
 import Control.Concurrent.Async (async, poll, cancel, Async )
 
 import qualified FRP.Elerea.Param              as E
@@ -67,10 +64,8 @@ getImage bmp =
   in  (size, img)
 
 
-scene :: Scene
-scene = Scene
-  { camera = V3 0 0.25 1
-  , meshes = [ Mesh
+scene :: [Mesh]
+scene = [ Mesh
                [ DrawVertex (V3 1 0 1)       (V3 0 1 0) (V2 1 1)
                , DrawVertex (V3 1 0 (-1))    (V3 0 1 0) (V2 1 0)
                , DrawVertex (V3 (-1) 0 1)    (V3 0 1 0) (V2 0 1)
@@ -91,7 +86,6 @@ scene = Scene
                (Just _front0_png)
                TargetBoard
              ]
-  }
 
 
 buildRendering
@@ -99,15 +93,15 @@ buildRendering
    . (ContextHandler ctx, MonadIO m, MonadException m)
   => Window os RGBAFloat Depth
   -> Buffer os (Uniform UniInput)
-  -> Scene
+  -> [Mesh]
   -> ContextT ctx os m (CompiledShader os (V2 Int))
-buildRendering win uniform Scene { meshes } = do
-  bs <- compileShader $ boardShader (\_ -> id) win uniform
+buildRendering win uniform meshes = do
+  bs <- compileShader $ boardShader (const id) win uniform
   ts <- compileShader $ boardShader
-    (\uni -> \(p, n, uv) -> (p + viewTarget uni, n, uv))
+    (\uni (p, n, uv) -> (p + viewTarget uni, n, uv))
     win
     uniform
-  ms <- compileShader $ monoShader (\_ -> id) win uniform
+  ms <- compileShader $ monoShader (const id) win uniform
   rr <- mapM (renderMesh bs ts ms) meshes
   return $ \vpSize -> mapM_ (\r -> r vpSize) rr
  where
@@ -169,7 +163,9 @@ main =
         uniform :: Buffer os (Uniform UniInput) <- newBuffer 1
 
         -- font <- loadFont "VL-PGothic-Regular.ttf"
-        shaderMap <- liftIO $ newIORef Map.empty
+        shaderMap <- liftIO $ newIORef $ Map.empty 
+
+        playerRendering <- buildRendering win uniform scene
 
         (keyInput, keyInputSink) <- liftIO
           $ E.external (False, False, False, False)
@@ -219,10 +215,10 @@ main =
             (\si c t f -> do
                sm <- liftIO $ readIORef shaderMap
                shader <- case Map.lookup si sm of
-                            Just s' -> return [s']
+                            Just s' -> return [s', playerRendering]
                             _ -> do
                                 Just c <- liftIO $ readColladaFile si 
-                                s'' <- buildRendering win uniform (sceneFromCollada c)
+                                s'' <- buildRendering win uniform (meshes $ sceneFromCollada c)
                                 liftIO $ writeIORef shaderMap (Map.insert si s'' sm)
                                 return [s'']
                renderFrame 
@@ -230,7 +226,6 @@ main =
                  uniform 
                  shader c t f
             ) <$> sceneId <*> camera' <*> target <*> fps
-
 
         _ <- liftIO $ GLFW.setTime 0
         fix $ \(~loop) -> do

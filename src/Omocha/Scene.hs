@@ -116,10 +116,12 @@ instance Show Mesh where
 data OmochaShaderType = BoardShader | TargetBoard
     deriving (Eq, Ord, Show)
 
+data Model = Model {
+              modelMeshes :: [Mesh]
+           }
 
 data Scene = Scene {
-               meshes :: [Mesh],
-               camera :: V3 Float
+               meshes :: [Mesh]
            } deriving (Show, Eq)
 
 

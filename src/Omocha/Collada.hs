@@ -58,6 +58,7 @@ import Data.Tree.NTree.TypeDefs
 
 import Control.Lens ((^.))
 import Omocha.Scene(Scene(..), Mesh(..), OmochaShaderType(..), DrawVertex(..), RenderInput(..))
+import Omocha.Data.AABB
 -- import qualified Data.Vector.Unboxed
 
 
@@ -182,18 +183,6 @@ instance Functor (ColladaMeshPrimitiveArray p) where
     fmap f (ColladaMeshPrimitiveArray xs) = ColladaMeshPrimitiveArray $ fmap g xs
       where g (ColladaMeshPrimitive p a) = ColladaMeshPrimitive p (f a)
             g (ColladaMeshPrimitiveIndexed p i a) = ColladaMeshPrimitiveIndexed p i (f a)
-
-data AABB = AABB {
-    aabbMin :: V3 Float,
-    aabbMax :: V3 Float
-} deriving (Show, Eq)
-
-instance Monoid AABB where
-    mempty = AABB (V3 inf inf inf) (V3 (-inf) (-inf) (-inf))
-    mappend (AABB minA maxA) (AABB minB maxB) = AABB (zipAsVector min minA minB) (zipAsVector max maxA maxB)
-        where 
-        zipAsVector minMax a b =  V.fromV . fromJust . V.fromVector $ Vec.zipWith minMax (V.toVector $ V.toV a) (V.toVector $ V.toV b)
-
 
 
 type CArray = (Vec.Vector Float, Int)
@@ -964,18 +953,6 @@ makeDynPrimStream = catMaybes . map makePrimGroup . groupBy ((==) `on` fst) . ma
                                                      in ((material, names), (aabb,((primtype, mindices), input))) 
 
 
-makeAABB :: Maybe (Vec.Vector (Vec.Vector Float)) -> AABB
-makeAABB _ = AABB (V3 (-inf) (-inf) (-inf)) (V3 inf inf inf)
-
--- TODO FIX
--- makeAABB (Just xs) = mconcat $ Vec.map pointToAABB xs
---                 where pointToAABB (x:y:z:_) = let p = V3 x y z in AABB p p
---                       pointToAABB (x:y:_) = AABB (V3 x y (-inf)) (V3 x y inf)
---                       pointToAABB (x:_) = AABB (V3 x (-inf) (-inf)) (V3 x inf inf)
---                       pointToAABB (_) = AABB (V3 (-inf) (-inf) (-inf)) (V3 inf inf inf)
-
-inf :: Float
-inf = read "Infinity"                      
 
 -- [[offset 0], [offset 1], [offset 2]]
 splitIn :: forall a. Int -> Vec.Vector a -> Vec.Vector (Vec.Vector a) 
@@ -1036,7 +1013,6 @@ sceneFromCollada tree =
     let (_cameras, geometries) = F.foldMap tagContent tree
         primitiveStream = mconcat $ concatMap filterGeometry geometries :: ColladaMeshPrimitiveArray (PrimitiveTopology Triangles) ((Vec.Vector (Vec.Vector Float)), Vec.Vector  (Vec.Vector Float))
     in Scene {
-        camera = V3 0 0 0,
         meshes = map toMesh (getColladaMeshPrimitiveArray primitiveStream)
     }
     where
