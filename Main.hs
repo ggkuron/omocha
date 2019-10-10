@@ -217,7 +217,7 @@ main =
                shader <- case Map.lookup si sm of
                             Just s' -> return [s', playerRendering]
                             _ -> do
-                                Just c <- liftIO $ readColladaFile si 
+                                ~(Just c) <- liftIO $ readColladaFile si 
                                 s'' <- buildRendering win uniform (meshes $ sceneFromCollada c)
                                 liftIO $ writeIORef shaderMap (Map.insert si s'' sm)
                                 return [s'']

@@ -176,9 +176,10 @@ data ColladaMeshPrimitive p a =
 newtype ColladaMeshPrimitiveArray p a = ColladaMeshPrimitiveArray { getColladaMeshPrimitiveArray :: [ColladaMeshPrimitive p a]}
   deriving (Show)
 
+instance Semigroup (ColladaMeshPrimitiveArray p a) where
+    (ColladaMeshPrimitiveArray a) <> (ColladaMeshPrimitiveArray b) = ColladaMeshPrimitiveArray (a ++ b)
 instance Monoid (ColladaMeshPrimitiveArray p a) where
     mempty = ColladaMeshPrimitiveArray []
-    mappend (ColladaMeshPrimitiveArray a) (ColladaMeshPrimitiveArray b) = ColladaMeshPrimitiveArray (a ++ b)
 instance Functor (ColladaMeshPrimitiveArray p) where
     fmap f (ColladaMeshPrimitiveArray xs) = ColladaMeshPrimitiveArray $ fmap g xs
       where g (ColladaMeshPrimitive p a) = ColladaMeshPrimitive p (f a)

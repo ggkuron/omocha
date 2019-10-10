@@ -4,4 +4,7 @@ packages:
 extra-deps:
 - JuicyPixels-util-0.2
 - elerea-2.8.0
-resolver: lts-9.6
+- GPipe-2.2.4
+- GPipe-GLFW-1.4.1.2
+resolver: lts-14.8
+allow-newer: true

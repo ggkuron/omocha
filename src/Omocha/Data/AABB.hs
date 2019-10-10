@@ -29,11 +29,13 @@ data AABB = AABB {
 inf :: Float
 inf = read "Infinity"                      
 
-instance Monoid AABB where
-    mempty = AABB (V3 inf inf inf) (V3 (-inf) (-inf) (-inf))
-    mappend (AABB minA maxA) (AABB minB maxB) = AABB (zipAsVector min minA minB) (zipAsVector max maxA maxB)
+instance Semigroup AABB where
+    (AABB minA maxA) <> (AABB minB maxB) = AABB (zipAsVector min minA minB) (zipAsVector max maxA maxB)
         where 
         zipAsVector minMax a b =  V.fromV . fromJust . V.fromVector $ Vec.zipWith minMax (V.toVector $ V.toV a) (V.toVector $ V.toV b)
+
+instance Monoid AABB where
+    mempty = AABB (V3 inf inf inf) (V3 (-inf) (-inf) (-inf))
 
 makeAABB :: Maybe (Vec.Vector (Vec.Vector Float)) -> AABB
 makeAABB _ = AABB (V3 (-inf) (-inf) (-inf)) (V3 inf inf inf)
