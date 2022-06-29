@@ -167,6 +167,8 @@ main = runContextT (GLFW.defaultHandleConfig { GLFW.configEventPolicy = Nothing 
                     frameCount
           return (fst <$> sig)
         moveUnit <- E.stateful 0 (\dt _ -> realToFrac $ 1.25 * dt )
+
+        aa <- keyInput
         target <- E.transfer2 (V3 0 0 0)
                               (\_ (keyH, keyJ, keyK, keyL) mu t -> 
                                   t&_x+~(if 
@@ -177,8 +179,7 @@ main = runContextT (GLFW.defaultHandleConfig { GLFW.configEventPolicy = Nothing 
                                           | keyJ -> -mu
                                           | keyK -> mu
                                           | otherwise ->  0)
-                              ) 
-                              keyInput moveUnit
+                              ) aa moveUnit
         camera' <- E.transfer (V3 0 0.25 1) 
                               (\_ t _ -> 
                                   t&_y+~(5)

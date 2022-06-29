@@ -2,6 +2,10 @@ flags: {}
 packages:
 - .
 extra-deps:
-- JuicyPixels-util-0.2
-- elerea-2.8.0
-resolver: lts-9.6
+  - GPipe-2.2.5
+  - GPipe-GLFW-1.4.1.4
+  - ./JuicyPixels-util
+  - ./freetype2
+  - boundingboxes-0.2.3
+resolver: lts-19.13
+allow-newer: true
