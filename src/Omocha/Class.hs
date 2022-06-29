@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns, Rank2Types, DeriveFunctor, FlexibleInstances #-}
+{-# LANGUAGE Rank2Types, FlexibleInstances #-}
 
 module Omocha.Class where
 

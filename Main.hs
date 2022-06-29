@@ -3,7 +3,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE MultiWayIf #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE RecursiveDo #-}
@@ -12,8 +11,10 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE RankNTypes #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Redundant irrefutable pattern" #-}
 
-module Main where   
+module Main where
 
 import Omocha.Bitmap
 import Omocha.Font
@@ -21,19 +22,18 @@ import Omocha.Collada
 import Omocha.Scene
 
 import Paths_omocha
-import Graphics.GPipe 
-import qualified Graphics.GPipe.Context.GLFW as GLFW  
+import Graphics.GPipe
+import qualified Graphics.GPipe.Context.GLFW as GLFW
 import qualified Graphics.GPipe.Context.GLFW.Input as Input
 
 import qualified Codec.Picture as P
 import qualified Codec.Picture.Types as P
 import Control.Monad (join)
-import Control.Monad.IO.Class (liftIO)  
+import Control.Monad.IO.Class ( liftIO, MonadIO )
 import Control.Monad.Fix (fix)
 import Control.Monad.Exception (MonadException)
 import Control.Lens hiding (indices)
 import Data.Word (Word32)
-import Control.Monad.IO.Class (MonadIO)
 
 import qualified FRP.Elerea.Param as E
 
@@ -41,20 +41,18 @@ loadBitmapsWith [|getDataFileName|] "./static/images"
 
 loadImage :: (MonadIO m, ContextHandler ctx) =>
     Bitmap -> ContextT ctx os m (Texture2D os (Format RGBAFloat))
-loadImage bmp = do 
+loadImage bmp = do
        tex <- newTexture2D RGBA8 size maxBound
-       writeTexture2D tex 0 0 size $ P.pixelFold getJuicyPixel [] img 
+       writeTexture2D tex 0 0 size $ P.pixelFold getJuicyPixel [] img
        return tex
     where
         (size, img) = getImage bmp
-        getJuicyPixel xs _ _ pix = let P.PixelRGBA8 r g b a = P.convertPixel pix in V4 r g b a : xs   
+        getJuicyPixel xs _ _ pix = let P.PixelRGBA8 r g b a = P.convertPixel pix in V4 r g b a : xs
 
 getImage :: Bitmap -> (V2 Int, P.Image P.PixelRGBA8)
 getImage bmp = let img = bitmapImage bmp
                    size = V2 (P.imageWidth img) (P.imageHeight img)
                 in (size, img)
-
-
 
 
 scene :: Scene
@@ -82,26 +80,26 @@ scene = Scene {
       }
 
 
-buildRendering :: forall ctx os m. (ContextHandler ctx, MonadIO m, MonadException m) => 
+buildRendering :: forall ctx os m. (ContextHandler ctx, MonadIO m, MonadException m) =>
                Window os RGBAFloat Depth
                -> Buffer os (Uniform UniInput)
-               -> Scene 
+               -> Scene
                -> ContextT ctx os m (CompiledShader os (V2 Int))
 buildRendering win uniform Scene{ meshes } = do
-    bs <- compileShader $ boardShader (\_ -> id) win uniform
-    ts <- compileShader $ boardShader (\uni -> \(p, n, uv) -> (p + viewTarget uni, n, uv)) win uniform
-    ms <- compileShader $ monoShader (\_ -> id) win uniform
+    bs <- compileShader $ boardShader (const id) win uniform
+    ts <- compileShader $ boardShader (\ uni (p, n, uv) -> (p + viewTarget uni, n, uv)) win uniform
+    ms <- compileShader $ monoShader (const id) win uniform
     rr <- mapM (renderMesh bs ts ms) meshes
     return $ \vpSize -> mapM_ (\r -> r vpSize) rr
-    where 
-        renderMesh :: (CompiledShader os (RenderInput os TextureInput)) 
-                   -> (CompiledShader os (RenderInput os TextureInput)) 
-                   -> (CompiledShader os (RenderInput os PlainInput)) 
-                   -> Mesh 
+    where
+        renderMesh :: CompiledShader os (RenderInput os TextureInput)
+                   -> CompiledShader os (RenderInput os TextureInput)
+                   -> CompiledShader os (RenderInput os PlainInput)
+                   -> Mesh
                    -> ContextT ctx os m (CompiledShader os (V2 Int))
         renderMesh bs ts ms Mesh{..} = do
             vbuf :: Buffer os VBuffer <- newBuffer (length vertices)
-            writeBuffer vbuf 0 [(dvPosition + offset, dvNormal, dvUv) | DrawVertex {..} <- vertices] 
+            writeBuffer vbuf 0 [(dvPosition + offset, dvNormal, dvUv) | DrawVertex {..} <- vertices]
             ibuf <- case indices of
                 Just indices' -> do
                     ibuf :: Buffer os (B Word32) <- newBuffer (length indices')
@@ -110,34 +108,34 @@ buildRendering win uniform Scene{ meshes } = do
                 _ -> return Nothing
 
             case textureImage of
-                Just tex -> do 
+                Just tex -> do
                     tex' <- loadImage tex
                     let shader = case shaderType of
                                    BoardShader -> bs
                                    TargetBoard -> ts
-                    return $ \vpSize -> do 
+                    return $ \vpSize -> do
                                  prims <- newPrimitiveArray vbuf ibuf
                                  shader $ RenderInput vpSize prims tex'
                 _ -> do
                     let shader = ms
-                    return $ \vpSize -> do 
+                    return $ \vpSize -> do
                                  prims <- newPrimitiveArray vbuf ibuf
                                  shader $ PlainInput vpSize prims
 
         newPrimitiveArray :: forall b i a. (BufferFormat b, Integral i, IndexFormat b ~ i) => Buffer os a -> Maybe (Buffer os b) -> Render os (PrimitiveArray Triangles a)
-        newPrimitiveArray p Nothing = do   
-          pArr <- newVertexArray p  
+        newPrimitiveArray p Nothing = do
+          pArr <- newVertexArray p
           return $ toPrimitiveArray TriangleStrip pArr
-        newPrimitiveArray p (Just i) = do   
-          pArr <- newVertexArray p  
+        newPrimitiveArray p (Just i) = do
+          pArr <- newVertexArray p
           iArr <- newIndexArray i Nothing
           return $ toPrimitiveArrayIndexed TriangleStrip iArr pArr
-        
 
-main ::  IO () 
+
+main ::  IO ()
 main = runContextT (GLFW.defaultHandleConfig { GLFW.configEventPolicy = Nothing }) $ do
     win <- newWindow (WindowFormatColorDepth RGBA8 Depth16) (GLFW.defaultWindowConfig "omocha")
-    uniform :: Buffer os (Uniform UniInput) <- newBuffer 1  
+    uniform :: Buffer os (Uniform UniInput) <- newBuffer 1
 
     -- font <- loadFont "VL-PGothic-Regular.ttf"
     collada <- liftIO $ readColladaFile "untitled.dae"
@@ -146,10 +144,10 @@ main = runContextT (GLFW.defaultHandleConfig { GLFW.configEventPolicy = Nothing 
     r <- buildRendering win uniform s
     r0 <- buildRendering win uniform scene
 
-    let renderings = [\vpSize -> do   
+    let renderings = [\vpSize -> do
                          clearWindowColor win (V4 0 0.25 1 0)
-                         clearWindowDepth win 1 
-                         r vpSize 
+                         clearWindowDepth win 1
+                         r vpSize
                          r0 vpSize
                      ]
 
@@ -158,10 +156,10 @@ main = runContextT (GLFW.defaultHandleConfig { GLFW.configEventPolicy = Nothing 
     network <- liftIO $ E.start $ do
         frameCount <- E.stateful 0 (const (+1))
         fps <- do
-          sig <- E.transfer 
-                    (30, (0,0)) 
+          sig <- E.transfer
+                    (30, (0,0))
                     (\dt v (x, (v0, t)) -> let t' = dt + t
-                                         in if t' > 1 then ((v-v0)/t', (v, 0)) 
+                                         in if t' > 1 then ((v-v0)/t', (v, 0))
                                                       else (x, (v0, t'))
                     )
                     frameCount
@@ -170,21 +168,21 @@ main = runContextT (GLFW.defaultHandleConfig { GLFW.configEventPolicy = Nothing 
 
         aa <- keyInput
         target <- E.transfer2 (V3 0 0 0)
-                              (\_ (keyH, keyJ, keyK, keyL) mu t -> 
-                                  t&_x+~(if 
+                              (\_ (keyH, keyJ, keyK, keyL) mu t ->
+                                  t&_x+~(if
                                           | keyL -> -mu
-                                          | keyH -> mu 
+                                          | keyH -> mu
                                           | otherwise ->  0)
-                                   &_z+~(if 
+                                   &_z+~(if
                                           | keyJ -> -mu
                                           | keyK -> mu
                                           | otherwise ->  0)
                               ) aa moveUnit
-        camera' <- E.transfer (V3 0 0.25 1) 
-                              (\_ t _ -> 
-                                  t&_y+~(5)
-                                   &_z-~(7.5) 
-                              ) 
+        camera' <- E.transfer (V3 0 0.25 1)
+                              (\_ t _ ->
+                                  t&_y+~5
+                                   &_z-~7.5
+                              )
                               target
         return $ renderFrame win uniform renderings <$> camera' <*> target <*> fps
 
@@ -192,33 +190,33 @@ main = runContextT (GLFW.defaultHandleConfig { GLFW.configEventPolicy = Nothing 
     fix $ \(~loop) -> do
         _ <- GLFW.mainstep win GLFW.Wait
         dt <- readInput win keyInputSink
-        case dt of 
+        case dt of
             Just dt' -> (join . liftIO . network $ dt') >> loop
             Nothing -> return ()
-    
+
 
 readInput :: forall a os c ds m. MonadIO m =>
      Window os c ds
      -> ((Bool, Bool, Bool, Bool) -> IO a)
-     -> (ContextT GLFW.Handle os m (Maybe Double))
+     -> ContextT GLFW.Handle os m (Maybe Double)
 readInput win keyInputSink = do
     t' <- liftIO $ do
         t <- GLFW.getTime
         GLFW.setTime 0
         return t
 
-    closeRequested <- GLFW.windowShouldClose win 
+    closeRequested <- GLFW.windowShouldClose win
     closeKeyPressed <- keyIsPressed GLFW.Key'Q
 
     keyInput <- (,,,) <$> keyIsPressed GLFW.Key'H
                       <*> keyIsPressed GLFW.Key'J
                       <*> keyIsPressed GLFW.Key'K
                       <*> keyIsPressed GLFW.Key'L
-    _ <- liftIO $ keyInputSink keyInput 
+    _ <- liftIO $ keyInputSink keyInput
     return $ if closeRequested == Just True || closeKeyPressed then Nothing else t'
   where
     keyIsPressed :: Input.Key -> ContextT GLFW.Handle os m Bool
-    keyIsPressed k = maybe False (== GLFW.KeyState'Pressed) <$> GLFW.getKey win k
+    keyIsPressed k = (Just GLFW.KeyState'Pressed ==) <$> GLFW.getKey win k
 
 renderFrame :: Window os RGBAFloat Depth
                -> Buffer os (Uniform UniInput)
@@ -229,14 +227,12 @@ renderFrame :: Window os RGBAFloat Depth
                -> ContextT GLFW.Handle os IO ()
 renderFrame win uniform renderings camera target fps = do
     size <- getFrameBufferSize win
-    let viewUpNorm = V3 0 1 0 
+    let viewUpNorm = V3 0 1 0
         normMat = identity
-        uni = (fromIntegral <$> size, normMat, camera, target, viewUpNorm, fromRational . toRational $ fps) 
+        uni = (fromIntegral <$> size, normMat, camera, target, viewUpNorm, fromRational . toRational $ fps)
 
     writeBuffer uniform 0 [uni]
 
     mapM_ (\r -> render $ r size) renderings
     swapWindowBuffers win
-
-       
 

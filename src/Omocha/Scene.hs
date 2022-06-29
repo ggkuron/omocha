@@ -1,11 +1,4 @@
-{-# LANGUAGE StandaloneDeriving
- , DeriveDataTypeable
- , FlexibleContexts
- , RankNTypes 
- , ScopedTypeVariables 
- , RecordWildCards
- , GADTs
- #-}
+{-# LANGUAGE FlexibleContexts, RankNTypes, ScopedTypeVariables, RecordWildCards, GADTs #-}
 
 module Omocha.Scene (
     UniInput
@@ -13,10 +6,10 @@ module Omocha.Scene (
     , monoShader
     , light
     , windowSize
-    , modelNorm 
+    , modelNorm
     , viewCamera
     , viewTarget
-    , viewUp    
+    , viewUp
     , VBuffer
     , DrawVertex(..)
     , OmochaShaderType(..)
@@ -138,7 +131,7 @@ windowSize  (a, _, _, _, _, _) = a
 modelNorm :: (t0, t1, t2, t3, t4, t5) -> t1
 modelNorm   (_, a, _, _, _, _) = a
 viewCamera :: (t0, t1, t2, t3, t4, t5) -> t2
-viewCamera  (_, _, a, _, _, _) = a 
+viewCamera  (_, _, a, _, _, _) = a
 viewTarget :: (t0, t1, t2, t3, t4, t5) -> t3
 viewTarget  (_, _, _, a, _, _) = a
 viewUp :: (t0, t1, t2, t3, t4, t5) -> t4
@@ -147,11 +140,11 @@ fps :: (t0, t1, t2, t3, t4, t5) -> t5
 fps         (_, _, _, _, _, a) = a
 
 
-boardShader :: ((UniformFormat UniInput V) 
-                -> (V3 VFloat, V3 VFloat, V2 VFloat) 
+boardShader :: (UniformFormat UniInput V
+                -> (V3 VFloat, V3 VFloat, V2 VFloat)
                 -> (V3 (S V Float), V3 VFloat, V2 (S V Float))
-               )-> Window os RGBAFloat Depth 
-                -> Buffer os (Uniform UniInput) 
+               )-> Window os RGBAFloat Depth
+                -> Buffer os (Uniform UniInput)
                 -> Shader os (RenderInput os TextureInput) ()
 boardShader pick win uniform = do
     uni <- getUniform (const (uniform, 0))
@@ -164,17 +157,17 @@ boardShader pick win uniform = do
     fragmentStream <- rasterize (\ri -> (Front, ViewPort (V2 0 0) (riScreenSize ri), DepthRange 0 1) ) projected
     let litFrags = light samp <$> fragmentStream
         litFragsWithDepth = withRasterizedInfo
-                               (\p x -> (p, (rasterizedFragCoord x)^._z)) litFrags
+                               (\p x -> (p, rasterizedFragCoord x^._z)) litFrags
         colorOption = ContextColorOption (BlendRgbAlpha (FuncAdd, FuncAdd) (BlendingFactors SrcAlpha OneMinusSrcAlpha, BlendingFactors Zero One) (V4 0 0 0 0)) (pure True)
         depthOption = DepthOption Lequal True
-    
+
     drawWindowColorDepth (const (win, colorOption, depthOption)) litFragsWithDepth
 
-monoShader :: ((UniformFormat UniInput V) 
-               -> (V3 VFloat, V3 VFloat, V2 VFloat) 
+monoShader :: (UniformFormat UniInput V
+               -> (V3 VFloat, V3 VFloat, V2 VFloat)
                -> (V3 (S V Float), V3 VFloat, V2 (S V Float))
-              )-> Window os RGBAFloat Depth 
-               -> Buffer os (Uniform UniInput) 
+              )-> Window os RGBAFloat Depth
+               -> Buffer os (Uniform UniInput)
                -> Shader os (RenderInput os PlainInput) ()
 monoShader pick win uniform = do
     uni <- getUniform (const (uniform, 0))
@@ -183,26 +176,26 @@ monoShader pick win uniform = do
     fragmentStream <- rasterize (\ri -> (Front, ViewPort (V2 0 0) (riScreenSize ri), DepthRange 0 1) ) projected
     let litFrags = fragmentStream
         litFragsWithDepth = withRasterizedInfo
-                               (\p x -> (p, (rasterizedFragCoord x)^._z)) litFrags
+                               (\p x -> (p, rasterizedFragCoord x^._z)) litFrags
     let colorOption = ContextColorOption (BlendRgbAlpha (FuncAdd, FuncAdd) (BlendingFactors SrcAlpha OneMinusSrcAlpha, BlendingFactors Zero One) (V4 0 0 0 0)) (pure True)
         depthOption = DepthOption Lequal True
-    
+
     drawWindowColorDepth (const (win, colorOption, depthOption)) litFragsWithDepth
 
 
 light :: ColorSampleable c => Sampler2D (Format c) -> (t, V2 (S F Float)) -> ColorSample F c
-light samp (_normal, uv) = sample2D samp SampleAuto (Just 1) Nothing uv 
+light samp (_normal, uv) = sample2D samp SampleAuto (Just 1) Nothing uv
 
 
 proj :: (Functor f, Floating (ConvertFloat a), Convert a, Foldable r, Additive r) =>
         (V2 a, f (r VFloat), V3 (ConvertFloat a), V3 (ConvertFloat a), V3 (ConvertFloat a), t)
         -> (V3 (ConvertFloat a), r VFloat)
         -> (V4 (ConvertFloat a), f FlatVFloat)
-proj uni (V3 px py pz, normal) =   
+proj uni (V3 px py pz, normal) =
     let modelViewProj = perspective (pi/3) (let V2 w h = windowSize uni in (toFloat w) / (toFloat h)) 1 (-1)
         normMat = modelNorm uni
         viewProj = lookAt' (viewCamera uni) (viewTarget uni) (viewUp uni)
-    in (modelViewProj !*! viewProj !* V4 px py pz 1, (fmap Flat $ normMat !* normal))   
+    in (modelViewProj !*! viewProj !* V4 px py pz 1, fmap Flat $ normMat !* normal)
   where
       lookAt' eye center up =
           V4 (V4 (xa^._x)  (xa^._y)  (xa^._z)  xd)
@@ -215,4 +208,4 @@ proj uni (V3 px py pz, normal) =
                      xd = -dot xa eye
                      yd = -dot ya eye
                      zd = dot za eye
-     
+

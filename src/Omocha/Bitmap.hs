@@ -37,7 +37,7 @@ readBitmap path = liftIO $ do
 -- FIXME: This may cause name duplication if there are multiple non-alphanumeric file names.
 loadBitmapsWith :: ExpQ -> FilePath -> Q [Dec]
 loadBitmapsWith getFullPath path = do
-    loc <- (</>path) <$> takeDirectory <$> loc_filename <$> location
+    loc <- ((</>path) . takeDirectory ) . loc_filename  <$> location
     paths <- runIO $ getFileList loc
 
     sequence $ do

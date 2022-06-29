@@ -1,14 +1,6 @@
 {-# LANGUAGE RankNTypes, TypeFamilies, StandaloneDeriving, FlexibleContexts, RecordWildCards, GADTs, ScopedTypeVariables #-}
 {-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 
-
-
-
-
-
-
-
-
 module Omocha.Collada (
     readCollada
     , readColladaFile
