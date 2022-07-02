@@ -1,4 +1,4 @@
-module Omocha.Font 
+module Omocha.Font
   ( Font
   , loadFont
   , charToBitmap
@@ -51,7 +51,7 @@ loadFont path = liftIO $ alloca $ \p -> do
     asc <- peek (ascender f)
     desc <- peek (descender f)
     u <- fromIntegral <$> peek (units_per_EM f)
-    let box = fmap (/u) $ Box
+    let box = (/u) <$> Box
             (V2 (fromIntegral (xMin b)) (fromIntegral (yMin b)))
             (V2 (fromIntegral (xMax b)) (fromIntegral (yMax b)))
     Font f (fromIntegral asc/u, fromIntegral desc/u) box <$> newIORef M.empty
@@ -63,6 +63,7 @@ runFreeType m = do
     unless ( r == 0) $ fail $ "FreeType Error:" Prelude.++ show r
 
 freeType :: FT_Library
+{-# NOINLINE freeType #-}
 freeType = unsafePerformIO $ alloca $ \p -> do
     runFreeType $ ft_Init_FreeType p
     peek p

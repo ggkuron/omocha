@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell, QuasiQuotes, CPP #-}
+{-# LANGUAGE TemplateHaskellQuotes, QuasiQuotes, CPP #-}
 
 module Omocha.Bitmap (
   Bitmap(..)

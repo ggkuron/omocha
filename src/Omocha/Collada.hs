@@ -1,5 +1,6 @@
 {-# LANGUAGE RankNTypes, TypeFamilies, StandaloneDeriving, FlexibleContexts, RecordWildCards, GADTs, ScopedTypeVariables #-}
-{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Redundant irrefutable pattern" #-}
 
 module Omocha.Collada (
     readCollada
@@ -293,7 +294,7 @@ addRefF :: MonadWriter [(ID, RefMap -> Reference)]  m => ID -> (RefMap -> Refere
 addRefF cid ref = tell [(cid, ref)]
 
 getRef:: ID -> RefMap -> Maybe Reference
-getRef cid a@(RefMap m) = ($a) <$> Map.lookup cid m
+getRef cid a@(RefMap m) = ($ a) <$> Map.lookup cid m
 
 assert :: (MonadTrans t, MonadWriter [t1] m) => t1 -> t m()
 assert f = lift $ tell [f]
@@ -565,7 +566,7 @@ parseNode c | not $ null $ tag "node" c = do
                     lightFs <- fmap catMaybes $ mapM parseLightInstances $ c -=> keep /> tag "instance_light"
                     geometryFs <- fmap catMaybes $ mapM parseGeometryInstances $ c -=> keep /> tag "instance_geometry"
                     subNodeFs <- fmap catMaybes $ mapM parseNode $ c -=> keep /> (tag "node" `union` tag "instance_node")
-                    let treeF refmap = Tree.Node (csid (ColladaNode mid layer transformations (map ($refmap) cameraFs) (map ($refmap) lightFs) (map ($refmap) geometryFs))) (map ($refmap) subNodeFs)
+                    let treeF refmap = Tree.Node (csid (ColladaNode mid layer transformations (map ($ refmap) cameraFs) (map ($ refmap) lightFs) (map ($ refmap) geometryFs))) (map ($ refmap) subNodeFs)
                     return $ Just treeF
             | otherwise {- "instance_node" -} = do
                     url <- getReqAttribute "url" c
@@ -766,14 +767,14 @@ parseColladaMesh cid c = do
                            mapM (parsePrimitives vertices) $ XML.children c
         addRefF cid $
           \ refmap ->
-            let dynPrimLists = map (second ($refmap)) dynPrimListFs in
+            let dynPrimLists = map (second ($ refmap)) dynPrimListFs in
               RefGeometry $ ColladaMesh cid (makeDynPrimStream dynPrimLists)
 
 
 parseVertices :: XML.Content XML.Posn -> Parser (RefMap -> Map String ([[Float]], Int))
 parseVertices verts = do
     insF <- fmap (map snd) $ mapM (parseInput False) $ verts -=> keep /> tag "input"
-    let vertsF refmap = Map.unions $ map ($refmap) insF
+    let vertsF refmap = Map.unions $ map ($ refmap) insF
     case getAttribute "id" verts of
        "" -> return ()
        cid -> addRefF cid $ RefVertices . vertsF
@@ -821,7 +822,7 @@ parsePrimitives vertices p = case fst $ head $ tagged keep p of
       ps = p -=> keep /> tag "p"
       combine :: (RefMap -> Map String ([[Float]], Int)) -> (RefMap -> Map String ([[Float]], Int)) -> RefMap -> Map String ([[Float]], Int)
       combine f g refmap = f refmap `Map.union` g refmap
-      combine' mFs refmap = Map.unions $ map ($refmap) mFs
+      combine' mFs refmap = Map.unions $ map ($ refmap) mFs
       parseTriangle :: PrimitiveTopology Triangles
         -> Parser [((MaterialName, PrimitiveTopology Triangles, Maybe [Int]), RefMap -> Map String [[Float]])]
       parseTriangle primtype = do
@@ -913,7 +914,7 @@ makeDynPrimStream = map makePrimGroup . groupBy ((==) `on` fst) . map splitParts
               aabb :: AABB
               aabb = mconcat $ map (fst . snd) xs
               pstream :: ColladaMeshPrimitiveArray (PrimitiveTopology Triangles) (Map Semantic [[Float]])
-              pstream = (\f -> Map.fromAscList $ zip names f) <$> toStreamUsingLength xs'
+              pstream = Map.fromAscList . zip names <$> toStreamUsingLength xs'
 
 
 splitParts :: ((t2, t1, t), Map Semantic [[Float]]) -> ((t2, [MaterialName]), (AABB, ((t1, t), [[[Float]]])))
@@ -948,7 +949,7 @@ splitIn n is = foldl go (replicate n []) $ zip [0..] is
 
 
 toStreamUsingLength :: [(t, ((p, Maybe [Int]), [[[Float]]]))] -> ColladaMeshPrimitiveArray p [[[Float]]]
-toStreamUsingLength = mconcat . map (toPrimStream . second (second (id)))
+toStreamUsingLength = mconcat . map toPrimStream
 toPrimStream :: (t, ((p, Maybe [Int]), a)) -> ColladaMeshPrimitiveArray p a
 toPrimStream (_, ((primtype, Just indices), input)) =  ColladaMeshPrimitiveArray [ColladaMeshPrimitiveIndexed primtype indices input]
 toPrimStream (_, ((primtype, _), input)) = ColladaMeshPrimitiveArray [ColladaMeshPrimitive primtype input]

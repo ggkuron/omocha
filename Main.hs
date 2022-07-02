@@ -103,7 +103,7 @@ buildRendering win uniform Scene{ meshes } = do
             ibuf <- case indices of
                 Just indices' -> do
                     ibuf :: Buffer os (B Word32) <- newBuffer (length indices')
-                    writeBuffer ibuf 0 $ map fromIntegral $ indices'
+                    writeBuffer ibuf 0 $ map fromIntegral indices'
                     return $ Just ibuf
                 _ -> return Nothing
 
