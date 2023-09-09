@@ -10,7 +10,7 @@ maintainer:          ggkuron@gmail.com
 # copyright:           
 category:            Game
 build-type:          Simple
-default-extensions: Strict StrictData
+default-extensions: Strict StrictData ImportQualifiedPost
 data-files: 
 - ./static/images/*.png
 - ./static/images/maptips/*.png
