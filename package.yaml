@@ -10,7 +10,7 @@ maintainer:          ggkuron@gmail.com
 # copyright:           
 category:            Game
 build-type:          Simple
-default-extensions: Strict StrictData ImportQualifiedPost
+default-extensions: Strict StrictData ImportQualifiedPost NoImplicitPrelude OverloadedStrings NoFieldSelectors DuplicateRecordFields OverloadedRecordDot
 data-files: 
 - ./static/images/*.png
 - ./static/images/maptips/*.png
@@ -33,6 +33,8 @@ executables:
     - linear
     - transformers
     - exception-transformers
+    - rio
+    - gltf-loader
 
     ghc-options:         
     - -fprint-potential-instances
@@ -45,7 +47,6 @@ library:
     - Omocha.Font
     - Omocha.Internal.Finalizer
     - Omocha.Scene
-    - Omocha.Collada
     source-dirs:     src
     dependencies:
     - either
@@ -67,6 +68,8 @@ library:
     - array
     - transformers
     - exception-transformers
+    - rio
+    - gltf-loader
 
 
 tests:
