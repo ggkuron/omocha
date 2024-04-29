@@ -123,7 +123,8 @@ spec = do
                           "defs":{
                               "1":{"color":[0.4,0.2,0.4,1],"height":1,"tag":"Block", "yOffset": 0},
                               "2":{"color":[0.5,0.5,0.5,1],"height":2,"tag":"Block", "yOffset": 0},
-                              "8":{"color":[0.5,0.5,0.5,1],"height":8,"tag":"Block", "yOffset": 4}
+                              "8":{"color":[0.5,0.5,0.5,1],"height":8,"tag":"Block", "yOffset": 4},
+                              "3":{"color":[0.5,0.5,0.5,1],"height":2,"tag":"RTPrism", "top": "RowMax", "yOffset": 0}
                           },
                           "map":[
                               [0,0,0,0,0],

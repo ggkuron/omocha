@@ -12,6 +12,17 @@ import Data.Vector qualified as V
 import Linear.V2
 import RIO hiding (map)
 
+data TipEdge
+  = RowMin
+  | RowMax
+  | ColumnMin
+  | ColumnMax
+  deriving (Show, Generic, Eq)
+
+instance ToJSON TipEdge
+
+instance FromJSON TipEdge
+
 data MapDef
   = Block
       { height :: Float,
@@ -21,6 +32,12 @@ data MapDef
   | Plane
       { color :: (Float, Float, Float, Float),
         yOffset :: Float
+      }
+  | RTPrism
+      { height :: Float,
+        color :: (Float, Float, Float, Float),
+        yOffset :: Float,
+        top :: TipEdge
       }
   deriving (Show, Generic, Eq)
 

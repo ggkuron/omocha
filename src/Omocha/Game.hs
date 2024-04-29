@@ -62,6 +62,7 @@ mapMeshes m = do
            in case n of
                 Block {..} -> cube (V3 (c ^. _x) (height + n.yOffset) (c ^. _y)) (V3 (a' ^. _x) yOffset (a' ^. _y)) (tupleToV4 color)
                 Plane {..} -> plane (V3 (c ^. _x) (n.yOffset) (c ^. _y)) (V3 (a' ^. _x) yOffset (a' ^. _y)) (tupleToV4 color)
+                RTPrism {..} -> prism top (V3 (c ^. _x) (height + n.yOffset) (c ^. _y)) (V3 (a' ^. _x) yOffset (a' ^. _y)) (tupleToV4 color)
       )
       d
   where
@@ -153,6 +154,142 @@ cube (V3 w d h) offset color =
               Vertex (V3 hw (-hd) hh) (V3 0 (-1) 0) (V2 1 1),
               Vertex (V3 hw (-hd) (-hh)) (V3 0 (-1) 0) (V2 1 0)
             ]
+          ]
+
+fstFilter :: [(Bool, a)] -> [a]
+fstFilter = map snd . filter fst
+
+prism :: TipEdge -> V3 Float -> V3 Float -> V4 Float -> Vector Mesh
+prism edge (V3 w d h) offset color =
+  let hw = w / 2
+      hh = h / 2
+      hd = d / 2
+   in V.map
+        (\v -> Mesh v Nothing (offset + V3 hw hd hh) Nothing BoardShader (TopologyTriangles TriangleStrip) (Just color))
+        $ V.fromList
+          . fstFilter
+        $ [ ( True,
+              [ Vertex
+                  ( V3
+                      hw
+                      ( case edge of
+                          ColumnMin -> -hd
+                          RowMin -> -hd
+                          _ -> hd
+                      )
+                      hh
+                  )
+                  (V3 0 1 0)
+                  (V2 1 1),
+                Vertex
+                  ( V3
+                      hw
+                      ( case edge of
+                          ColumnMin -> -hd
+                          RowMax -> -hd
+                          _ -> hd
+                      )
+                      (-hh)
+                  )
+                  (V3 0 1 0)
+                  (V2 1 0),
+                Vertex
+                  ( V3
+                      (-hw)
+                      ( case edge of
+                          ColumnMax -> -hd
+                          RowMin -> -hd
+                          _ -> hd
+                      )
+                      hh
+                  )
+                  (V3 0 1 0)
+                  (V2 0 1),
+                Vertex
+                  ( V3
+                      (-hw)
+                      ( case edge of
+                          ColumnMax -> -hd
+                          RowMax -> -hd
+                          _ -> hd
+                      )
+                      (-hh)
+                  )
+                  (V3 0 1 0)
+                  (V2 0 0)
+              ]
+            ),
+            ( edge /= ColumnMin,
+              fstFilter
+                [ ( True,
+                    Vertex (V3 hw (-hd) hh) (V3 1 0 0) (V2 1 0)
+                  ),
+                  ( True,
+                    Vertex (V3 hw (-hd) (-hh)) (V3 1 0 0) (V2 0 0)
+                  ),
+                  ( edge /= RowMin,
+                    Vertex (V3 hw hd hh) (V3 1 0 0) (V2 1 1)
+                  ),
+                  ( edge /= RowMax,
+                    Vertex (V3 hw hd (-hh)) (V3 1 0 0) (V2 0 1)
+                  )
+                ]
+            ),
+            ( edge /= ColumnMax,
+              fstFilter
+                [ ( True,
+                    Vertex (V3 (-hw) (-hd) (-hh)) (V3 (-1) 0 0) (V2 0 1)
+                  ),
+                  ( True,
+                    Vertex (V3 (-hw) (-hd) hh) (V3 (-1) 0 0) (V2 0 0)
+                  ),
+                  ( edge /= RowMax,
+                    Vertex (V3 (-hw) hd (-hh)) (V3 (-1) 0 0) (V2 1 1)
+                  ),
+                  ( edge /= RowMin,
+                    Vertex (V3 (-hw) hd hh) (V3 (-hh) 0 0) (V2 1 0)
+                  )
+                ]
+            ),
+            ( edge /= RowMax,
+              fstFilter
+                [ ( True,
+                    Vertex (V3 hw (-hd) (-hh)) (V3 0 0 (-1)) (V2 0 1)
+                  ),
+                  ( True,
+                    Vertex (V3 (-hw) (-hd) (-hh)) (V3 0 0 (-1)) (V2 0 0)
+                  ),
+                  ( edge /= ColumnMin,
+                    Vertex (V3 hw hd (-hh)) (V3 0 0 (-1)) (V2 1 1)
+                  ),
+                  ( edge /= ColumnMax,
+                    Vertex (V3 (-hw) hd (-hh)) (V3 0 0 (-1)) (V2 1 0)
+                  )
+                ]
+            ),
+            ( edge /= RowMin,
+              fstFilter
+                [ ( True,
+                    Vertex (V3 (-hw) (-hd) hh) (V3 0 0 1) (V2 0 0)
+                  ),
+                  ( True,
+                    Vertex (V3 hw (-hd) hh) (V3 0 0 1) (V2 0 1)
+                  ),
+                  ( edge /= ColumnMax,
+                    Vertex (V3 (-hw) hd hh) (V3 0 0 1) (V2 1 0)
+                  ),
+                  ( edge /= ColumnMin,
+                    Vertex (V3 hw hd hh) (V3 0 0 1) (V2 1 1)
+                  )
+                ]
+            ),
+            ( True,
+              [ Vertex (V3 (-hw) (-hd) hh) (V3 0 (-1) 0) (V2 0 1),
+                Vertex (V3 (-hw) (-hd) (-hh)) (V3 0 (-1) 0) (V2 0 0),
+                Vertex (V3 hw (-hd) hh) (V3 0 (-1) 0) (V2 1 1),
+                Vertex (V3 hw (-hd) (-hh)) (V3 0 (-1) 0) (V2 1 0)
+              ]
+            )
           ]
 
 scene :: Scene
