@@ -1,6 +1,5 @@
 module GameSpec (spec) where
 
-import Data.BoundingBox qualified as BB
 import Data.List qualified as L
 import Data.Vector qualified as V
 import Omocha.Game

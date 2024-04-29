@@ -93,7 +93,7 @@ gouraudShader win unis = do
   g <- readGlobalUniform unis
   o <- readObjectUniform unis
   boards <- toPrimitiveStream $ \(PlainInput _ c st) -> (\v -> (v, c)) <$> st
-  let lightDir :: V3 VFloat = normalizeS $ g.lightDirection
+  let lightDir :: V3 VFloat = normalizeS g.lightDirection
   let projected = (\((v, n), c :: V4 VFloat) -> let (v', _) = proj g (v + o.position, n) in (v', let diffuse :: V4 VFloat = point . return $ clamp (lightDir `dot` n) 0.1 1.0 in c * diffuse)) <$> boards
   fragmentStream <- rasterize (\(PlainInput ri _ _) -> (Front, ViewPort (V2 0 0) ri, DepthRange 0 1)) projected
   let litFrags =
@@ -116,7 +116,7 @@ phongShader win unis = do
   let projected = (\((v, n), c) -> let (v', n') = proj g (v + o.position, n) in (v', (n', c))) <$> boards
   fragmentStream <- rasterize (\(PlainInput ri _ _) -> (Front, ViewPort (V2 0 0) ri, DepthRange 0 1)) projected
   unif <- readGlobalUniform unis
-  let lightDir :: V3 FFloat = normalizeS $ unif.lightDirection
+  let lightDir :: V3 FFloat = normalizeS unif.lightDirection
   -- eyeDir = normalizeS $ unif.viewCamera
   let litFrags =
         withRasterizedInfo
@@ -155,7 +155,7 @@ monoShader' win unis = do
       stencilOptions = FrontBack (StencilOption Equal 0 OpKeep OpKeep (complement 0) (complement 0)) (StencilOption Equal 0 OpKeep OpKeep (complement 0) (complement 0))
   drawWindowColorDepthStencil (const (win, colorOption, DepthStencilOption stencilOptions depthOption (FrontBack OpKeep OpKeep))) litFrags
 
-light :: ColorSampleable c => Sampler2D (Format c) -> V2 FFloat -> ColorSample F c
+light :: (ColorSampleable c) => Sampler2D (Format c) -> V2 FFloat -> ColorSample F c
 light samp = sample2D samp SampleAuto (Just 1) Nothing
 
 proj :: (Floating (ConvertFloat a), Convert a) => GlobalUniform a (ConvertFloat a) -> (V3 (ConvertFloat a), V3 (ConvertFloat a)) -> (V4 (ConvertFloat a), V3 (ConvertFloat a))
@@ -167,12 +167,12 @@ viewProjection uni =
       v = lookAt' uni.viewCamera uni.viewTarget uni.viewUp
    in p !*! v
 
-lookAt' :: Floating a => V3 a -> V3 a -> V3 a -> M44 a
+lookAt' :: (Floating a) => V3 a -> V3 a -> V3 a -> M44 a
 lookAt' eye center up =
   V4
     (V4 (xa ^. _x) (xa ^. _y) (xa ^. _z) xd)
     (V4 (ya ^. _x) (ya ^. _y) (ya ^. _z) yd)
-    (V4 (-za ^. _x) (-za ^. _y) (-za ^. _z) zd)
+    (V4 (-(za ^. _x)) (-(za ^. _y)) (-(za ^. _z)) zd)
     (V4 0 0 0 1)
   where
     za = signorm $ center - eye

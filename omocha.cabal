@@ -1,4 +1,4 @@
-cabal-version: 1.12
+cabal-version: 3.0
 
 name:           omocha
 version:        0.0.0.0
@@ -8,58 +8,11 @@ category:       Game
 homepage:       http://github.com/name/project
 author:         gg
 maintainer:     ggkuron@gmail.com
-license:        BSD3
+license:        BSD-3-Clause
 license-file:   LICENSE
 build-type:     Simple
 data-files:
-    ./static/images/back0.png
-    ./static/images/back1.png
-    ./static/images/back2.png
-    ./static/images/back3.png
-    ./static/images/back4.png
-    ./static/images/blue.png
-    ./static/images/front0.png
-    ./static/images/front1.png
-    ./static/images/front2.png
-    ./static/images/front3.png
-    ./static/images/front4.png
-    ./static/images/left0.png
-    ./static/images/left1.png
-    ./static/images/left2.png
-    ./static/images/left3.png
-    ./static/images/left4.png
-    ./static/images/left_jump.png
-    ./static/images/right0.png
-    ./static/images/right1.png
-    ./static/images/right2.png
-    ./static/images/right3.png
-    ./static/images/right4.png
-    ./static/images/rightold.png
-    ./static/images/why.png
-    ./static/images/maptips/ami.png
-    ./static/images/maptips/block.png
-    ./static/images/maptips/drum.png
-    ./static/images/maptips/gaberge.png
-    ./static/images/maptips/grass.png
-    ./static/images/maptips/grass2.png
-    ./static/images/maptips/ground.png
-    ./static/images/maptips/invisi.png
-    ./static/images/maptips/none.png
-    ./static/images/maptips/none_leftT.png
-    ./static/images/maptips/none_upT.png
-    ./static/images/maptips/river.png
-    ./static/images/maptips/road_naname.png
-    ./static/images/maptips/road_nanameL.png
-    ./static/images/maptips/road_nanameR.png
-    ./static/images/maptips/sand.png
-    ./static/images/maptips/stone.png
-    ./static/images/maptips/storage.png
-    ./static/images/maptips/tree.png
-    ./static/images/maptips/whitelineLD.png
-    ./static/images/maptips/whitelineLU.png
-    ./static/images/maptips/whitelineR.png
-    ./static/images/maptips/whitelineRD.png
-    ./static/images/maptips/whitelineRU.png
+    ./static/images/*.png
 
 library
   exposed-modules:
@@ -80,38 +33,44 @@ library
   hs-source-dirs:
       src
   default-extensions:
-      Strict StrictData ImportQualifiedPost NoImplicitPrelude OverloadedStrings NoFieldSelectors DuplicateRecordFields OverloadedRecordDot, MultiWayIf
+      Strict,
+      StrictData,
+      ImportQualifiedPost,
+      NoImplicitPrelude,
+      OverloadedStrings,
+      NoFieldSelectors,
+      DuplicateRecordFields,
+      OverloadedRecordDot, 
+      MultiWayIf
   ghc-options: -fprint-potential-instances -Wall -Wno-name-shadowing
   build-depends:
-      GPipe >=2.2.3
-    , GPipe-GLFW
-    , HaXml
-    , JuicyPixels
-    , JuicyPixels-util
-    , array
-    , base >=4.9.1.0
-    , boundingboxes
-    , containers
-    , directory
-    , either
-    , exception-transformers
-    , filepath
-    , freetype2 >=0.1
-    , gltf-loader
-    , lens
-    , linear
-    , mtl >=2.2
-    , random
-    , rio
-    , template-haskell
-    , transformers
-    , vector
-    , resourcet
-    , free
-    , elerea
-    , aeson
-    , ghc
-    , bytestring
+      GPipe,
+      GPipe-GLFW,
+      JuicyPixels,
+      JuicyPixels-util,
+      array,
+      base >=4.9.1.0,
+      boundingboxes,
+      containers,
+      directory,
+      either,
+      exception-transformers,
+      filepath,
+      freetype2 ^>=0.1,
+      gltf-loader,
+      lens,
+      linear,
+      mtl >=2.2,
+      random,
+      rio,
+      template-haskell,
+      transformers,
+      vector,
+      resourcet,
+      free,
+      elerea,
+      aeson,
+      bytestring
   default-language: Haskell2010
 
 executable omocha
@@ -124,9 +83,10 @@ executable omocha
       Strict StrictData ImportQualifiedPost NoImplicitPrelude OverloadedStrings NoFieldSelectors DuplicateRecordFields OverloadedRecordDot
   ghc-options: -fprint-potential-instances -Wall
   build-depends:
-    omocha
-    , base
-    , template-haskell
+    omocha,
+    base,
+    freetype2 ^>=0.1,
+    template-haskell
   default-language: Haskell2010
 
 test-suite omocha-test
@@ -141,13 +101,13 @@ test-suite omocha-test
   default-extensions:
       Strict StrictData ImportQualifiedPost NoImplicitPrelude OverloadedStrings NoFieldSelectors DuplicateRecordFields OverloadedRecordDot
   build-depends:
-      base >=4.9.1.0
-    , hspec
-    , omocha
-    , boundingboxes
-    , linear
-    , vector
-    , QuickCheck
-    , raw-strings-qq
-    , aeson
+      base >=4.9.1.0,
+      hspec,
+      omocha,
+      boundingboxes,
+      linear,
+      vector,
+      QuickCheck,
+      raw-strings-qq,
+      aeson
   default-language: Haskell2010

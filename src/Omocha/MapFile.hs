@@ -75,13 +75,14 @@ mf =
         V.fromList
           [ Tips
               { map =
-                  V.fromList . fmap V.fromList $
-                    [ [0, 0, 0, 0, 0],
-                      [0, 1, 0, 0, 0],
-                      [0, 2, 2, 1, 1],
-                      [0, 2, 2, 0, 0],
-                      [0, 8, 0, 0, 0]
-                    ],
+                  V.fromList
+                    . fmap V.fromList
+                    $ [ [0, 0, 0, 0, 0],
+                        [0, 1, 0, 0, 0],
+                        [0, 2, 2, 1, 1],
+                        [0, 2, 2, 0, 0],
+                        [0, 8, 0, 0, 0]
+                      ],
                 defs =
                   M.fromList
                     [ (1, Block 1 (0.4, 0.2, 0.4, 1) 0),
@@ -98,8 +99,8 @@ parseMap (sw, sh) mapData
   | length mapData /= sh = Left "row mismatch"
   | any (\row -> length row /= sw) mapData = Left "column mismatch"
   | otherwise =
-      Right $
-        foldl
+      Right
+        $ foldl
           ( \a (V2 x y) ->
               let k = l x y
                   w = ew k x y a

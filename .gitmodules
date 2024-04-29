@@ -1,6 +1,6 @@
 [submodule "JuicyPixels-util"]
 	path = JuicyPixels-util
 	url = git@github.com:fumieval/JuicyPixels-util.git
-[submodule "freetype2"]
-	path = freetype2
-	url = https://github.com/dagit/freetype2.git
+[submodule "GPipe-Core"]
+	path = GPipe-Core
+	url = https://github.com/tobbebex/GPipe-Core.git

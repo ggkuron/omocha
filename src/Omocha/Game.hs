@@ -53,15 +53,15 @@ loadImage bmp = do
 
 mapMeshes :: MapFile -> Either String (Vector Mesh)
 mapMeshes m = do
-  d <- foldMapM (parseMapDef (m.size)) (m.mapData)
-  return $
-    V.concatMap
+  d <- foldMapM (parseMapDef m.size) m.mapData
+  return
+    $ V.concatMap
       ( \(BB.Box a b, n) ->
           let c :: V2 Float = fmap fromIntegral (b - a)
               a' :: V2 Float = fmap fromIntegral $ a - V2 10 10
            in case n of
                 Block {..} -> cube (V3 (c ^. _x) (height + n.yOffset) (c ^. _y)) (V3 (a' ^. _x) yOffset (a' ^. _y)) (tupleToV4 color)
-                Plane {..} -> plane (V3 (c ^. _x) (n.yOffset) (c ^. _y)) (V3 (a' ^. _x) yOffset (a' ^. _y)) (tupleToV4 color)
+                Plane {..} -> plane (V3 (c ^. _x) n.yOffset (c ^. _y)) (V3 (a' ^. _x) yOffset (a' ^. _y)) (tupleToV4 color)
                 RTPrism {..} -> prism top (V3 (c ^. _x) (height + n.yOffset) (c ^. _y)) (V3 (a' ^. _x) yOffset (a' ^. _y)) (tupleToV4 color)
       )
       d
@@ -88,8 +88,8 @@ charMeshes font bbox piel = text font piel renderer bbox
   where
     renderer :: (Char -> BB.Box V2 Double -> Bitmap -> (GameCtx os) TextMesh)
     renderer ch pen bmp =
-      return $
-        TextMesh
+      return
+        $ TextMesh
           (boardVertexes $ realToFrac <$> pen)
           bmp
           (piel, ch)
@@ -156,9 +156,6 @@ cube (V3 w d h) offset color =
             ]
           ]
 
-fstFilter :: [(Bool, a)] -> [a]
-fstFilter = map snd . filter fst
-
 prism :: TipEdge -> V3 Float -> V3 Float -> V4 Float -> Vector Mesh
 prism edge (V3 w d h) offset color =
   let hw = w / 2
@@ -167,7 +164,7 @@ prism edge (V3 w d h) offset color =
    in V.map
         (\v -> Mesh v Nothing (offset + V3 hw hd hh) Nothing BoardShader (TopologyTriangles TriangleStrip) (Just color))
         $ V.fromList
-          . fstFilter
+        . fstFilter
         $ [ ( True,
               [ Vertex
                   ( V3
@@ -291,6 +288,9 @@ prism edge (V3 w d h) offset color =
               ]
             )
           ]
+  where
+    fstFilter :: [(Bool, a)] -> [a]
+    fstFilter = map snd . filter fst
 
 scene :: Scene
 scene =
@@ -368,36 +368,28 @@ buildRenderer win unis obj = do
               TargetBoard -> ts
         vbuf <- newBuffer l
         when (l > 0) $ writeBuffer vbuf 0 [(position + offset, normal, uv) | Vertex {..} <- vertices]
-        return $
-          V.singleton $
-            \i ->
-              case topology of
-                TopologyTriangles p -> do
-                  prims <- newPrimitiveArray p vbuf ibuf
-                  shader' $ RenderInput i.windowSize prims t'
-                p -> trace ("unsupported topology " ++ show p) $ return ()
+        return
+          $ V.singleton
+          $ \i ->
+            case topology of
+              TopologyTriangles p -> do
+                prims <- newPrimitiveArray p vbuf ibuf
+                shader' $ RenderInput i.windowSize prims t'
+              p -> trace ("unsupported topology " ++ show p) $ return ()
       Nothing -> do
         vbuf <- newBuffer l
         when (l > 0) $ writeBuffer vbuf 0 [(position + offset, normal) | Vertex {..} <- vertices]
 
-        return $
-          V.singleton $
-            -- \i ->
-            --   when (Just meshId == i.highlight) $ do
-            --     case topology of
-            --       TopologyTriangles p -> do
-            --         prims <- newPrimitiveArray p vbuf ibuf
-            --         let input = PlainInput i.viewSize (fromMaybe (V4 0 0 0 0.75) color) prims
-            --         mss input
-            --       p -> trace ("unsupported topology " ++ show p) $ return (),
-            \i ->
-              case topology of
-                TopologyTriangles p -> do
-                  prims <- newPrimitiveArray p vbuf ibuf
-                  clearWindowStencil win 0
-                  let input = PlainInput i.windowSize (fromMaybe (V4 0 0 0 0.75) color) prims
-                  ms input
-                p -> trace ("unsupported topology " ++ show p) $ return ()
+        return
+          $ V.singleton
+          $ \i ->
+            case topology of
+              TopologyTriangles p -> do
+                prims <- newPrimitiveArray p vbuf ibuf
+                clearWindowStencil win 0
+                let input = PlainInput i.windowSize (fromMaybe (V4 0 0 0 0.75) color) prims
+                ms input
+              p -> trace ("unsupported topology " ++ show p) $ return ()
 
   rs' <- rankBundle rs
   return (obj.id, rs')
@@ -412,8 +404,7 @@ newPrimitiveArray t p (Just i) = do
   return $ toPrimitiveArrayIndexed t iArr pArr
 
 execGame ::
-  forall c.
-  Game c ->
+  Game ->
   IO ()
 execGame Game {..} =
   runResourceT' . unResource $ runContextT (GLFW.defaultHandleConfig {GLFW.configEventPolicy = Just GLFW.Poll}) $ unCtx $ do
@@ -427,18 +418,18 @@ execGame Game {..} =
   where
     loop win keyInputSink nw = do
       closeRequested <- GameCtx $ GLFW.windowShouldClose win
-      when (fromMaybe False closeRequested) $ return ()
-      dt <- GameCtx $ readInput win keyInputSink
-      case dt of
-        Nothing -> return ()
-        Just dt' -> (join . liftIO . nw $ dt') >> loop win keyInputSink nw
+      unless (fromMaybe False closeRequested) $ do
+        dt <- GameCtx $ readInput win keyInputSink
+        case dt of
+          Nothing -> return ()
+          Just dt' -> (join . liftIO . nw $ dt') >> loop win keyInputSink nw
 
 run :: IO ()
 run = execGame game
 
 data GameOrder = GameReset | GameLoad Int | GameContinue | GameSave Int
 
-data Game c = Game
+data Game = Game
   { prepare ::
       forall os.
       (GameCtx os)
@@ -462,7 +453,7 @@ data Game c = Game
 bundle :: (Foldable t, Monad n) => t (b -> n ()) -> (b -> n ())
 bundle fs b = mapM_ (\f' -> f' b) fs
 
-transpose :: HasCallStack => Vector (Vector a) -> Vector (Vector a)
+transpose :: (HasCallStack) => Vector (Vector a) -> Vector (Vector a)
 transpose v = case V.uncons v of
   Nothing -> V.empty
   Just (x, xss) -> case V.uncons x of
@@ -473,8 +464,6 @@ transpose v = case V.uncons v of
 
 rankBundle :: (Monad m, Monad n) => Vector (Vector (b -> n ())) -> m (b -> n ())
 rankBundle fs = return . bundle $ (join . transpose $ fs)
-
-type KeyInput = E.SignalGen Double (E.Signal Input)
 
 meshFromGltf :: GLTF.Gltf -> Vector Mesh
 meshFromGltf j = V.concatMap (\(GLTF.Mesh _meshName prims _wieghts) -> trace (show _wieghts) $ processMeshPrimitive <$> prims) (gltfMeshes j)
@@ -496,20 +485,17 @@ meshFromGltf j = V.concatMap (\(GLTF.Mesh _meshName prims _wieghts) -> trace (sh
             GLTF.Triangles -> TopologyTriangles TriangleList,
           shader = TargetBoard,
           color =
-            ( \i -> do
-                m <- j.gltfMaterials V.!? i
-                metallicRoughness <- m.materialPbrMetallicRoughness
-                return $ metallicRoughness.pbrBaseColorFactor
-            )
-              =<< _material
+            do
+              i <- _material
+              m <- j.gltfMaterials V.!? i
+              metallicRoughness <- m.materialPbrMetallicRoughness
+              return metallicRoughness.pbrBaseColorFactor
         }
 
 rotationMatrix :: Float -> M44 Float
 rotationMatrix theta = m33_to_m44 $ fromQuaternion $ axisAngle (V3 0 1 0) theta
 
-game ::
-  Game
-    ()
+game :: Game
 game =
   Game
     { prepare = do
@@ -543,9 +529,8 @@ game =
         gs <- gridShader win unis
         renderings <- liftIO $ newIORef $ renderWith unis [rother, rp]
         ts <- GameCtx $ compileShader $ textShader win unis
-        let str = charMeshes font
-            renderText bbox (ws, inp) = do
-              vs <- str bbox 24 inp
+        let renderText bbox (ws, inp) = do
+              vs <- charMeshes font bbox 24 inp
               GameCtx $ do
                 t <- forM vs $ \TextMesh {..} -> do
                   cache <- liftIO $ readIORef textureStorage
@@ -567,8 +552,8 @@ game =
               clearWindowDepthStencil win 1 0
               gs vpSize
 
-        let update c g o = GameCtx $
-              case c of
+        let update c g o = GameCtx
+              $ case c of
                 GameReset -> do
                   f <- liftIO $ BS.readFile "map.json"
                   let others =
@@ -616,17 +601,17 @@ game =
                     else
                       t
                         & _x
-                          +~ ( case direction1 of
-                                 Just DirRight -> mu
-                                 Just DirLeft -> -mu
-                                 _ -> 0
-                             )
-                        & _z
-                          +~ ( case direction1 of
-                                 Just DirDown -> mu
-                                 Just DirUp -> -mu
-                                 _ -> 0
-                             )
+                        +~ ( case direction1 of
+                               Just DirRight -> mu
+                               Just DirLeft -> -mu
+                               _ -> 0
+                           )
+                          & _z
+                        +~ ( case direction1 of
+                               Just DirDown -> mu
+                               Just DirUp -> -mu
+                               _ -> 0
+                           )
               )
               ki
               moveUnit
@@ -653,17 +638,17 @@ game =
                       let t' =
                             p
                               & _y
-                                +~ ( case direction2 of
-                                       Just DirRight -> mu
-                                       Just DirLeft -> -mu
-                                       _ -> 0
-                                   )
-                              & _z
-                                +~ ( case direction2 of
-                                       Just DirUp -> mu
-                                       Just DirDown -> -mu
-                                       _ -> 0
-                                   )
+                              +~ ( case direction2 of
+                                     Just DirRight -> mu
+                                     Just DirLeft -> -mu
+                                     _ -> 0
+                                 )
+                                & _z
+                              +~ ( case direction2 of
+                                     Just DirUp -> mu
+                                     Just DirDown -> -mu
+                                     _ -> 0
+                                 )
 
                           traslated = t' - t
                           rotated = rotationMatrix theta' !* point traslated
@@ -712,9 +697,9 @@ game =
       _ <-
         update
           ( if
-                | input.hardReset -> GameReset
-                | input.save -> GameSave 1
-                | otherwise -> GameContinue
+              | input.hardReset -> GameReset
+              | input.save -> GameSave 1
+              | otherwise -> GameContinue
           )
           GlobalUniform {windowSize = sz, modelNorm = normMat, viewCamera = camera, viewTarget = target, viewUp = viewUpNorm, lightDirection = lightDir}
           [(ObjectId 0, ObjectUniform {position = target})]

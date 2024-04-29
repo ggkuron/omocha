@@ -58,7 +58,7 @@ data RenderedChar = RenderedChar
     releaseKey :: ReleaseKey
   }
 
-loadFont :: MonadIO m => FilePath -> m Font
+loadFont :: (MonadIO m) => FilePath -> m Font
 loadFont path = liftIO $ alloca $ \p -> do
   runFreeType $ withCString path $ \str -> ft_New_Face freeType str 0 p
   f <- peek p
@@ -122,14 +122,15 @@ render face siz advV ch = do
   fptr <- newForeignPtr_ $ castPtr $ buffer bmp
   adv <- peek $ GS.advance slot
   b <-
-    liftBitmapIO $
-      fromColorAndOpacity (PixelRGB8 255 255 255) $
-        Image w h $!
-          VG.new . VG.clone $
-            V.unsafeFromForeignPtr0 fptr (h * w)
+    liftBitmapIO
+      $ fromColorAndOpacity (PixelRGB8 255 255 255)
+      $ Image w h
+      $! VG.new
+      . VG.clone
+      $ V.unsafeFromForeignPtr0 fptr (h * w)
 
-  return $
-    RenderedChar
+  return
+    $ RenderedChar
       b
       (V2 left (advV - top))
       (fromIntegral (V.x adv) / 64)

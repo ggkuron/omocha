@@ -1,9 +1,4 @@
-{-# LANGUAGE DeriveFunctor #-}
-{-# HLINT ignore "Use lambda-case" #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE ImportQualifiedPost #-}
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Omocha.Text (TextF (..), TextT, runTextT, text) where
 
@@ -24,7 +19,7 @@ data TextF a = TypeChar Char a deriving (Functor)
 
 type TextT = FreeT TextF
 
-instance Monad m => IsString (TextT m ()) where
+instance (Monad m) => IsString (TextT m ()) where
   fromString = mapM_ $ \c -> liftF (TypeChar c ())
 
 type Renderer m a = (Char -> Box V2 Double -> Bitmap -> m a)
@@ -34,7 +29,7 @@ runTextT :: (MonadResource m) => Maybe (Box V2 Double) -> Font -> Double -> Rend
 runTextT bbox font siz render = flip evalStateT (V2 x0 y0) . go []
   where
     go a m =
-      lift (runFreeT m) >>= \r -> case r of
+      lift (runFreeT m) >>= \case
         Pure p -> return a
         Free (TypeChar '\n' cont) -> do
           _x .= x0

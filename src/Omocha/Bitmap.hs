@@ -28,11 +28,11 @@ import Prelude (putStrLn)
 
 data Bitmap = Bitmap {bitmapImage :: C.Image C.PixelRGBA8, bitmapHash :: Int}
 
-liftBitmapIO :: MonadIO m => C.Image C.PixelRGBA8 -> m Bitmap
+liftBitmapIO :: (MonadIO m) => C.Image C.PixelRGBA8 -> m Bitmap
 liftBitmapIO b = liftIO $ Bitmap b <$> randomIO
 
 -- | Load an image file.
-readBitmap :: MonadIO m => FilePath -> m Bitmap
+readBitmap :: (MonadIO m) => FilePath -> m Bitmap
 readBitmap path = liftIO $ Bitmap <$> C.readImageRGBA8 path <*> randomIO
 
 -- | The type of the given 'ExpQ' must be @FilePath -> IO FilePath@
@@ -52,8 +52,8 @@ loadBitmapsWith getFullPath path = do
     load name fp = do
       runIO $ putStrLn $ "Defined: " ++ fp ++ " as `" ++ name ++ "'"
 
-      appE (varE 'unsafePerformIO) $
-        uInfixE (appE getFullPath $ litE $ StringL fp) (varE '(>>=)) (varE 'readBitmap)
+      appE (varE 'unsafePerformIO)
+        $ uInfixE (appE getFullPath $ litE $ StringL fp) (varE '(>>=)) (varE 'readBitmap)
 
 getFileList :: FilePath -> IO [FilePath]
 getFileList path = do
