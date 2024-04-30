@@ -28,10 +28,11 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-readBitmap,
-loadBitmapsWith,
-getFileList,
-pathToName are:
+Portions of this software include code derived from the following libraries, which are copyrighted under their respective licenses:
+
+- free-game (BSD-3-Clause)
+
+the free-game implementation is used to implement image loading.
 
 Copyright (c) 2012, Fumiaki Kinoshita
 All rights reserved.
