@@ -1,15 +1,9 @@
 {-# LANGUAGE DerivingVia #-}
-{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# LANGUAGE TypeOperators #-}
 
-{-# HLINT ignore "Use tuple-section" #-}
-
-module Omocha.Game where
+module Omocha.Game (run, transpose) where
 
 import Control.Lens ((+~))
 import Control.Monad

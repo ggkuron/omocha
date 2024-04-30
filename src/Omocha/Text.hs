@@ -3,7 +3,6 @@
 module Omocha.Text (TextF (..), TextT, runTextT, text) where
 
 import Codec.Picture qualified as P
-import Codec.Picture.Types qualified as P
 import Control.Lens ((+=), (.=))
 import Control.Monad.State
 import Control.Monad.Trans.Free

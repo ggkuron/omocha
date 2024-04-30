@@ -4,7 +4,6 @@ module MapFileSpec (spec) where
 
 import Data.Aeson
 import Data.BoundingBox qualified as BB
-import Data.List qualified as L
 import Data.Maybe (fromMaybe, isJust, listToMaybe, mapMaybe)
 import Data.Vector qualified as V
 import Linear.V2 (V2 (..))
