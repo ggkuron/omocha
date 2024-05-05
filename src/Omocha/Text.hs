@@ -29,7 +29,7 @@ runTextT bbox font siz render = flip evalStateT (V2 x0 y0) . go []
   where
     go a m =
       lift (runFreeT m) >>= \case
-        Pure p -> return a
+        Pure _ -> return a
         Free (TypeChar '\n' cont) -> do
           _x .= x0
           _y += advV

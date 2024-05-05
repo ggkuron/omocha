@@ -3,7 +3,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeOperators #-}
 
-module Omocha.Game (run, transpose) where
+module Omocha.Game (run, transpose, bundle) where
 
 import Control.Lens ((+~))
 import Control.Monad
@@ -45,23 +45,40 @@ loadImage bmp = do
   when (siz /= V2 0 0) $ writeTexture2D t 0 0 siz (getPixels img)
   return t
 
-mapMeshes :: MapFile -> Either String (Vector Mesh)
-mapMeshes m = do
-  d <- foldMapM (parseMapDef m.size) m.mapData
-  return
-    $ V.concatMap
-      ( \(BB.Box a b, n) ->
-          let c :: V2 Float = fmap fromIntegral (b - a)
-              a' :: V2 Float = fmap fromIntegral $ a - V2 10 10
-           in case n of
-                Block {..} -> cube (V3 (c ^. _x) (height + n.yOffset) (c ^. _y)) (V3 (a' ^. _x) yOffset (a' ^. _y)) (tupleToV4 color)
-                Plane {..} -> plane (V3 (c ^. _x) n.yOffset (c ^. _y)) (V3 (a' ^. _x) yOffset (a' ^. _y)) (tupleToV4 color)
-                RTPrism {..} -> prism top (V3 (c ^. _x) (height + n.yOffset) (c ^. _y)) (V3 (a' ^. _x) yOffset (a' ^. _y)) (tupleToV4 color)
-      )
-      d
+readMapFile :: FilePath -> IO MapFile
+readMapFile path = do
+  f <- BS.readFile path
+  case decode f of
+    Just m -> return m
+    _ -> E.throw ("invalid map file: " ++ path :: String)
+
+parseMapFile :: MapFile -> IO (Vector Mesh)
+parseMapFile = mapMeshes (-V2 10 10) 1
+
+mapMeshes :: V2 Float -> V2 Float -> MapFile -> IO (Vector Mesh)
+mapMeshes offset unit m = do
+  d <- either E.throw return $ foldMapM (parseMapDef m.size) m.mapData
+  a <- mapM (toMesh offset unit) d
+  return $ join a
   where
     tupleToV4 :: (a, a, a, a) -> V4 a
     tupleToV4 (a, b, c, d) = V4 a b c d
+    tupleToV2 (a, b) = V2 a b
+    toMesh :: V2 Float -> V2 Float -> (BB.Box V2 Int, MapDef) -> IO (Vector Mesh)
+    toMesh offset unit (BB.Box a b, n) =
+      let size :: V2 Float = liftA2 (*) unit (fmap fromIntegral (b - a))
+          start :: V2 Float = liftA2 (*) unit (fmap fromIntegral a) + offset
+          yScale = (unit ^. _x + unit ^. _y) / 2
+       in case n of
+            Block {..} -> return $ cube (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (yOffset * yScale) (start ^. _y)) (tupleToV4 color)
+            Plane {..} -> return $ plane (V3 (size ^. _x) (n.yOffset * yScale) (size ^. _y)) (V3 (start ^. _x) (yOffset * yScale) (start ^. _y)) (tupleToV4 color)
+            RTPrism {..} -> return $ prism top (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (yOffset * yScale) (start ^. _y)) (tupleToV4 color)
+            Reference r -> do
+              m <- case r of
+                (Embed m) -> return m
+                (External path) -> readMapFile path -- TODO: check recursive recursion
+              let unit' :: V2 Float = liftA2 (/) size (fromIntegral <$> tupleToV2 m.size)
+               in mapMeshes start unit' m
 
 boardVertex :: [Vertex]
 boardVertex =
@@ -307,19 +324,16 @@ scene =
                         (Just _maptips_grass_png)
                         BoardShader
                         (TopologyTriangles TriangleStrip)
+                        Nothing,
+                      Mesh
+                        boardVertex
+                        Nothing
+                        (V3 0 1 0)
+                        (Just _front0_png)
+                        BoardShader
+                        (TopologyTriangles TriangleStrip)
                         Nothing
                     ]
-                    V.++ cube (V3 2 1 2) (V3 (-2) 0 0) (V4 1 0 0 1)
-                    V.++ V.fromList
-                      [ Mesh
-                          boardVertex
-                          Nothing
-                          (V3 0 1 0)
-                          (Just _front0_png)
-                          BoardShader
-                          (TopologyTriangles TriangleStrip)
-                          Nothing
-                      ]
               }
           ]
     }
@@ -510,13 +524,12 @@ game =
                 { id = ObjectId 0,
                   meshes = meshFromGltf j
                 }
+        mapFileMeshes <- liftIO $ parseMapFile mf
         let meshes =
               SceneObject
                 { id = ObjectId 1,
                   meshes =
-                    V.concatMap (.meshes) scene.objects V.++ case mapMeshes mf of
-                      Left e -> trace e V.empty
-                      Right m -> m
+                    V.concatMap (.meshes) scene.objects V.++ mapFileMeshes
                 }
         rother <- GameCtx $ buildRenderer win unis meshes
         rp <- GameCtx $ buildRenderer win unis player
@@ -549,16 +562,15 @@ game =
         let update c g o = GameCtx
               $ case c of
                 GameReset -> do
-                  f <- liftIO $ BS.readFile "map.json"
+                  mf <- liftIO $ do
+                    f <- readMapFile "map.json"
+                    parseMapFile f
+
                   let others =
                         SceneObject
                           { id = ObjectId 1,
                             meshes =
-                              V.concatMap (.meshes) scene.objects V.++ case decode f of
-                                Just mf' -> case mapMeshes mf' of
-                                  Left e -> trace e V.empty
-                                  Right m -> m
-                                Nothing -> trace "map.json is invalid as a json" V.empty
+                              V.concatMap (.meshes) scene.objects V.++ mf
                           }
                   rother' <- buildRenderer win unis others
                   let r = renderWith unis [rother', rp]
@@ -609,6 +621,9 @@ game =
               )
               ki
               moveUnit
+          -- p :: (Fractional a) => V3 a -> V3 a -> a -> V3 a
+          -- p p0 v0 t = V3 (p0 ^. _x + v0 ^. _x * t) (p0 ^. _y + v0 ^. _y * t - 0.5 * 9.81 * t * t) (p0 ^. _z + v0 ^. _z * t)
+
           theta <-
             E.transfer2
               0

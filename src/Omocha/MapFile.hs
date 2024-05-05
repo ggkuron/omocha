@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveAnyClass #-}
+
 module Omocha.MapFile where
 
 import Data.Aeson
@@ -14,11 +16,10 @@ data TipEdge
   | RowMax
   | ColumnMin
   | ColumnMax
-  deriving (Show, Generic, Eq)
+  deriving (Show, Generic, Eq, ToJSON, FromJSON)
 
-instance ToJSON TipEdge
-
-instance FromJSON TipEdge
+data MapReference = Embed MapFile | External FilePath
+  deriving (Show, Generic, ToJSON, FromJSON)
 
 data MapDef
   = Block
@@ -36,11 +37,8 @@ data MapDef
         yOffset :: Float,
         top :: TipEdge
       }
-  deriving (Show, Generic, Eq)
-
-instance ToJSON MapDef
-
-instance FromJSON MapDef
+  | Reference MapReference
+  deriving (Show, Generic, ToJSON, FromJSON)
 
 data MapData
   = Tips
@@ -48,21 +46,13 @@ data MapData
         defs :: M.Map Int MapDef
       }
   | Fill MapDef
-  deriving (Show, Generic)
-
-instance FromJSON MapData
-
-instance ToJSON MapData
+  deriving (Show, Generic, ToJSON, FromJSON)
 
 data MapFile = MapFile
   { size :: (Int, Int),
     mapData :: Vector MapData
   }
-  deriving (Show, Generic)
-
-instance FromJSON MapFile
-
-instance ToJSON MapFile
+  deriving (Show, Generic, ToJSON, FromJSON)
 
 mf :: MapFile
 mf =
@@ -84,7 +74,8 @@ mf =
                   M.fromList
                     [ (1, Block 1 (0.4, 0.2, 0.4, 1) 0),
                       (2, Block 2 (0.5, 0.5, 0.5, 1) 0),
-                      (8, Block 8 (0.5, 0.5, 0.5, 1) 0)
+                      (8, Block 8 (0.5, 0.5, 0.5, 1) 0),
+                      (8, Reference (Embed (MapFile (2, 2) V.empty)))
                     ]
               },
             Fill $ Block {height = 0.001, color = (0.2, 0.5, 0.6, 1), yOffset = 0}

@@ -94,11 +94,11 @@ spec = do
                 (length $ head x, length (x :: [[Int]]))
                 map of
                 Right r ->
-                  r `shouldSatisfy` \r' ->
-                    all
-                      ( all (<= 1)
-                      )
-                      [[length . filter (\(bb, _) -> isInside bb x y) $ V.toList r | x <- [0 .. length (x !! y) - 1]] | y <- [0 .. length x - 1]]
+                  all
+                    ( all (<= 1)
+                    )
+                    [[length . filter (\(bb, _) -> isInside bb x y) $ V.toList r | x <- [0 .. length (x !! y) - 1]] | y <- [0 .. length x - 1]]
+                    `shouldBe` True
                 Left e -> error e
     it "represents input" $ property $ do
       forAll genNonEmptyMatrix $
@@ -123,13 +123,23 @@ spec = do
                               "1":{"color":[0.4,0.2,0.4,1],"height":1,"tag":"Block", "yOffset": 0},
                               "2":{"color":[0.5,0.5,0.5,1],"height":2,"tag":"Block", "yOffset": 0},
                               "8":{"color":[0.5,0.5,0.5,1],"height":8,"tag":"Block", "yOffset": 4},
-                              "3":{"color":[0.5,0.5,0.5,1],"height":2,"tag":"RTPrism", "top": "RowMax", "yOffset": 0}
+                              "3":{"color":[0.5,0.5,0.5,1],"height":2,"tag":"RTPrism", "top": "RowMax", "yOffset": 0},
+                              "4":{
+                                "tag":"Reference",
+                                "contents": {
+                                  "tag": "Embed",
+                                  "contents": {
+                                    "size": [2, 2],
+                                    "mapData": []
+                                  }
+                                }
+                              }
                           },
                           "map":[
                               [0,0,0,0,0],
                               [0,1,0,0,0],
                               [0,2,2,1,1],
-                              [0,2,2,0,0],
+                              [0,2,2,4,0],
                               [0,8,0,0,0]
                           ]
                       },
