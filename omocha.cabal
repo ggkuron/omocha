@@ -26,6 +26,7 @@ common shared-properties
     , either
     , elerea
     , exception-transformers
+    , extra
     , filepath
     , free
     , freetype2               ^>=0.1
@@ -71,9 +72,11 @@ library
     Omocha.Context
     Omocha.Control
     Omocha.Font
+    Omocha.Mesh
     Omocha.Resource
     Omocha.Scene
     Omocha.Shader
+    Omocha.Shape
     Omocha.Text
     Omocha.Uniform
     Omocha.UserInput

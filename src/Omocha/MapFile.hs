@@ -5,39 +5,62 @@ module Omocha.MapFile where
 import Data.Aeson
 import Data.BoundingBox qualified as BB
 import Data.Either.Combinators (maybeToRight)
-import Data.Foldable
+import Data.Foldable (Foldable (foldl))
 import Data.Map.Strict qualified as M
 import Data.Vector qualified as V
 import Linear.V2
-import RIO hiding (map)
+import RIO
+
+type EdgePoint = (Bool, Bool)
 
 data TipEdge
-  = RowMin
-  | RowMax
-  | ColumnMin
-  | ColumnMax
+  = RowMin -- V2 _ False
+  | RowMax -- V2 _ True
+  | ColumnMin -- V2 False _
+  | ColumnMax -- V2 True _
   deriving (Show, Generic, Eq, ToJSON, FromJSON)
+
+adjacentEdges :: EdgePoint -> [TipEdge]
+adjacentEdges (True, True) = [RowMax, ColumnMax]
+adjacentEdges (True, False) = [RowMin, ColumnMax]
+adjacentEdges (False, True) = [RowMax, ColumnMin]
+adjacentEdges (False, False) = [RowMin, ColumnMin]
 
 data MapReference = Embed MapFile | External FilePath
   deriving (Show, Generic, ToJSON, FromJSON)
 
+type Color = (Float, Float, Float, Float)
+
 data MapDef
-  = Block
+  = Cube
       { height :: Float,
-        color :: (Float, Float, Float, Float),
+        color :: Color,
         yOffset :: Float
       }
   | Plane
-      { color :: (Float, Float, Float, Float),
+      { color :: Color,
         yOffset :: Float
       }
-  | RTPrism
-      { height :: Float,
-        color :: (Float, Float, Float, Float),
+  | Slope
+      { high :: Float,
+        low :: Float,
+        color :: Color,
         yOffset :: Float,
-        top :: TipEdge
+        highEdge :: TipEdge
       }
   | Reference MapReference
+  | Cylinder
+      { height :: Float,
+        color :: Color,
+        yOffset :: Float,
+        center :: Maybe EdgePoint
+      }
+  | Cone
+      { height :: Float,
+        color :: Color,
+        yOffset :: Float,
+        center :: Maybe EdgePoint
+      }
   deriving (Show, Generic, ToJSON, FromJSON)
 
 data MapData
@@ -67,18 +90,19 @@ mf =
                     $ [ [0, 0, 0, 0, 0],
                         [0, 1, 0, 0, 0],
                         [0, 2, 2, 1, 1],
-                        [0, 2, 2, 0, 0],
+                        [0, 2, 2, 5, 0],
                         [0, 8, 0, 0, 0]
                       ],
                 defs =
                   M.fromList
-                    [ (1, Block 1 (0.4, 0.2, 0.4, 1) 0),
-                      (2, Block 2 (0.5, 0.5, 0.5, 1) 0),
-                      (8, Block 8 (0.5, 0.5, 0.5, 1) 0),
+                    [ (1, Cube 1 (0.4, 0.2, 0.4, 1) 0),
+                      (2, Cube 2 (0.5, 0.5, 0.5, 1) 0),
+                      (8, Cube 8 (0.5, 0.5, 0.5, 1) 0),
+                      (5, Cylinder 0.01 (0.5, 0.5, 0.5, 1) 0 Nothing),
                       (8, Reference (Embed (MapFile (2, 2) V.empty)))
                     ]
               },
-            Fill $ Block {height = 0.001, color = (0.2, 0.5, 0.6, 1), yOffset = 0}
+            Fill $ Cube {height = 0.001, color = (0.2, 0.5, 0.6, 1), yOffset = 0}
           ]
     }
 

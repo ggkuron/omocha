@@ -21,8 +21,3 @@ genMatrix :: Gen [[Int]]
 genMatrix = do
   Positive size <- arbitrary
   listOf (vectorOf size arbitrary)
-
-genNonEmptyMatrix :: Gen [[Int]]
-genNonEmptyMatrix = do
-  Positive size <- arbitrary
-  listOf1 (vectorOf size arbitrary)

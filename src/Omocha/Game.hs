@@ -24,6 +24,7 @@ import Omocha.MapFile
 import Omocha.Resource
 import Omocha.Scene
 import Omocha.Shader
+import Omocha.Shape
 import Omocha.Text (text)
 import Omocha.Uniform
 import Omocha.UserInput
@@ -45,8 +46,8 @@ loadImage bmp = do
   when (siz /= V2 0 0) $ writeTexture2D t 0 0 siz (getPixels img)
   return t
 
-readMapFile :: FilePath -> IO MapFile
-readMapFile path = do
+loadMapFile :: FilePath -> IO MapFile
+loadMapFile path = do
   f <- BS.readFile path
   case decode f of
     Just m -> return m
@@ -54,39 +55,33 @@ readMapFile path = do
 
 parseMapFile :: MapFile -> IO (Vector Mesh)
 parseMapFile = mapMeshes (-V2 10 10) 1
-
-mapMeshes :: V2 Float -> V2 Float -> MapFile -> IO (Vector Mesh)
-mapMeshes offset unit m = do
-  d <- either E.throw return $ foldMapM (parseMapDef m.size) m.mapData
-  a <- mapM (toMesh offset unit) d
-  return $ join a
   where
-    tupleToV4 :: (a, a, a, a) -> V4 a
-    tupleToV4 (a, b, c, d) = V4 a b c d
-    tupleToV2 (a, b) = V2 a b
-    toMesh :: V2 Float -> V2 Float -> (BB.Box V2 Int, MapDef) -> IO (Vector Mesh)
-    toMesh offset unit (BB.Box a b, n) =
-      let size :: V2 Float = liftA2 (*) unit (fmap fromIntegral (b - a))
-          start :: V2 Float = liftA2 (*) unit (fmap fromIntegral a) + offset
-          yScale = (unit ^. _x + unit ^. _y) / 2
-       in case n of
-            Block {..} -> return $ cube (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (yOffset * yScale) (start ^. _y)) (tupleToV4 color)
-            Plane {..} -> return $ plane (V3 (size ^. _x) (n.yOffset * yScale) (size ^. _y)) (V3 (start ^. _x) (yOffset * yScale) (start ^. _y)) (tupleToV4 color)
-            RTPrism {..} -> return $ prism top (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (yOffset * yScale) (start ^. _y)) (tupleToV4 color)
-            Reference r -> do
-              m <- case r of
-                (Embed m) -> return m
-                (External path) -> readMapFile path -- TODO: check recursive recursion
-              let unit' :: V2 Float = liftA2 (/) size (fromIntegral <$> tupleToV2 m.size)
-               in mapMeshes start unit' m
-
-boardVertex :: [Vertex]
-boardVertex =
-  [ Vertex (V3 1 1 0) (V3 0 0 1) (V2 1 1),
-    Vertex (V3 (-1) 1 0) (V3 0 0 1) (V2 0 1),
-    Vertex (V3 1 (-1) 0) (V3 0 0 1) (V2 1 0),
-    Vertex (V3 (-1) (-1) 0) (V3 0 0 1) (V2 0 0)
-  ]
+    mapMeshes :: V2 Float -> V2 Float -> MapFile -> IO (Vector Mesh)
+    mapMeshes offset unit m = do
+      d <- either E.throw return $ foldMapM (parseMapDef m.size) m.mapData
+      a <- mapM (toMesh offset unit) d
+      return $ join a
+      where
+        tupleToV4 :: (a, a, a, a) -> V4 a
+        tupleToV4 (a, b, c, d) = V4 a b c d
+        tupleToV2 (a, b) = V2 a b
+        toMesh :: V2 Float -> V2 Float -> (BB.Box V2 Int, MapDef) -> IO (Vector Mesh)
+        toMesh offset unit (BB.Box a b, n) =
+          let size :: V2 Float = liftA2 (*) unit (fmap fromIntegral (b - a))
+              start :: V2 Float = liftA2 (*) unit (fmap fromIntegral a) + offset
+              yScale = (unit ^. _x + unit ^. _y) / 2
+           in case n of
+                Cube {..} -> return $ cube (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (yOffset * yScale) (start ^. _y)) (tupleToV4 color)
+                Plane {..} -> return $ plane (V3 (size ^. _x) (n.yOffset * yScale) (size ^. _y)) (V3 (start ^. _x) (yOffset * yScale) (start ^. _y)) (tupleToV4 color)
+                Slope {..} -> return $ slope highEdge (size ^. _x, (high, (* yScale) low), size ^. _y) (V3 (start ^. _x) (yOffset * yScale) (start ^. _y)) (tupleToV4 color)
+                Cylinder {..} -> return $ cylinder center (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (yOffset * yScale) (start ^. _y)) (tupleToV4 color)
+                Cone {..} -> return $ cone center (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (yOffset * yScale) (start ^. _y)) (tupleToV4 color)
+                Reference r -> do
+                  m <- case r of
+                    (Embed m) -> return m
+                    (External path) -> loadMapFile path -- TODO: check recursive recursion
+                  let unit' :: V2 Float = liftA2 (/) size (fromIntegral <$> tupleToV2 m.size)
+                   in mapMeshes start unit' m
 
 data TextMesh = TextMesh
   { vertexes :: [(V2 Float, V2 Float)],
@@ -112,197 +107,6 @@ charMeshes font bbox piel = text font piel renderer bbox
         (V2 x' y', V2 0 0)
       ]
 
-plane :: V3 Float -> V3 Float -> V4 Float -> Vector Mesh
-plane (V3 w d h) offset color =
-  let hw = w / 2
-      hh = h / 2
-      hd = d / 2
-   in V.map
-        (\v -> Mesh v Nothing (offset + V3 hw hd hh) Nothing BoardShader (TopologyTriangles TriangleStrip) (Just color))
-        $ V.fromList
-          [ [ Vertex (V3 hw hd hh) (V3 0 1 0) (V2 1 1),
-              Vertex (V3 hw hd (-hh)) (V3 0 1 0) (V2 1 0),
-              Vertex (V3 (-hw) hd hh) (V3 0 1 0) (V2 0 1),
-              Vertex (V3 (-hw) hd (-hh)) (V3 0 1 0) (V2 0 0)
-            ]
-          ]
-
-cube :: V3 Float -> V3 Float -> V4 Float -> Vector Mesh
-cube (V3 w d h) offset color =
-  let hw = w / 2
-      hh = h / 2
-      hd = d / 2
-   in V.map
-        (\v -> Mesh v Nothing (offset + V3 hw hd hh) Nothing BoardShader (TopologyTriangles TriangleStrip) (Just color))
-        $ V.fromList
-          [ [ Vertex (V3 hw hd hh) (V3 0 1 0) (V2 1 1),
-              Vertex (V3 hw hd (-hh)) (V3 0 1 0) (V2 1 0),
-              Vertex (V3 (-hw) hd hh) (V3 0 1 0) (V2 0 1),
-              Vertex (V3 (-hw) hd (-hh)) (V3 0 1 0) (V2 0 0)
-            ],
-            [ Vertex (V3 hw hd hh) (V3 1 0 0) (V2 1 1),
-              Vertex (V3 hw (-hd) hh) (V3 1 0 0) (V2 1 0),
-              Vertex (V3 hw hd (-hh)) (V3 1 0 0) (V2 0 1),
-              Vertex (V3 hw (-hd) (-hh)) (V3 1 0 0) (V2 0 0)
-            ],
-            [ Vertex (V3 (-hw) hd (-hh)) (V3 (-1) 0 0) (V2 1 1),
-              Vertex (V3 (-hw) (-hd) (-hh)) (V3 (-1) 0 0) (V2 0 1),
-              Vertex (V3 (-hw) hd hh) (V3 (-hh) 0 0) (V2 1 0),
-              Vertex (V3 (-hw) (-hd) hh) (V3 (-1) 0 0) (V2 0 0)
-            ],
-            [ Vertex (V3 hw hd (-hh)) (V3 0 0 (-1)) (V2 1 1),
-              Vertex (V3 hw (-hd) (-hh)) (V3 0 0 (-1)) (V2 0 1),
-              Vertex (V3 (-hw) hd (-hh)) (V3 0 0 (-1)) (V2 1 0),
-              Vertex (V3 (-hw) (-hd) (-hh)) (V3 0 0 (-1)) (V2 0 0)
-            ],
-            [ Vertex (V3 hw hd hh) (V3 0 0 1) (V2 1 1),
-              Vertex (V3 (-hw) hd hh) (V3 0 0 1) (V2 1 0),
-              Vertex (V3 hw (-hd) hh) (V3 0 0 1) (V2 0 1),
-              Vertex (V3 (-hw) (-hd) hh) (V3 0 0 1) (V2 0 0)
-            ],
-            [ Vertex (V3 (-hw) (-hd) hh) (V3 0 (-1) 0) (V2 0 1),
-              Vertex (V3 (-hw) (-hd) (-hh)) (V3 0 (-1) 0) (V2 0 0),
-              Vertex (V3 hw (-hd) hh) (V3 0 (-1) 0) (V2 1 1),
-              Vertex (V3 hw (-hd) (-hh)) (V3 0 (-1) 0) (V2 1 0)
-            ]
-          ]
-
-prism :: TipEdge -> V3 Float -> V3 Float -> V4 Float -> Vector Mesh
-prism edge (V3 w d h) offset color =
-  let hw = w / 2
-      hh = h / 2
-      hd = d / 2
-   in V.map
-        (\v -> Mesh v Nothing (offset + V3 hw hd hh) Nothing BoardShader (TopologyTriangles TriangleStrip) (Just color))
-        $ V.fromList
-        . fstFilter
-        $ [ ( True,
-              [ Vertex
-                  ( V3
-                      hw
-                      ( case edge of
-                          ColumnMin -> -hd
-                          RowMin -> -hd
-                          _ -> hd
-                      )
-                      hh
-                  )
-                  (V3 0 1 0)
-                  (V2 1 1),
-                Vertex
-                  ( V3
-                      hw
-                      ( case edge of
-                          ColumnMin -> -hd
-                          RowMax -> -hd
-                          _ -> hd
-                      )
-                      (-hh)
-                  )
-                  (V3 0 1 0)
-                  (V2 1 0),
-                Vertex
-                  ( V3
-                      (-hw)
-                      ( case edge of
-                          ColumnMax -> -hd
-                          RowMin -> -hd
-                          _ -> hd
-                      )
-                      hh
-                  )
-                  (V3 0 1 0)
-                  (V2 0 1),
-                Vertex
-                  ( V3
-                      (-hw)
-                      ( case edge of
-                          ColumnMax -> -hd
-                          RowMax -> -hd
-                          _ -> hd
-                      )
-                      (-hh)
-                  )
-                  (V3 0 1 0)
-                  (V2 0 0)
-              ]
-            ),
-            ( edge /= ColumnMin,
-              fstFilter
-                [ ( True,
-                    Vertex (V3 hw (-hd) hh) (V3 1 0 0) (V2 1 0)
-                  ),
-                  ( True,
-                    Vertex (V3 hw (-hd) (-hh)) (V3 1 0 0) (V2 0 0)
-                  ),
-                  ( edge /= RowMin,
-                    Vertex (V3 hw hd hh) (V3 1 0 0) (V2 1 1)
-                  ),
-                  ( edge /= RowMax,
-                    Vertex (V3 hw hd (-hh)) (V3 1 0 0) (V2 0 1)
-                  )
-                ]
-            ),
-            ( edge /= ColumnMax,
-              fstFilter
-                [ ( True,
-                    Vertex (V3 (-hw) (-hd) (-hh)) (V3 (-1) 0 0) (V2 0 1)
-                  ),
-                  ( True,
-                    Vertex (V3 (-hw) (-hd) hh) (V3 (-1) 0 0) (V2 0 0)
-                  ),
-                  ( edge /= RowMax,
-                    Vertex (V3 (-hw) hd (-hh)) (V3 (-1) 0 0) (V2 1 1)
-                  ),
-                  ( edge /= RowMin,
-                    Vertex (V3 (-hw) hd hh) (V3 (-hh) 0 0) (V2 1 0)
-                  )
-                ]
-            ),
-            ( edge /= RowMax,
-              fstFilter
-                [ ( True,
-                    Vertex (V3 hw (-hd) (-hh)) (V3 0 0 (-1)) (V2 0 1)
-                  ),
-                  ( True,
-                    Vertex (V3 (-hw) (-hd) (-hh)) (V3 0 0 (-1)) (V2 0 0)
-                  ),
-                  ( edge /= ColumnMin,
-                    Vertex (V3 hw hd (-hh)) (V3 0 0 (-1)) (V2 1 1)
-                  ),
-                  ( edge /= ColumnMax,
-                    Vertex (V3 (-hw) hd (-hh)) (V3 0 0 (-1)) (V2 1 0)
-                  )
-                ]
-            ),
-            ( edge /= RowMin,
-              fstFilter
-                [ ( True,
-                    Vertex (V3 (-hw) (-hd) hh) (V3 0 0 1) (V2 0 0)
-                  ),
-                  ( True,
-                    Vertex (V3 hw (-hd) hh) (V3 0 0 1) (V2 0 1)
-                  ),
-                  ( edge /= ColumnMax,
-                    Vertex (V3 (-hw) hd hh) (V3 0 0 1) (V2 1 0)
-                  ),
-                  ( edge /= ColumnMin,
-                    Vertex (V3 hw hd hh) (V3 0 0 1) (V2 1 1)
-                  )
-                ]
-            ),
-            ( True,
-              [ Vertex (V3 (-hw) (-hd) hh) (V3 0 (-1) 0) (V2 0 1),
-                Vertex (V3 (-hw) (-hd) (-hh)) (V3 0 (-1) 0) (V2 0 0),
-                Vertex (V3 hw (-hd) hh) (V3 0 (-1) 0) (V2 1 1),
-                Vertex (V3 hw (-hd) (-hh)) (V3 0 (-1) 0) (V2 1 0)
-              ]
-            )
-          ]
-  where
-    fstFilter :: [(Bool, a)] -> [a]
-    fstFilter = map snd . filter fst
-
 scene :: Scene
 scene =
   Scene
@@ -314,11 +118,7 @@ scene =
                 meshes =
                   V.fromList
                     [ Mesh
-                        [ Vertex (V3 1 0 1) (V3 0 1 0) (V2 1 1),
-                          Vertex (V3 1 0 (-1)) (V3 0 1 0) (V2 1 0),
-                          Vertex (V3 (-1) 0 1) (V3 0 1 0) (V2 0 1),
-                          Vertex (V3 (-1) 0 (-1)) (V3 0 1 0) (V2 0 0)
-                        ]
+                        (boardByNormal (V3 0 1 0) (V2 1 1) (V3 0.5 0 0.5))
                         Nothing
                         (V3 0 0 0)
                         (Just _maptips_grass_png)
@@ -326,9 +126,9 @@ scene =
                         (TopologyTriangles TriangleStrip)
                         Nothing,
                       Mesh
-                        boardVertex
+                        (boardByNormal (V3 0 0 1) (V2 2 2) (V3 0 1 0))
                         Nothing
-                        (V3 0 1 0)
+                        (V3 0 0 0)
                         (Just _front0_png)
                         BoardShader
                         (TopologyTriangles TriangleStrip)
@@ -351,56 +151,57 @@ buildRenderer ::
   forall ctx os m.
   (ContextHandler ctx, MonadIO m, E.MonadException m) =>
   Window os RGBAFloat DepthStencil ->
-  ApplicationUniforms os ->
-  SceneObject ->
-  ContextT ctx os m (ObjectId, CompiledShader os GlobalUniformB)
-buildRenderer win unis obj = do
-  bs <- compileShader $ boardShader win unis
-  ts <- compileShader $ boardShader win unis
-  ms <- compileShader $ monoShader win unis
-  rs <- forM obj.meshes $ \(Mesh {..}) -> do
-    ibuf <- case indices of
-      Just indices' -> do
-        let l = length indices'
-        ibuf :: Buffer os (B Word32) <- newBuffer l
-        when (l > 0) $ writeBuffer ibuf 0 $ map fromIntegral indices'
-        return $ Just ibuf
-      _ -> return Nothing
+  [SceneObject] ->
+  ContextT ctx os m (ApplicationUniforms os, CompiledShader os GlobalUniformB)
+buildRenderer win os = do
+  unis <- newUniforms . fromIntegral . length $ os
+  r <- forM os $ \obj -> do
+    bs <- compileShader $ boardShader win unis obj.id
+    ts <- compileShader $ boardShader win unis obj.id
+    ms <- compileShader $ monoShader win unis obj.id
+    rs <- forM obj.meshes $ \(Mesh {..}) -> do
+      ibuf <- case indices of
+        Just indices' -> do
+          let l = length indices'
+          ibuf :: Buffer os (B Word32) <- newBuffer l
+          when (l > 0) $ writeBuffer ibuf 0 $ map fromIntegral indices'
+          return $ Just ibuf
+        _ -> return Nothing
 
-    let l = length vertices
-    case texture of
-      Just t -> do
-        t' <- loadImage t
-        let shader' = case shader of
-              BoardShader -> bs
-              TargetBoard -> ts
-        vbuf <- newBuffer l
-        when (l > 0) $ writeBuffer vbuf 0 [(position + offset, normal, uv) | Vertex {..} <- vertices]
-        return
-          $ V.singleton
-          $ \i ->
-            case topology of
-              TopologyTriangles p -> do
-                prims <- newPrimitiveArray p vbuf ibuf
-                shader' $ RenderInput i.windowSize prims t'
-              p -> trace ("unsupported topology " ++ show p) $ return ()
-      Nothing -> do
-        vbuf <- newBuffer l
-        when (l > 0) $ writeBuffer vbuf 0 [(position + offset, normal) | Vertex {..} <- vertices]
+      let l = length vertices
+      case texture of
+        Just t -> do
+          t' <- loadImage t
+          let shader' = case shader of
+                BoardShader -> bs
+                TargetBoard -> ts
+          vbuf <- newBuffer l
+          when (l > 0) $ writeBuffer vbuf 0 [(position + offset, normal, uv) | Vertex {..} <- vertices]
+          return
+            $ V.singleton
+            $ \i ->
+              case topology of
+                TopologyTriangles p -> do
+                  prims <- newPrimitiveArray p vbuf ibuf
+                  shader' $ RenderInput i.windowSize prims t'
+                p -> trace ("unsupported topology " ++ show p) $ return ()
+        Nothing -> do
+          vbuf <- newBuffer l
+          when (l > 0) $ writeBuffer vbuf 0 [(position + offset, normal) | Vertex {..} <- vertices]
 
-        return
-          $ V.singleton
-          $ \i ->
-            case topology of
-              TopologyTriangles p -> do
-                prims <- newPrimitiveArray p vbuf ibuf
-                clearWindowStencil win 0
-                let input = PlainInput i.windowSize (fromMaybe (V4 0 0 0 0.75) color) prims
-                ms input
-              p -> trace ("unsupported topology " ++ show p) $ return ()
-
-  rs' <- rankBundle rs
-  return (obj.id, rs')
+          return
+            $ V.singleton
+            $ \i ->
+              case topology of
+                TopologyTriangles p -> do
+                  prims <- newPrimitiveArray p vbuf ibuf
+                  clearWindowStencil win 0
+                  let input = PlainInput i.windowSize (fromMaybe (V4 0 0 0 0.75) color) prims
+                  ms input
+                p -> trace ("unsupported topology " ++ show p) $ return ()
+    rankBundle rs
+  return
+    (unis, bundle r)
 
 newPrimitiveArray :: forall os b i a t. (BufferFormat b, Integral i, IndexFormat b ~ i) => PrimitiveTopology t -> Buffer os a -> Maybe (Buffer os b) -> Render os (PrimitiveArray t a)
 newPrimitiveArray t p Nothing = do
@@ -443,14 +244,14 @@ data Game = Game
       (GameCtx os)
         ( GameOrder ->
           GlobalUniformB ->
-          [(ObjectId, ObjectUniformB)] ->
+          M.Map ObjectId ObjectUniformB ->
           GameCtx os (),
           Maybe (BB.Box V2 Double) -> ShaderInput -> GameCtx os (),
           Env os
         ),
     network ::
       forall os.
-      ( GameOrder -> GlobalUniformB -> [(ObjectId, ObjectUniformB)] -> GameCtx os (),
+      ( GameOrder -> GlobalUniformB -> M.Map ObjectId ObjectUniformB -> GameCtx os (),
         Maybe (BB.Box V2 Double) -> ShaderInput -> GameCtx os (),
         Env os
       ) ->
@@ -508,7 +309,6 @@ game =
   Game
     { prepare = do
         win <- GameCtx $ newWindow (WindowFormatColorDepthStencilCombined RGBA8 Depth24Stencil8) (GLFW.defaultWindowConfig "omocha")
-        unis <- GameCtx newUniforms
         font <- loadFont "VL-PGothic-Regular.ttf"
         json <- liftIO $ GLTF.fromJsonFile "monkey.gltf"
         j <- liftIO $ case json of
@@ -516,7 +316,7 @@ game =
           Right v' -> return v'
 
         textureStorage <- liftIO $ newIORef M.empty
-        fpsSetting <- liftIO $ newIORef 30
+        fpsSetting <- liftIO $ newIORef 60
         lastRenderTime <- liftIO $ newIORef 0
 
         let player =
@@ -531,11 +331,16 @@ game =
                   meshes =
                     V.concatMap (.meshes) scene.objects V.++ mapFileMeshes
                 }
-        rother <- GameCtx $ buildRenderer win unis meshes
-        rp <- GameCtx $ buildRenderer win unis player
-        gs <- gridShader win unis
-        renderings <- liftIO $ newIORef $ renderWith unis [rother, rp]
+        (unis, s) <- GameCtx $ buildRenderer win [meshes, player]
+        let clear = do
+              clearWindowColor win (V4 0 0.25 1 1)
+              clearWindowDepthStencil win 1 0
         ts <- GameCtx $ compileShader $ textShader win unis
+        gs <- GameCtx $ gridShader win unis
+        renderings <- liftIO $ newIORef $ renderWith unis s $ \vpSize -> do
+          clear
+          gs vpSize
+
         let renderText bbox (ws, inp) = do
               vs <- charMeshes font bbox 24 inp
               GameCtx $ do
@@ -554,16 +359,11 @@ game =
                     let pa = toPrimitiveArray TriangleStrip pArr
                     ts $ TextInput vpSize pa t
                 render $ bundle t ws
-            clear vpSize = do
-              clearWindowColor win (V4 0 0.25 1 1)
-              clearWindowDepthStencil win 1 0
-              gs vpSize
-
         let update c g o = GameCtx
               $ case c of
                 GameReset -> do
                   mf <- liftIO $ do
-                    f <- readMapFile "map.json"
+                    f <- loadMapFile "map.json"
                     parseMapFile f
 
                   let others =
@@ -572,23 +372,22 @@ game =
                             meshes =
                               V.concatMap (.meshes) scene.objects V.++ mf
                           }
-                  rother' <- buildRenderer win unis others
-                  let r = renderWith unis [rother', rp]
+                  (unis, s) <- buildRenderer win [others, player]
+                  gs <- gridShader win unis
+                  let r = renderWith unis s $ \vpSize -> do
+                        clear
+                        gs vpSize
                   liftIO $ writeIORef renderings r
-                  render $ clear g.windowSize
                   r g o
                 GameSave i -> do
                   liftIO $ BS.writeFile ("map" ++ show i ++ ".json") $ encode mf
                   r <- liftIO $ readIORef renderings
-                  render $ clear g.windowSize
                   r g o
                 GameContinue -> do
                   r <- liftIO $ readIORef renderings
-                  render $ clear g.windowSize
                   r g o
                 GameLoad _ -> do
                   r <- liftIO $ readIORef renderings
-                  render $ clear g.windowSize
                   r g o
 
         return (update, renderText, Env win textureStorage fpsSetting lastRenderTime),
@@ -601,23 +400,24 @@ game =
           target <-
             E.transfer2
               (V3 0 0 0)
-              ( \_ (Input {..}) mu t ->
-                  if reset
-                    then V3 0 0 0
-                    else
-                      t
-                        & _x
-                        +~ ( case direction1 of
-                               Just DirRight -> mu
-                               Just DirLeft -> -mu
-                               _ -> 0
-                           )
-                          & _z
-                        +~ ( case direction1 of
-                               Just DirDown -> mu
-                               Just DirUp -> -mu
-                               _ -> 0
-                           )
+              ( \_ input mu t ->
+                  if
+                    | input.reset -> V3 0 0 0
+                    | input.n == Just 1 -> V3 0 0 0
+                    | otherwise ->
+                        t
+                          & _x
+                          +~ ( case input.direction1 of
+                                 Just DirRight -> mu
+                                 Just DirLeft -> -mu
+                                 _ -> 0
+                             )
+                            & _z
+                          +~ ( case input.direction1 of
+                                 Just DirDown -> mu
+                                 Just DirUp -> -mu
+                                 _ -> 0
+                             )
               )
               ki
               moveUnit
@@ -627,10 +427,10 @@ game =
           theta <-
             E.transfer2
               0
-              ( \_ (Input {..}) mu p ->
-                  if reset
+              ( \_ input mu p ->
+                  if input.reset
                     then 0
-                    else case rotation of
+                    else case input.rotation of
                       Just False -> p - mu * 0.025
                       Just True -> p + mu * 0.025
                       _ -> 0
@@ -640,28 +440,29 @@ game =
           camera' <-
             E.transfer4
               (V3 0 5 7.5)
-              ( \_ theta' t (Input {..}) mu p ->
-                  if reset
-                    then V3 0 5 7.5
-                    else
-                      let t' =
-                            p
-                              & _y
-                              +~ ( case direction2 of
-                                     Just DirRight -> mu
-                                     Just DirLeft -> -mu
-                                     _ -> 0
-                                 )
-                                & _z
-                              +~ ( case direction2 of
-                                     Just DirUp -> mu
-                                     Just DirDown -> -mu
-                                     _ -> 0
-                                 )
+              ( \_ theta' t input mu p ->
+                  if
+                    | input.reset -> V3 0 5 7.5
+                    | input.n == Just 0 -> V3 0 30 0
+                    | otherwise ->
+                        let t' =
+                              p
+                                & _y
+                                +~ ( case input.direction2 of
+                                       Just DirRight -> mu
+                                       Just DirLeft -> -mu
+                                       _ -> 0
+                                   )
+                                  & _z
+                                +~ ( case input.direction2 of
+                                       Just DirUp -> mu
+                                       Just DirDown -> -mu
+                                       _ -> 0
+                                   )
 
-                          traslated = t' - t
-                          rotated = rotationMatrix theta' !* point traslated
-                       in rotated ^. _xyz + t
+                            traslated = t' - t
+                            rotated = rotationMatrix theta' !* point traslated
+                         in rotated ^. _xyz + t
               )
               theta
               target
@@ -678,7 +479,7 @@ game =
       Env os ->
       ( GameOrder ->
         GlobalUniformB ->
-        [(ObjectId, ObjectUniformB)] ->
+        M.Map ObjectId ObjectUniformB ->
         GameCtx os ()
       ) ->
       (Maybe (BB.Box V2 Double) -> ShaderInput -> GameCtx os ()) ->
@@ -690,7 +491,7 @@ game =
       sz <- GameCtx $ getFrameBufferSize win
       let viewUpNorm = V3 0 1 0
           normMat = identity
-          lightDir = V3 (-0.5) 0.5 0.5
+          lightDir = V3 (-0.5) 0.5 0.0
 
       fpsSetting' <- liftIO $ readIORef fpsSetting
       let timePerFrame = 1 / fpsSetting'
@@ -711,6 +512,6 @@ game =
               | otherwise -> GameContinue
           )
           GlobalUniform {windowSize = sz, modelNorm = normMat, viewCamera = camera, viewTarget = target, viewUp = viewUpNorm, lightDirection = lightDir}
-          [(ObjectId 0, ObjectUniform {position = target})]
+          (M.singleton (ObjectId 0) (ObjectUniform {position = target}))
       _ <- renderText Nothing (sz, inp)
       GameCtx $ swapWindowBuffers win

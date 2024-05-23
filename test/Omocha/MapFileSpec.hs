@@ -9,6 +9,13 @@ import Data.Vector qualified as V
 import Linear.V2 (V2 (..))
 import Omocha.MapFile
 import Test.Hspec
+  ( Spec,
+    describe,
+    it,
+    shouldBe,
+    shouldMatchList,
+    shouldSatisfy,
+  )
 import Test.QuickCheck
 import Text.RawString.QQ
 import Prelude
@@ -87,17 +94,12 @@ spec = do
                               ]
         Left e -> error e
     it "results do not contain duplicates" $ property $ do
-      forAll genNonEmptyMatrix $
+      forAll genMatrix $
         \x ->
           let map = V.fromList $ fmap V.fromList (x :: [[Int]])
-           in case parseMap
-                (length $ head x, length (x :: [[Int]]))
-                map of
+           in case parseMap (length $ head x, length (x :: [[Int]])) map of
                 Right r ->
-                  all
-                    ( all (<= 1)
-                    )
-                    [[length . filter (\(bb, _) -> isInside bb x y) $ V.toList r | x <- [0 .. length (x !! y) - 1]] | y <- [0 .. length x - 1]]
+                  all (<= 1) ([length . V.filter (\(bb, _) -> isInside bb x y) $ r | y <- [0 .. length x - 1], x <- [0 .. length (x !! y) - 1]])
                     `shouldBe` True
                 Left e -> error e
     it "represents input" $ property $ do
@@ -120,10 +122,10 @@ spec = do
                       {
                           "tag": "Tips",
                           "defs":{
-                              "1":{"color":[0.4,0.2,0.4,1],"height":1,"tag":"Block", "yOffset": 0},
-                              "2":{"color":[0.5,0.5,0.5,1],"height":2,"tag":"Block", "yOffset": 0},
-                              "8":{"color":[0.5,0.5,0.5,1],"height":8,"tag":"Block", "yOffset": 4},
-                              "3":{"color":[0.5,0.5,0.5,1],"height":2,"tag":"RTPrism", "top": "RowMax", "yOffset": 0},
+                              "1":{"color":[0.4,0.2,0.4,1],"height":1,"tag":"Cube", "yOffset": 0},
+                              "2":{"color":[0.5,0.5,0.5,1],"height":2,"tag":"Cube", "yOffset": 0},
+                              "8":{"color":[0.5,0.5,0.5,1],"height":8,"tag":"Cube", "yOffset": 4},
+                              "3":{"color":[0.5,0.5,0.5,1],"high":1, "low": 0.02, "tag":"Slope", "highEdge": "RowMax", "yOffset": 0},
                               "4":{
                                 "tag":"Reference",
                                 "contents": {
@@ -148,8 +150,8 @@ spec = do
                           "contents":{
                               "color":[0.2,0.4,0.2,1],
                               "height":0.05,
-                              "tag":"Block",
-                               "yOffset": 0
+                              "tag":"Cube",
+                              "yOffset": 0
                           }
                       }
                   ],
@@ -159,7 +161,7 @@ spec = do
 
 genMatrix :: Gen [[Int]]
 genMatrix = do
-  Positive size <- arbitrary
+  NonNegative size <- arbitrary
   listOf (vectorOf size arbitrary)
 
 genNonEmptyMatrix :: Gen [[Int]]
