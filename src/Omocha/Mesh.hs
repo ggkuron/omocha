@@ -2,7 +2,6 @@ module Omocha.Mesh where
 
 import Graphics.GPipe
 import Omocha.Bitmap
-import Omocha.Shader
 import RIO
 
 data Vertex = Vertex
@@ -11,6 +10,9 @@ data Vertex = Vertex
     uv :: V2 Float
   }
   deriving (Show)
+
+data OmochaShaderType = BoardShader | TargetBoard
+  deriving (Eq, Ord, Show)
 
 data Mesh = Mesh
   { vertices :: [Vertex],

@@ -4,9 +4,13 @@ module Omocha.Shader where
 
 import Control.Monad.Exception (MonadException)
 import Data.Bits (complement)
-import Graphics.GPipe
+import Data.Tuple.Extra (both)
+import Data.Vector qualified as V
+import Graphics.GPipe hiding (trace, transpose)
+import Omocha.MapFile
+import Omocha.Spline
 import Omocha.Uniform
-import RIO
+import RIO hiding (trace)
 
 type BPosition = B3 Float
 
@@ -21,9 +25,6 @@ data RenderInput os = RenderInput (V2 Int) (PrimitiveArray Triangles (BPosition,
 data PlainInput os = PlainInput (V2 Int) (V4 Float) (PrimitiveArray Triangles (BPosition, BNormal))
 
 data TextInput os = TextInput (V2 Int) (PrimitiveArray Triangles (BScreenPosition, BUV)) (Texture2D os (Format RGBAFloat))
-
-data OmochaShaderType = BoardShader | TargetBoard
-  deriving (Eq, Ord, Show)
 
 boardStencilShader ::
   Window os RGBAFloat DepthStencil ->
@@ -207,16 +208,51 @@ textShader win unis = do
 data GridInput = GridInput (V2 Int) (PrimitiveArray Lines (B3 Float))
 
 gridShader ::
-  (ContextHandler ctx, MonadIO m, Control.Monad.Exception.MonadException m) =>
+  (HasCallStack, ContextHandler ctx, MonadIO m, Control.Monad.Exception.MonadException m) =>
   Window os RGBAFloat DepthStencil ->
   ApplicationUniforms os ->
+  (Int, Int) ->
+  Maybe Splined ->
+  V2 Float ->
   ContextT ctx os m (CompiledShader os (V2 Int))
-gridShader win unis = do
+gridShader win unis size@(sx, sy) axes _offset@(V2 ox oy) = do
   let gridColor :: V4 Float = V4 0.75 0.75 0.75 1
-  let n = 10
-  let v = join [[V3 x 0 (-n), V3 x 0 n, V3 (-n) 0 x, V3 n 0 x] | x <- [-n .. n]]
+      s1@(s1x, s1y) = spline1 size axes
+      (xss, yss) = both (\v -> let v' = interpolate v in V.zip v' (V.tail v')) s1
+  let v =
+        V.toList
+          $ V.concatMap
+            ( \(V2 xx xy, V2 xx' xy') ->
+                V.concatMap
+                  ( \(y :: Int) ->
+                      let y' = fromIntegral y
+                          y'' = calcSplines s1y y'
+                          xOffset = y'' ^. _y + ox
+                          yOffset = y'' ^. _x + oy
+                          start = V3 (xx + xOffset) 0 (xy + yOffset)
+                          end = V3 (xx' + xOffset) 0 (xy' + yOffset)
+                       in V.singleton start `V.snoc` end
+                  )
+                  (V.enumFromN 0 (sy + 1))
+            )
+            xss
+          V.++ V.concatMap
+            ( \(V2 yy yx, V2 yy' yx') ->
+                V.concatMap
+                  ( \(x :: Int) ->
+                      let x' = fromIntegral x
+                          x'' = calcSplines s1x x'
+                          yOffset = x'' ^. _y + oy
+                          xOffset = x'' ^. _x + ox
+                          start = V3 (yx + xOffset) 0 (yy + yOffset)
+                          end = V3 (yx' + xOffset) 0 (yy' + yOffset)
+                       in V.singleton start `V.snoc` end
+                  )
+                  (V.enumFromN 0 (sx + 1))
+            )
+            yss
   vbuf :: Buffer os (B3 Float) <- newBuffer (length v)
-  writeBuffer vbuf 0 v
+  unless (null v) $ writeBuffer vbuf 0 v
   s <- compileShader $ do
     uni <- readGlobalUniform unis
     prims <- toPrimitiveStream $ \(GridInput _ st) -> (\v' -> (v', gridColor)) <$> st
@@ -228,3 +264,18 @@ gridShader win unis = do
     pArr <- newVertexArray vbuf
     let pa = toPrimitiveArray LineList pArr
     s $ GridInput vpSize pa
+
+bundle :: (Foldable t, Monad n) => t (b -> n ()) -> (b -> n ())
+bundle fs b = mapM_ (\f' -> f' b) fs
+
+transpose :: (HasCallStack) => Vector (Vector a) -> Vector (Vector a)
+transpose v = case V.uncons v of
+  Nothing -> V.empty
+  Just (x, xss) -> case V.uncons x of
+    Nothing -> transpose xss
+    Just (x', xs) ->
+      let (hds, tls) = V.unzip $ V.map (\x'' -> (V.head x'', V.tail x'')) xss
+       in (x' `V.cons` hds) `V.cons` transpose (xs `V.cons` tls)
+
+rankBundle :: (Monad m, Monad n) => Vector (Vector (b -> n ())) -> m (b -> n ())
+rankBundle fs = return . bundle $ (join . transpose $ fs)

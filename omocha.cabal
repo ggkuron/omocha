@@ -65,6 +65,7 @@ library
   exposed-modules:
     Omocha.Game
     Omocha.MapFile
+    Omocha.Shape
     Omocha.Spline
 
   other-modules:
@@ -76,7 +77,6 @@ library
     Omocha.Resource
     Omocha.Scene
     Omocha.Shader
-    Omocha.Shape
     Omocha.Text
     Omocha.Uniform
     Omocha.UserInput
@@ -104,6 +104,7 @@ test-suite omocha-test
     GameSpec
     MapFileSpec
     Paths_omocha
+    ShapeSpec
 
   hs-source-dirs:   test/Omocha
   build-depends:

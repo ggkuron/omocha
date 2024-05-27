@@ -21,6 +21,7 @@ import Omocha.Bitmap
 import Omocha.Context
 import Omocha.Font
 import Omocha.MapFile
+import Omocha.Mesh
 import Omocha.Resource
 import Omocha.Scene
 import Omocha.Shader
@@ -53,8 +54,8 @@ loadMapFile path = do
     Just m -> return m
     _ -> E.throw ("invalid map file: " ++ path :: String)
 
-parseMapFile :: MapFile -> IO (Vector Mesh)
-parseMapFile = mapMeshes (-V2 10 10) 1
+parseMapFile :: V2 Float -> MapFile -> IO (Vector Mesh)
+parseMapFile offset = mapMeshes offset 1
   where
     mapMeshes :: V2 Float -> V2 Float -> MapFile -> IO (Vector Mesh)
     mapMeshes offset unit m = do
@@ -64,24 +65,28 @@ parseMapFile = mapMeshes (-V2 10 10) 1
       where
         tupleToV4 :: (a, a, a, a) -> V4 a
         tupleToV4 (a, b, c, d) = V4 a b c d
-        tupleToV2 (a, b) = V2 a b
+        (xs, ys) = spline1 m.size m.spline
         toMesh :: V2 Float -> V2 Float -> (BB.Box V2 Int, MapDef) -> IO (Vector Mesh)
         toMesh offset unit (BB.Box a b, n) =
-          let size :: V2 Float = liftA2 (*) unit (fmap fromIntegral (b - a))
-              start :: V2 Float = liftA2 (*) unit (fmap fromIntegral a) + offset
-              yScale = (unit ^. _x + unit ^. _y) / 2
+          let isize = b - a
+              size :: V2 Float = fmap fromIntegral isize
+              yScale = ((unit ^. _x + unit ^. _y) / 2)
+              unit' = V3 (unit ^. _x) yScale (unit ^. _y)
+              splines = (V.slice (a ^. _x) (isize ^. _x) xs, V.slice (a ^. _y) (isize ^. _y) ys)
+              divs = isize * 8
            in case n of
-                Cube {..} -> return $ cube (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (yOffset * yScale) (start ^. _y)) (tupleToV4 color)
-                Plane {..} -> return $ plane (V3 (size ^. _x) (n.yOffset * yScale) (size ^. _y)) (V3 (start ^. _x) (yOffset * yScale) (start ^. _y)) (tupleToV4 color)
-                Slope {..} -> return $ slope highEdge (size ^. _x, (high, (* yScale) low), size ^. _y) (V3 (start ^. _x) (yOffset * yScale) (start ^. _y)) (tupleToV4 color)
-                Cylinder {..} -> return $ cylinder center (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (yOffset * yScale) (start ^. _y)) (tupleToV4 color)
-                Cone {..} -> return $ cone center (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (yOffset * yScale) (start ^. _y)) (tupleToV4 color)
+                Cube {..} -> return $ cube unit' (V3 (size ^. _x) height (size ^. _y)) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines divs
+                Plane {..} -> return $ plane unit' (V3 (size ^. _x) n.yOffset (size ^. _y)) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines divs
+                Slope {..} -> return $ slope unit' highEdge (size ^. _x, (high, low), size ^. _y) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines divs
+                Cylinder {..} -> return $ cylinder unit' center (V3 (size ^. _x) height (size ^. _y)) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines divs
+                Cone {..} -> return $ cone unit' center (V3 (size ^. _x) height (size ^. _y)) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines
                 Reference r -> do
                   m <- case r of
                     (Embed m) -> return m
                     (External path) -> loadMapFile path -- TODO: check recursive recursion
-                  let unit' :: V2 Float = liftA2 (/) size (fromIntegral <$> tupleToV2 m.size)
-                   in mapMeshes start unit' m
+                  let unit' = liftA2 (/) size (fromIntegral <$> pairToV2 m.size)
+                      offset' = splined2 splines (V2 0 0) + offset
+                   in mapMeshes offset' unit' m
 
 data TextMesh = TextMesh
   { vertexes :: [(V2 Float, V2 Float)],
@@ -118,7 +123,7 @@ scene =
                 meshes =
                   V.fromList
                     [ Mesh
-                        (boardByNormal (V3 0 1 0) (V2 1 1) (V3 0.5 0 0.5))
+                        (rect (V3 0 1 0) (V2 1 1) (V3 0.5 0 0.5))
                         Nothing
                         (V3 0 0 0)
                         (Just _maptips_grass_png)
@@ -126,7 +131,7 @@ scene =
                         (TopologyTriangles TriangleStrip)
                         Nothing,
                       Mesh
-                        (boardByNormal (V3 0 0 1) (V2 2 2) (V3 0 1 0))
+                        (rect (V3 0 0 1) (V2 2 2) (V3 0 1 0))
                         Nothing
                         (V3 0 0 0)
                         (Just _front0_png)
@@ -240,6 +245,7 @@ data GameOrder = GameReset | GameLoad Int | GameContinue | GameSave Int
 
 data Game = Game
   { prepare ::
+      (HasCallStack) =>
       forall os.
       (GameCtx os)
         ( GameOrder ->
@@ -250,6 +256,7 @@ data Game = Game
           Env os
         ),
     network ::
+      (HasCallStack) =>
       forall os.
       ( GameOrder -> GlobalUniformB -> M.Map ObjectId ObjectUniformB -> GameCtx os (),
         Maybe (BB.Box V2 Double) -> ShaderInput -> GameCtx os (),
@@ -259,23 +266,8 @@ data Game = Game
       IO (Double -> IO (GameCtx os ()))
   }
 
-bundle :: (Foldable t, Monad n) => t (b -> n ()) -> (b -> n ())
-bundle fs b = mapM_ (\f' -> f' b) fs
-
-transpose :: (HasCallStack) => Vector (Vector a) -> Vector (Vector a)
-transpose v = case V.uncons v of
-  Nothing -> V.empty
-  Just (x, xss) -> case V.uncons x of
-    Nothing -> transpose xss
-    Just (x', xs) ->
-      let (hds, tls) = V.unzip $ V.map (\x'' -> (V.head x'', V.tail x'')) xss
-       in (x' `V.cons` hds) `V.cons` transpose (xs `V.cons` tls)
-
-rankBundle :: (Monad m, Monad n) => Vector (Vector (b -> n ())) -> m (b -> n ())
-rankBundle fs = return . bundle $ (join . transpose $ fs)
-
 meshFromGltf :: GLTF.Gltf -> Vector Mesh
-meshFromGltf j = V.concatMap (\(GLTF.Mesh _meshName prims _wieghts) -> trace (show _wieghts) $ processMeshPrimitive <$> prims) (gltfMeshes j)
+meshFromGltf j = V.concatMap (\(GLTF.Mesh _meshName prims _wieghts) -> processMeshPrimitive <$> prims) (gltfMeshes j)
   where
     processMeshPrimitive :: GLTF.MeshPrimitive -> Mesh
     processMeshPrimitive (GLTF.MeshPrimitive indices _material mode normals positions texcoords) =
@@ -324,7 +316,8 @@ game =
                 { id = ObjectId 0,
                   meshes = meshFromGltf j
                 }
-        mapFileMeshes <- liftIO $ parseMapFile mf
+            offset = -V2 10 10
+        mapFileMeshes <- liftIO $ parseMapFile offset mf
         let meshes =
               SceneObject
                 { id = ObjectId 1,
@@ -336,7 +329,7 @@ game =
               clearWindowColor win (V4 0 0.25 1 1)
               clearWindowDepthStencil win 1 0
         ts <- GameCtx $ compileShader $ textShader win unis
-        gs <- GameCtx $ gridShader win unis
+        gs <- GameCtx $ gridShader win unis mf.size mf.spline offset
         renderings <- liftIO $ newIORef $ renderWith unis s $ \vpSize -> do
           clear
           gs vpSize
@@ -362,9 +355,8 @@ game =
         let update c g o = GameCtx
               $ case c of
                 GameReset -> do
-                  mf <- liftIO $ do
-                    f <- loadMapFile "map.json"
-                    parseMapFile f
+                  f <- liftIO $ loadMapFile "map.json"
+                  mf <- liftIO $ parseMapFile offset f
 
                   let others =
                         SceneObject
@@ -373,7 +365,7 @@ game =
                               V.concatMap (.meshes) scene.objects V.++ mf
                           }
                   (unis, s) <- buildRenderer win [others, player]
-                  gs <- gridShader win unis
+                  gs <- gridShader win unis f.size f.spline offset
                   let r = renderWith unis s $ \vpSize -> do
                         clear
                         gs vpSize
@@ -386,8 +378,22 @@ game =
                 GameContinue -> do
                   r <- liftIO $ readIORef renderings
                   r g o
-                GameLoad _ -> do
-                  r <- liftIO $ readIORef renderings
+                GameLoad i -> do
+                  f <- liftIO $ loadMapFile $ "map" ++ show i ++ ".json"
+                  mf <- liftIO $ parseMapFile offset f
+
+                  let others =
+                        SceneObject
+                          { id = ObjectId 1,
+                            meshes =
+                              V.concatMap (.meshes) scene.objects V.++ mf
+                          }
+                  (unis, s) <- buildRenderer win [others, player]
+                  gs <- gridShader win unis f.size f.spline offset
+                  let r = renderWith unis s $ \vpSize -> do
+                        clear
+                        gs vpSize
+                  liftIO $ writeIORef renderings r
                   r g o
 
         return (update, renderText, Env win textureStorage fpsSetting lastRenderTime),
@@ -509,6 +515,7 @@ game =
           ( if
               | input.hardReset -> GameReset
               | input.save -> GameSave 1
+              | input.n == Just 2 -> GameLoad 2
               | otherwise -> GameContinue
           )
           GlobalUniform {windowSize = sz, modelNorm = normMat, viewCamera = camera, viewTarget = target, viewUp = viewUpNorm, lightDirection = lightDir}

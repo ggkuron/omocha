@@ -113,6 +113,7 @@ spec = do
                   [[fromMaybe 0 (firstJust (\(bb, n) -> if isInside bb x y then Just n else Nothing) $ V.toList r) | x <- [0 .. length (x !! y) - 1]] | y <- [0 .. length x - 1]]
                     `shouldBe` x
                 Left e -> error e
+
   describe "MapFile" $ do
     it "wil be a json representation like this" $ do
       let exampleJson =
@@ -132,7 +133,8 @@ spec = do
                                   "tag": "Embed",
                                   "contents": {
                                     "size": [2, 2],
-                                    "mapData": []
+                                    "mapData": [],
+                                    "axes": [[], []]
                                   }
                                 }
                               }
@@ -155,7 +157,11 @@ spec = do
                           }
                       }
                   ],
-                  "size":[5,5]
+                  "size":[5,5],
+                  "axes": [
+                    [[0,0],[2,5],[5,0]],
+                    [[0,0],[2,1],[0,5]]
+                  ]
                 }|]
       (decode exampleJson :: Maybe MapFile) `shouldSatisfy` isJust
 

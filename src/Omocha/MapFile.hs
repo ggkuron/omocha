@@ -5,10 +5,11 @@ module Omocha.MapFile where
 import Data.Aeson
 import Data.BoundingBox qualified as BB
 import Data.Either.Combinators (maybeToRight)
-import Data.Foldable (Foldable (foldl))
 import Data.Map.Strict qualified as M
+import Data.Tuple.Extra (both)
 import Data.Vector qualified as V
 import Linear.V2
+import Omocha.Spline
 import RIO
 
 type EdgePoint = (Bool, Bool)
@@ -71,8 +72,26 @@ data MapData
   | Fill MapDef
   deriving (Show, Generic, ToJSON, FromJSON)
 
+-- axesSpline :: (HasCallStack) => Maybe Splined -> (V.Vector (Spline Float), V.Vector (Spline Float))
+-- axesSpline = both toSpline
+--   where
+--     toSpline = spline . (fmap (v2 . first fromIntegral) . V.fromList)
+--     v2 (a, b) = V2 a b
+
+type Size = (Int, Int)
+
+data Axis = X | Y
+  deriving (Show, Generic, ToJSON, FromJSON)
+
+data Splined = Splined
+  { axis :: Axis,
+    values :: [(Int, Float)]
+  }
+  deriving (Show, Generic, ToJSON, FromJSON)
+
 data MapFile = MapFile
-  { size :: (Int, Int),
+  { size :: Size,
+    spline :: Maybe Splined,
     mapData :: Vector MapData
   }
   deriving (Show, Generic, ToJSON, FromJSON)
@@ -80,29 +99,34 @@ data MapFile = MapFile
 mf :: MapFile
 mf =
   MapFile
-    { size = (5, 5),
+    { size = (6, 5),
+      spline =
+        Just
+          $ Splined
+            Y
+            [(0, 0), (2, 3)],
       mapData =
         V.fromList
           [ Tips
               { map =
                   V.fromList
                     . fmap V.fromList
-                    $ [ [0, 0, 0, 0, 0],
-                        [0, 1, 0, 0, 0],
-                        [0, 2, 2, 1, 1],
-                        [0, 2, 2, 5, 0],
-                        [0, 8, 0, 0, 0]
+                    $ [ [0, 0, 0, 0, 0, 0],
+                        [1, 1, 0, 0, 0, 0],
+                        [1, 1, 0, 3, 3, 3],
+                        [0, 2, 0, 5, 0, 0],
+                        [0, 8, 0, 0, 0, 0]
                       ],
                 defs =
                   M.fromList
                     [ (1, Cube 1 (0.4, 0.2, 0.4, 1) 0),
                       (2, Cube 2 (0.5, 0.5, 0.5, 1) 0),
+                      (3, Cube 2 (0.4, 0.8, 0.4, 1) 0),
                       (8, Cube 8 (0.5, 0.5, 0.5, 1) 0),
                       (5, Cylinder 0.01 (0.5, 0.5, 0.5, 1) 0 Nothing),
-                      (8, Reference (Embed (MapFile (2, 2) V.empty)))
+                      (8, Reference (Embed (MapFile (2, 2) Nothing V.empty)))
                     ]
-              },
-            Fill $ Cube {height = 0.001, color = (0.2, 0.5, 0.6, 1), yOffset = 0}
+              }
           ]
     }
 
@@ -112,7 +136,7 @@ parseMap (sw, sh) mapData
   | any (\row -> length row /= sw) mapData = Left "column mismatch"
   | otherwise =
       Right
-        $ foldl
+        $ foldl'
           ( \a (V2 x y) ->
               let k = l x y
                   w = ew k x y a
@@ -139,3 +163,25 @@ parseMapDef size (Tips {..}) = do
     )
     bmap
 parseMapDef (x, y) (Fill def) = Right $ V.singleton (BB.Box (V2 0 0) (V2 x y), def)
+
+interpolate1' :: (Num a, RealFrac a, Storable a) => Size -> Maybe Splined -> (V.Vector (V2 a), V.Vector (V2 a))
+interpolate1' (sx, sy) s = i1 sx *** i1 sy $ sps s
+  where
+    sps Nothing = (V.empty, V.empty)
+    sps (Just (Splined X v)) = (V.fromList v, V.empty)
+    sps (Just (Splined Y v)) = (V.empty, V.fromList v)
+    i1 sz = interpolate1 . adjust sz
+    adjust :: Int -> V.Vector (Int, Float) -> V.Vector (Int, Float)
+    adjust sz v =
+      if
+        | null v -> V.empty `V.snoc` (0, 0) `V.snoc` (sz, 0)
+        | length v >= 2 ->
+            let v' = if fst (V.head v) /= 0 then (0, 0) `V.cons` v else v
+             in if fst (V.last v) /= sz then v' `V.snoc` (sz, 0) else v'
+        | otherwise -> v
+
+spline1 :: (Num a, RealFrac a, Storable a) => Size -> Maybe Splined -> (V.Vector (Spline a), V.Vector (Spline a))
+spline1 sz s = both spline $ interpolate1' sz s
+
+pairToV2 :: (a, a) -> V2 a
+pairToV2 (a, b) = V2 a b
