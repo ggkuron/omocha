@@ -38,6 +38,7 @@ plane unit (V3 w d h) offset color sps divs =
         )
         vs
 
+-- heightが一定
 cube :: V3 Float -> V3 Float -> V3 Float -> V4 Float -> Splines Float -> V2 Int -> Vector Mesh
 cube unit (V3 w d h) = cube' unit (V2 w h) d d d d
 
@@ -50,6 +51,7 @@ slope unit edge (w, (high, low), h) offset color sps divs =
         ColumnMax -> (low, low, high, high)
    in cube' unit (V2 w h) a b c d offset color sps divs
 
+-- heightが一定でない
 cube' :: V3 Float -> V2 Float -> Float -> Float -> Float -> Float -> V3 Float -> V4 Float -> Splines Float -> V2 Int -> Vector Mesh
 cube' unit (V2 w h) az bz cz dz offset color sps divs =
   let top = axesedBoardXZ unit sps ((0, w), (0, h)) divs az bz cz dz
@@ -73,7 +75,7 @@ cube' unit (V2 w h) az bz cz dz offset color sps divs =
               d = c & _y .~ 0
           return
             $ Mesh
-              (boardP unit a b c d)
+              (boardP 1 a b c d)
               Nothing
               offset
               Nothing
@@ -353,6 +355,7 @@ crossAxis :: Axis -> Axis
 crossAxis X = Y
 crossAxis Y = X
 
+-- height(crossOffset)は一定を仮定
 axesedBoardY :: V3 Float -> Float -> Axis -> Vector (Spline Float) -> (Float, Float) -> Int -> Float -> Float -> Float -> Vector Vertex
 axesedBoardY unit crossOffset axis sp range divs az bz height =
   let tops = axesedLineStrip unit axis sp range divs az bz
@@ -367,7 +370,7 @@ axesedBoardY unit crossOffset axis sp range divs az bz height =
               b = t1 & _y -~ height
               c = t2
               n = normalize $ cross (b - a) (c - a)
-           in ( case axis of -- 媒介変数(range)の増加方向指定が軸に沿った面になるように並べる
+           in ( case axis of -- 媒介変数(range)の増加方向指定が軸方向を向くように並べる
                   X ->
                     V.empty
                       `V.snoc` Vertex a n (V2 0 0)
