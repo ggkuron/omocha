@@ -5,6 +5,7 @@ module Omocha.Shape
     slope,
     cone,
     rect,
+    sphere,
     interval,
     splined2,
     splined3,
@@ -100,7 +101,7 @@ cylinder unit center size@(V3 w d h) offset color sps@(spx, spy) (V2 divX divY) 
         Just (False, True) -> (pi * 2, pi * 1.5)
         Just (True, False) -> (pi, pi * 0.5)
         Just (True, True) -> (pi * 1.5, pi)
-      topPoints = ellipticalCircle r depth rstart rend
+      topPoints = ellipticalCircle r depth (rstart, rend)
       bottomPoints = V.toList . V.map (\p -> p & _y .~ 0) $ V.reverse topPoints
       facePoints = V.toList $ V.zip topPoints (V.tail topPoints)
    in V.map
@@ -169,11 +170,14 @@ interval step start end
     gen _ Nothing = Nothing
 interval _ start end = V.empty `V.snoc` start `V.snoc` end
 
-ellipticalCircle :: (Enum a, Ord a, Floating a, R2 t) => t a -> a -> a -> a -> Vector (V3 a)
-ellipticalCircle r y start end =
-  V.map (\t -> V3 (r ^. _x * cos t) y (r ^. _y * sin t)) $ interval step start end
+ellipticalCircle :: (Enum a, Ord a, Floating a, R2 t) => t a -> a -> (a, a) -> Vector (V3 a)
+ellipticalCircle r y range@(start, end) = ellipticalCircle' r y range step
   where
     step = if start > end then -0.25 else 0.25
+
+ellipticalCircle' :: (Enum a, Ord a, Floating a, R2 t) => t a -> a -> (a, a) -> a -> Vector (V3 a)
+ellipticalCircle' r y (start, end) step =
+  V.map (\t -> V3 (r ^. _x * cos t) y (r ^. _y * sin t)) $ interval step start end
 
 cone :: V3 Float -> Maybe EdgePoint -> V3 Float -> V3 Float -> V4 Float -> Splines Float -> Vector Mesh
 cone unit center size@(V3 _ depth _) offset color sps =
@@ -188,7 +192,7 @@ cone unit center size@(V3 _ depth _) offset color sps =
             )
       c = size / 2 & _y .~ 0
       c' = unit * splined3 sps c
-      bottomPoints = V.toList . V.map (+ c) $ ellipticalCircle r 0 (-(2 * pi)) 0
+      bottomPoints = V.toList . V.map (+ c) $ ellipticalCircle r 0 (-(2 * pi), 0)
       sides = zip bottomPoints (tail bottomPoints)
    in V.empty
         `V.snoc` Mesh [Vertex (unit * splined3 sps p) (V3 0 (-1) 0) (V2 0 0) | p <- c : bottomPoints] Nothing offset Nothing BoardShader (TopologyTriangles TriangleFan) (Just color)
@@ -209,6 +213,56 @@ cone unit center size@(V3 _ depth _) offset color sps =
           BoardShader
           (TopologyTriangles TriangleFan)
           (Just color)
+
+sphere :: V3 Float -> V3 Float -> V3 Float -> V4 Float -> Splines Float -> Vector Mesh
+sphere unit size@(V3 w d _h) offset color sps =
+  let r = (size ^. _xz) / 2
+      c = size / 2 & _y .~ 0
+      c' = unit * splined3 sps c
+      e1 =
+        V.map
+          ( \ph ->
+              let r' = r ^. _x * sin ph
+                  y = d * cos ph
+               in V.map
+                    ( \th ->
+                        let x = r' * cos th
+                            z = r' * sin th
+                         in V3 x y z
+                    )
+                    (interval (2 * pi / sliceCount) 0 (2 * pi))
+          )
+          (interval (pi / stackCount) 0 pi)
+      r' =
+        V.map
+          ( \(a :: Vector (V3 Float), b :: Vector (V3 Float)) ->
+              V.concatMap
+                ( \(a, b) ->
+                    let pa' = c' + unit * a
+                        pb' = c' + unit * b
+                     in V.fromList
+                          [ Vertex pb' (normalize $ pb' - c') (V2 0 0),
+                            Vertex pa' (normalize $ pa' - c') (V2 0 0)
+                          ]
+                )
+                (V.zip a b)
+          )
+          (V.zip e1 (V.tail e1))
+   in V.map
+        ( \vs ->
+            Mesh
+              (V.toList vs)
+              Nothing
+              offset
+              Nothing
+              BoardShader
+              (TopologyTriangles TriangleStrip)
+              (Just color)
+        )
+        r'
+  where
+    sliceCount = w * 24
+    stackCount = d * 12
 
 boardP' :: V3 Float -> V3 Float -> V3 Float -> V3 Float -> V3 Float -> [Vertex]
 boardP' unit a b c d =
@@ -369,8 +423,10 @@ axesedBoardY unit crossOffset axis sp range divs az bz height =
               a = t1
               b = t1 & _y -~ height
               c = t2
-              n = normalize $ cross (b - a) (c - a)
-           in ( case axis of -- 媒介変数(range)の増加方向指定が軸方向を向くように並べる
+              n = normalize $ case axis of
+                X -> cross (b - a) (c - a)
+                Y -> cross (c - a) (b - a)
+           in ( case axis of -- range増加方向の指定が面法線を軸方向に向かせるように並べる
                   X ->
                     V.empty
                       `V.snoc` Vertex a n (V2 0 0)
@@ -386,7 +442,9 @@ axesedBoardY unit crossOffset axis sp range divs az bz height =
                           b = a & _y -~ height
                           c = t2 + offset
                           d = c & _y -~ height
-                          n = normalize $ cross (b - a) (c - a)
+                          n = normalize $ case axis of
+                            X -> cross (b - a) (c - a)
+                            Y -> cross (c - a) (b - a)
                        in case axis of
                             X ->
                               V.empty

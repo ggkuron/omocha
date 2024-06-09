@@ -133,18 +133,19 @@ spec = do
                                   "tag": "Embed",
                                   "contents": {
                                     "size": [2, 2],
-                                    "mapData": [],
-                                    "axes": [[], []]
+                                    "mapData": []
                                   }
                                 }
                               }
                           },
-                          "map":[
+                          "maps":[
+                            [
                               [0,0,0,0,0],
                               [0,1,0,0,0],
                               [0,2,2,1,1],
                               [0,2,2,4,0],
                               [0,8,0,0,0]
+                            ]
                           ]
                       },
                       {
@@ -157,11 +158,7 @@ spec = do
                           }
                       }
                   ],
-                  "size":[5,5],
-                  "axes": [
-                    [[0,0],[2,5],[5,0]],
-                    [[0,0],[2,1],[0,5]]
-                  ]
+                  "size":[5,5]
                 }|]
       (decode exampleJson :: Maybe MapFile) `shouldSatisfy` isJust
 

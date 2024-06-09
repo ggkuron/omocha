@@ -62,11 +62,16 @@ data MapDef
         yOffset :: Float,
         center :: Maybe EdgePoint
       }
+  | Sphere
+      { height :: Float,
+        color :: Color,
+        yOffset :: Float
+      }
   deriving (Show, Generic, ToJSON, FromJSON)
 
 data MapData
   = Tips
-      { map :: Vector (Vector Int),
+      { maps :: Vector (Vector (Vector Int)),
         defs :: M.Map Int MapDef
       }
   | Fill MapDef
@@ -108,8 +113,9 @@ mf =
       mapData =
         V.fromList
           [ Tips
-              { map =
-                  V.fromList
+              { maps =
+                  V.singleton
+                    . V.fromList
                     . fmap V.fromList
                     $ [ [0, 0, 0, 0, 0, 0],
                         [1, 1, 0, 0, 0, 0],
@@ -155,13 +161,13 @@ isInside bb x y = BB.isInside (fmap fromIntegral (V2 x y) + (V2 0.5 0.5 :: V2 Fl
 
 parseMapDef :: (Int, Int) -> MapData -> Either String (Vector (BB.Box V2 Int, MapDef))
 parseMapDef size (Tips {..}) = do
-  bmap <- parseMap size map
+  bmap <- mapM (parseMap size) maps
   mapM
     ( \(b, k) -> do
         def <- maybeToRight ("key: " ++ show k ++ " not found") (defs M.!? k)
         Right (b, def)
     )
-    bmap
+    (V.concatMap id bmap)
 parseMapDef (x, y) (Fill def) = Right $ V.singleton (BB.Box (V2 0 0) (V2 x y), def)
 
 interpolate1' :: (Num a, RealFrac a, Storable a) => Size -> Maybe Splined -> (V.Vector (V2 a), V.Vector (V2 a))

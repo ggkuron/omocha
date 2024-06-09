@@ -73,13 +73,14 @@ parseMapFile offset = mapMeshes offset 1
               yScale = ((unit ^. _x + unit ^. _y) / 2)
               unit' = V3 (unit ^. _x) yScale (unit ^. _y)
               splines = (V.slice (a ^. _x) (isize ^. _x) xs, V.slice (a ^. _y) (isize ^. _y) ys)
-              divs = isize * 8
+              divs = isize
            in case n of
                 Cube {..} -> return $ cube unit' (V3 (size ^. _x) height (size ^. _y)) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines divs
                 Plane {..} -> return $ plane unit' (V3 (size ^. _x) n.yOffset (size ^. _y)) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines divs
                 Slope {..} -> return $ slope unit' highEdge (size ^. _x, (high, low), size ^. _y) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines divs
                 Cylinder {..} -> return $ cylinder unit' center (V3 (size ^. _x) height (size ^. _y)) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines divs
                 Cone {..} -> return $ cone unit' center (V3 (size ^. _x) height (size ^. _y)) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines
+                Sphere {..} -> return $ sphere unit' (V3 (size ^. _x) height (size ^. _y)) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines
                 Reference r -> do
                   m <- case r of
                     (Embed m) -> return m
@@ -497,7 +498,7 @@ game =
       sz <- GameCtx $ getFrameBufferSize win
       let viewUpNorm = V3 0 1 0
           normMat = identity
-          lightDir = V3 (-0.5) 0.5 0.0
+          lightDir = V3 (-0.5) 0.25 0.25
 
       fpsSetting' <- liftIO $ readIORef fpsSetting
       let timePerFrame = 1 / fpsSetting'
