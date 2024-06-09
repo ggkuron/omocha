@@ -57,7 +57,7 @@ common shared-properties
     StrictData
 
   ghc-options:
-    -fprint-potential-instances -Wall -Wno-name-shadowing
+    -fprint-potential-instances -Wall -Wno-name-shadowing -Worphans
     -Wno-unrecognised-pragmas
 
 library

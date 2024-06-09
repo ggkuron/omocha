@@ -61,34 +61,39 @@ parseMapFile offset = mapMeshes offset 1
     mapMeshes :: V2 Float -> V2 Float -> MapFile -> IO (Vector Mesh)
     mapMeshes offset unit m = do
       d <- either E.throw return $ foldMapM (parseMapDef m.size) m.mapData
-      a <- mapM (toMesh offset unit) d
-      return $ join a
+      toMesh offset unit d
       where
         tupleToV4 :: (a, a, a, a) -> V4 a
         tupleToV4 (a, b, c, d) = V4 a b c d
         (xs, ys) = spline1 m.size m.spline
-        toMesh :: V2 Float -> V2 Float -> (BB.Box V2 Int, MapDef) -> IO (Vector Mesh)
-        toMesh offset unit (BB.Box a b, n) =
-          let isize = b - a
-              size :: V2 Float = fmap fromIntegral isize
-              yScale = ((unit ^. _x + unit ^. _y) / 2)
-              unit' = V3 (unit ^. _x) yScale (unit ^. _y)
-              splines = (V.slice (a ^. _x) (isize ^. _x) xs, V.slice (a ^. _y) (isize ^. _y) ys)
-              divs = isize
-           in case n of
-                Cube {..} -> return $ cube unit' (V3 (size ^. _x) height (size ^. _y)) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines divs
-                Plane {..} -> return $ plane unit' (V3 (size ^. _x) n.yOffset (size ^. _y)) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines divs
-                Slope {..} -> return $ slope unit' highEdge (size ^. _x, (high, low), size ^. _y) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines divs
-                Cylinder {..} -> return $ cylinder unit' center (V3 (size ^. _x) height (size ^. _y)) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines divs
-                Cone {..} -> return $ cone unit' center (V3 (size ^. _x) height (size ^. _y)) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines
-                Sphere {..} -> return $ sphere unit' (V3 (size ^. _x) height (size ^. _y)) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines
-                Reference r -> do
-                  m <- case r of
-                    (Embed m) -> return m
-                    (External path) -> loadMapFile path -- TODO: check recursive recursion
-                  let unit' = liftA2 (/) size (fromIntegral <$> pairToV2 m.size)
-                      offset' = splined2 splines (V2 0 0) + offset
-                   in mapMeshes offset' unit' m
+        toMesh :: V2 Float -> V2 Float -> MapDefs -> IO (Vector Mesh)
+        toMesh offset unit m =
+          M.foldMapWithKey
+            ( \_id (n, (sx, sy), pos) ->
+                let isize = V2 sx sy
+                    size :: V2 Float = fmap fromIntegral isize
+                    yScale = ((unit ^. _x + unit ^. _y) / 2)
+                    unit' = V3 (unit ^. _x) yScale (unit ^. _y)
+                 in flip V.foldMap pos $ \a ->
+                      let splines = (V.slice (a ^. _x) (isize ^. _x) xs, V.slice (a ^. _y) (isize ^. _y) ys)
+                          divs = isize
+                       in case n of
+                            Cube {..} -> return $ cube unit' (V3 (size ^. _x) height (size ^. _y)) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines divs
+                            Plane {..} -> return $ plane unit' (V3 (size ^. _x) n.yOffset (size ^. _y)) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines divs
+                            Slope {..} -> return $ slope unit' highEdge (size ^. _x, (high, low), size ^. _y) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines divs
+                            Cylinder {..} -> return $ cylinder unit' center (V3 (size ^. _x) height (size ^. _y)) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines divs
+                            Cone {..} -> return $ cone unit' center (V3 (size ^. _x) height (size ^. _y)) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines
+                            Sphere {..} -> return $ sphere unit' (V3 (size ^. _x) height (size ^. _y)) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines
+                            Meta {} -> return V.empty
+                            Reference r -> do
+                              m <- case r of
+                                (Embed m) -> return m
+                                (External path) -> loadMapFile path -- TODO: check recursive recursion
+                              let unit' = liftA2 (/) size (fromIntegral <$> pairToV2 m.size)
+                                  offset' = splined2 splines (V2 0 0) + offset
+                               in mapMeshes offset' unit' m
+            )
+            m.defs
 
 data TextMesh = TextMesh
   { vertexes :: [(V2 Float, V2 Float)],

@@ -1,4 +1,5 @@
 {-# LANGUAGE QuasiQuotes #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module MapFileSpec (spec) where
 
@@ -20,6 +21,9 @@ import Test.QuickCheck
 import Text.RawString.QQ
 import Prelude
 
+instance Arbitrary DefId where
+  arbitrary = fmap DefId arbitrary
+
 spec :: Spec
 spec = do
   describe "parseMap" $ do
@@ -27,77 +31,77 @@ spec = do
       case parseMap
         (5, 5)
         ( V.fromList . fmap V.fromList $
-            [ [0, 0, 0, 0, 0],
-              [0, 1, 0, 0, 0],
-              [0, 2, 2, 1, 1],
-              [0, 2, 2, 0, 0],
-              [0, 0, 0, 0, 0]
+            [ [DefId 0, DefId 0, DefId 0, DefId 0, DefId 0],
+              [DefId 0, DefId 1, DefId 0, DefId 0, DefId 0],
+              [DefId 0, DefId 2, DefId 2, DefId 1, DefId 1],
+              [DefId 0, DefId 2, DefId 2, DefId 0, DefId 0],
+              [DefId 0, DefId 0, DefId 0, DefId 0, DefId 0]
             ]
         ) of
         Right x ->
           V.toList x
-            `shouldMatchList` [ (BB.Box (V2 1 1) (V2 2 2), 1),
-                                (BB.Box (V2 1 2) (V2 3 4), 2),
-                                (BB.Box (V2 3 2) (V2 5 3), 1)
+            `shouldMatchList` [ (BB.Box (V2 1 1) (V2 2 2), DefId 1),
+                                (BB.Box (V2 1 2) (V2 3 4), DefId 2),
+                                (BB.Box (V2 3 2) (V2 5 3), DefId 1)
                               ]
         Left e -> error e
       case parseMap
         (5, 5)
         ( V.fromList . fmap V.fromList $
-            [ [0, 0, 0, 0, 0],
-              [0, 1, 0, 0, 0],
-              [0, 2, 2, 1, 1],
-              [0, 2, 2, 0, 0],
-              [3, 0, 0, 0, 0]
+            [ [DefId 0, DefId 0, DefId 0, DefId 0, DefId 0],
+              [DefId 0, DefId 1, DefId 0, DefId 0, DefId 0],
+              [DefId 0, DefId 2, DefId 2, DefId 1, DefId 1],
+              [DefId 0, DefId 2, DefId 2, DefId 0, DefId 0],
+              [DefId 3, DefId 0, DefId 0, DefId 0, DefId 0]
             ]
         ) of
         Right x ->
           V.toList x
-            `shouldMatchList` [ (BB.Box (V2 1 1) (V2 2 2), 1),
-                                (BB.Box (V2 1 2) (V2 3 4), 2),
-                                (BB.Box (V2 3 2) (V2 5 3), 1),
-                                (BB.Box (V2 0 4) (V2 1 5), 3)
+            `shouldMatchList` [ (BB.Box (V2 1 1) (V2 2 2), DefId 1),
+                                (BB.Box (V2 1 2) (V2 3 4), DefId 2),
+                                (BB.Box (V2 3 2) (V2 5 3), DefId 1),
+                                (BB.Box (V2 0 4) (V2 1 5), DefId 3)
                               ]
         Left e -> error e
       case parseMap
         (5, 5)
         ( V.fromList . fmap V.fromList $
-            [ [0, 0, 0, 0, 0],
-              [2, 0, 0, 0, 0],
-              [2, 2, 2, 0, 0],
-              [2, 2, 2, 0, 0],
-              [0, 0, 0, 0, 0]
+            [ [DefId 0, DefId 0, DefId 0, DefId 0, DefId 0],
+              [DefId 2, DefId 0, DefId 0, DefId 0, DefId 0],
+              [DefId 2, DefId 2, DefId 2, DefId 0, DefId 0],
+              [DefId 2, DefId 2, DefId 2, DefId 0, DefId 0],
+              [DefId 0, DefId 0, DefId 0, DefId 0, DefId 0]
             ]
         ) of
         Right x ->
           V.toList x
-            `shouldMatchList` [ (BB.Box (V2 0 1) (V2 1 2), 2),
-                                (BB.Box (V2 0 2) (V2 3 4), 2)
+            `shouldMatchList` [ (BB.Box (V2 0 1) (V2 1 2), DefId 2),
+                                (BB.Box (V2 0 2) (V2 3 4), DefId 2)
                               ]
         Left e -> error e
       case parseMap
         (5, 5)
         ( V.fromList . fmap V.fromList $
-            [ [0, 0, 0, 0, 0],
-              [0, 0, 0, 0, 0],
-              [0, 2, 2, 0, 0],
-              [2, 1, 2, 0, 0],
-              [0, 0, 0, 0, 0]
+            [ [DefId 0, DefId 0, DefId 0, DefId 0, DefId 0],
+              [DefId 0, DefId 0, DefId 0, DefId 0, DefId 0],
+              [DefId 0, DefId 2, DefId 2, DefId 0, DefId 0],
+              [DefId 2, DefId 1, DefId 2, DefId 0, DefId 0],
+              [DefId 0, DefId 0, DefId 0, DefId 0, DefId 0]
             ]
         ) of
         Right x ->
           V.toList x
-            `shouldMatchList` [ (BB.Box (V2 1 2) (V2 3 3), 2),
-                                (BB.Box (V2 0 3) (V2 1 4), 2),
-                                (BB.Box (V2 1 3) (V2 2 4), 1),
-                                (BB.Box (V2 2 3) (V2 3 4), 2)
+            `shouldMatchList` [ (BB.Box (V2 1 2) (V2 3 3), DefId 2),
+                                (BB.Box (V2 0 3) (V2 1 4), DefId 2),
+                                (BB.Box (V2 1 3) (V2 2 4), DefId 1),
+                                (BB.Box (V2 2 3) (V2 3 4), DefId 2)
                               ]
         Left e -> error e
     it "results do not contain duplicates" $ property $ do
       forAll genMatrix $
         \x ->
-          let map = V.fromList $ fmap V.fromList (x :: [[Int]])
-           in case parseMap (length $ head x, length (x :: [[Int]])) map of
+          let map = V.fromList $ fmap V.fromList (x :: [[DefId]])
+           in case parseMap (length $ head x, length (x :: [[DefId]])) map of
                 Right r ->
                   all (<= 1) ([length . V.filter (\(bb, _) -> isInside bb x y) $ r | y <- [0 .. length x - 1], x <- [0 .. length (x !! y) - 1]])
                     `shouldBe` True
@@ -105,12 +109,12 @@ spec = do
     it "represents input" $ property $ do
       forAll genNonEmptyMatrix $
         \x ->
-          let map = V.fromList $ fmap V.fromList (x :: [[Int]])
+          let m = V.fromList $ fmap V.fromList (x :: [[DefId]])
            in case parseMap
-                (length $ head x, length (x :: [[Int]]))
-                map of
+                (length $ head x, length (x :: [[DefId]]))
+                m of
                 Right r ->
-                  [[fromMaybe 0 (firstJust (\(bb, n) -> if isInside bb x y then Just n else Nothing) $ V.toList r) | x <- [0 .. length (x !! y) - 1]] | y <- [0 .. length x - 1]]
+                  [[fromMaybe (DefId 0) (firstJust (\(bb, n) -> if isInside bb x y then Just n else Nothing) $ V.toList r) | x <- [0 .. length (x !! y) - 1]] | y <- [0 .. length x - 1]]
                     `shouldBe` x
                 Left e -> error e
 
@@ -162,12 +166,12 @@ spec = do
                 }|]
       (decode exampleJson :: Maybe MapFile) `shouldSatisfy` isJust
 
-genMatrix :: Gen [[Int]]
+genMatrix :: forall a. (Arbitrary a) => Gen [[a]]
 genMatrix = do
   NonNegative size <- arbitrary
   listOf (vectorOf size arbitrary)
 
-genNonEmptyMatrix :: Gen [[Int]]
+genNonEmptyMatrix :: forall a. (Arbitrary a) => Gen [[a]]
 genNonEmptyMatrix = do
   Positive size <- arbitrary
   listOf1 (vectorOf size arbitrary)
