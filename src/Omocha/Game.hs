@@ -8,7 +8,8 @@ module Omocha.Game (run, transpose, bundle) where
 import Control.Lens ((+~))
 import Control.Monad
 import Control.Monad.Exception qualified as E (MonadException (catch, throw), throw)
-import Data.Aeson hiding (json)
+import Data.Aeson (eitherDecodeFileStrict)
+import Data.Aeson hiding (eitherDecodeFileStrict, json)
 import Data.BoundingBox qualified as BB
 import Data.ByteString.Lazy qualified as BS
 import Data.Map.Strict qualified as M
@@ -49,10 +50,10 @@ loadImage bmp = do
 
 loadMapFile :: FilePath -> IO MapFile
 loadMapFile path = do
-  f <- BS.readFile path
-  case decode f of
-    Just m -> return m
-    _ -> E.throw ("invalid map file: " ++ path :: String)
+  f <- eitherDecodeFileStrict path
+  case f of
+    Right m -> return m
+    Left m -> E.throw ("invalid map file: " ++ path ++ "\n" ++ m :: String)
 
 parseMapFile :: V2 Float -> MapFile -> IO (Vector Mesh)
 parseMapFile offset = mapMeshes offset 1
