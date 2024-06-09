@@ -7,7 +7,7 @@ module Omocha.Game (run, transpose, bundle) where
 
 import Control.Lens ((+~))
 import Control.Monad
-import Control.Monad.Exception qualified as E (MonadException (throw), throw)
+import Control.Monad.Exception qualified as E (MonadException (catch, throw), throw)
 import Data.Aeson hiding (json)
 import Data.BoundingBox qualified as BB
 import Data.ByteString.Lazy qualified as BS
@@ -356,21 +356,27 @@ game =
         let update c g o = GameCtx
               $ case c of
                 GameReset -> do
-                  f <- liftIO $ loadMapFile "map.json"
-                  mf <- liftIO $ parseMapFile offset f
+                  E.catch
+                    ( do
+                        f <- liftIO $ loadMapFile "map.json"
+                        mf <- liftIO $ parseMapFile offset f
 
-                  let others =
-                        SceneObject
-                          { id = ObjectId 1,
-                            meshes =
-                              V.concatMap (.meshes) scene.objects V.++ mf
-                          }
-                  (unis, s) <- buildRenderer win [others, player]
-                  gs <- gridShader win unis f.size f.spline offset
-                  let r = renderWith unis s $ \vpSize -> do
-                        clear
-                        gs vpSize
-                  liftIO $ writeIORef renderings r
+                        let others =
+                              SceneObject
+                                { id = ObjectId 1,
+                                  meshes =
+                                    V.concatMap (.meshes) scene.objects V.++ mf
+                                }
+                        (unis, s) <- buildRenderer win [others, player]
+                        gs <- gridShader win unis f.size f.spline offset
+                        let r = renderWith unis s $ \vpSize -> do
+                              clear
+                              gs vpSize
+                        liftIO $ writeIORef renderings r
+                    )
+                    (\e -> trace (show (e :: SomeException)) $ return ())
+
+                  r <- liftIO $ readIORef renderings
                   r g o
                 GameSave i -> do
                   liftIO $ BS.writeFile ("map" ++ show i ++ ".json") $ encode mf
@@ -380,21 +386,26 @@ game =
                   r <- liftIO $ readIORef renderings
                   r g o
                 GameLoad i -> do
-                  f <- liftIO $ loadMapFile $ "map" ++ show i ++ ".json"
-                  mf <- liftIO $ parseMapFile offset f
+                  E.catch
+                    ( do
+                        f <- liftIO $ loadMapFile $ "map" ++ show i ++ ".json"
+                        mf <- liftIO $ parseMapFile offset f
 
-                  let others =
-                        SceneObject
-                          { id = ObjectId 1,
-                            meshes =
-                              V.concatMap (.meshes) scene.objects V.++ mf
-                          }
-                  (unis, s) <- buildRenderer win [others, player]
-                  gs <- gridShader win unis f.size f.spline offset
-                  let r = renderWith unis s $ \vpSize -> do
-                        clear
-                        gs vpSize
-                  liftIO $ writeIORef renderings r
+                        let others =
+                              SceneObject
+                                { id = ObjectId 1,
+                                  meshes =
+                                    V.concatMap (.meshes) scene.objects V.++ mf
+                                }
+                        (unis, s) <- buildRenderer win [others, player]
+                        gs <- gridShader win unis f.size f.spline offset
+                        let r = renderWith unis s $ \vpSize -> do
+                              clear
+                              gs vpSize
+                        liftIO $ writeIORef renderings r
+                    )
+                    (\e -> trace (show (e :: SomeException)) $ return ())
+                  r <- liftIO $ readIORef renderings
                   r g o
 
         return (update, renderText, Env win textureStorage fpsSetting lastRenderTime),
@@ -517,6 +528,7 @@ game =
               | input.hardReset -> GameReset
               | input.save -> GameSave 1
               | input.n == Just 2 -> GameLoad 2
+              | input.n == Just 3 -> GameLoad 3
               | otherwise -> GameContinue
           )
           GlobalUniform {windowSize = sz, modelNorm = normMat, viewCamera = camera, viewTarget = target, viewUp = viewUpNorm, lightDirection = lightDir}

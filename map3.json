@@ -1,27 +1,27 @@
 {
-                               "size": [ 5, 5 ],
-                            "mapData": [
-                                {
-                                    "tag": "Tips",
-                                    "defs": { 
-                                        "1":{"color":[0.5,0.5,0.5,1],"height":2.5,"tag":"Sphere", "yOffset": 2},
-                                        "9":{
-                                            "tag":"Reference",
-                                            "contents": {
-                                                "tag": "External",
-                                                "contents": "tree.json" 
-                                            }
-                                        }
-                                    },
-                                    "maps": [
-                                        [
+       "size": [ 5, 5 ],
+    "mapData": [
+        {
+            "tag": "Tips",
+            "defs": { 
+                "1":{"color":[0.5,0.5,0.5,1],"height":2.5,"tag":"Sphere", "yOffset": 2},
+                "9":{
+                    "tag":"Reference",
+                    "contents": {
+                        "tag": "External",
+                        "contents": "tree.json" 
+                    }
+                }
+            },
+            "maps": [
+                [
                     [0,0,0,0,0],
                     [0,9,9,9,0],
                     [0,9,9,9,0],
                     [0,9,9,9,0],
                     [0,0,0,0,0]
-                                        ]
-                                    ]
-                                }
-                            ]
-                        }
+                ]
+            ]
+        }
+    ]
+}
