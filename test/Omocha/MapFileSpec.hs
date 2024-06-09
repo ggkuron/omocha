@@ -126,7 +126,7 @@ spec = do
                               "1":{"color":[0.4,0.2,0.4,1],"height":1,"tag":"Cube", "yOffset": 0},
                               "2":{"color":[0.5,0.5,0.5,1],"height":2,"tag":"Cube", "yOffset": 0},
                               "8":{"color":[0.5,0.5,0.5,1],"height":8,"tag":"Cube", "yOffset": 4},
-                              "3":{"color":[0.5,0.5,0.5,1],"high":1, "low": 0.02, "tag":"Slope", "highEdge": "RowMax", "yOffset": 0},
+                              "3":{"color":[0.5,0.5,0.5,1],"high":1, "low": 0.02, "tag":"Slope", "highEdge": ["Y", true], "yOffset": 0},
                               "4":{
                                 "tag":"Reference",
                                 "contents": {

@@ -43,13 +43,13 @@ plane unit (V3 w d h) offset color sps divs =
 cube :: V3 Float -> V3 Float -> V3 Float -> V4 Float -> Splines Float -> V2 Int -> Vector Mesh
 cube unit (V3 w d h) = cube' unit (V2 w h) d d d d
 
-slope :: V3 Float -> TipEdge -> (Float, (Float, Float), Float) -> V3 Float -> V4 Float -> Splines Float -> V2 Int -> Vector Mesh
+slope :: V3 Float -> Direction -> (Float, (Float, Float), Float) -> V3 Float -> V4 Float -> Splines Float -> V2 Int -> Vector Mesh
 slope unit edge (w, (high, low), h) offset color sps divs =
   let (a, b, c, d) = case edge of
-        RowMin -> (high, low, low, high)
-        RowMax -> (low, high, high, low)
-        ColumnMin -> (high, high, low, low)
-        ColumnMax -> (low, low, high, high)
+        (Y, False) -> (high, low, low, high)
+        (Y, True) -> (low, high, high, low)
+        (X, False) -> (high, high, low, low)
+        (X, True) -> (low, low, high, high)
    in cube' unit (V2 w h) a b c d offset color sps divs
 
 -- heightが一定でない
@@ -261,8 +261,8 @@ sphere unit size@(V3 w d _h) offset color sps =
         )
         r'
   where
-    sliceCount = w * 24
-    stackCount = d * 12
+    sliceCount = w * 8
+    stackCount = d * 8
 
 boardP' :: V3 Float -> V3 Float -> V3 Float -> V3 Float -> V3 Float -> [Vertex]
 boardP' unit a b c d =

@@ -7,7 +7,7 @@
             "defs":{
                 "1":{"color":[0.05,0.3,0.05,1],"height":1,"tag":"Cube", "yOffset": 0},
                 "2":{"color":[0.5,0.5,0.5,1],"height":2.5,"tag":"Sphere", "yOffset": 0},
-                "3":{"color":[0.5,0.5,0.5,1],"high":1, "low": 0, "tag":"Slope", "highEdge": "ColumnMax", "yOffset": 0},
+                "3":{"color":[0.5,0.5,0.5,1],"high":1, "low": 0, "tag":"Slope", "highEdge": ["X", true], "yOffset": 0},
                 "4":{"color":[0.5,0.5,0.5,1],"height":0.02,"tag":"Cube", "yOffset": 0},
                 "5":{"color":[0.2,0.2,0.2,1],"height":0.02,"tag":"Cube", "yOffset": 0},
                 "6": {
@@ -26,8 +26,8 @@
                                     "tag": "Tips",
                                     "defs": { 
                                         "1":{"color":[0.05,0.3,0.05,1],"height":0.5,"tag":"Cube", "yOffset": 0},
-                                        "2":{"color":[0.5,0.5,0.5,1],"high":0.5, "low": 0, "tag":"Slope", "highEdge": "ColumnMin", "yOffset": 0},
-                                        "3":{"color":[0.5,0.5,0.5,1],"high":0.5, "low": 0, "tag":"Slope", "highEdge": "ColumnMax", "yOffset": 0}
+                                        "2":{"color":[0.5,0.5,0.5,1],"high":0.5, "low": 0, "tag":"Slope", "highEdge": ["X", false], "yOffset": 0},
+                                        "3":{"color":[0.5,0.5,0.5,1],"high":0.5, "low": 0, "tag":"Slope", "highEdge": ["X", true], "yOffset": 0}
                                     },
                                     "maps": [
                                         [

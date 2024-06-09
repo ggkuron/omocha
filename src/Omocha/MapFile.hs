@@ -14,18 +14,13 @@ import RIO
 
 type EdgePoint = (Bool, Bool)
 
-data TipEdge
-  = RowMin -- V2 _ False
-  | RowMax -- V2 _ True
-  | ColumnMin -- V2 False _
-  | ColumnMax -- V2 True _
-  deriving (Show, Generic, Eq, ToJSON, FromJSON)
+type Direction = (Axis, Bool)
 
-adjacentEdges :: EdgePoint -> [TipEdge]
-adjacentEdges (True, True) = [RowMax, ColumnMax]
-adjacentEdges (True, False) = [RowMin, ColumnMax]
-adjacentEdges (False, True) = [RowMax, ColumnMin]
-adjacentEdges (False, False) = [RowMin, ColumnMin]
+adjacentEdges :: EdgePoint -> [Direction]
+adjacentEdges (True, True) = [(Y, True), (X, True)]
+adjacentEdges (True, False) = [(Y, False), (X, True)]
+adjacentEdges (False, True) = [(Y, True), (X, False)]
+adjacentEdges (False, False) = [(Y, False), (X, False)]
 
 data MapReference = Embed MapFile | External FilePath
   deriving (Show, Generic, ToJSON, FromJSON)
@@ -47,7 +42,7 @@ data MapDef
         low :: Float,
         color :: Color,
         yOffset :: Float,
-        highEdge :: TipEdge
+        highEdge :: Direction
       }
   | Reference MapReference
   | Cylinder
