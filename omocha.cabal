@@ -44,6 +44,7 @@ common shared-properties
     , template-haskell
     , transformers
     , vector
+    , vector-algorithms
 
   default-extensions:
     DuplicateRecordFields
@@ -105,6 +106,7 @@ test-suite omocha-test
     MapFileSpec
     Paths_omocha
     ShapeSpec
+    SplineSpec
 
   hs-source-dirs:   test/Omocha
   build-depends:

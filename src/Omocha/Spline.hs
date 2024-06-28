@@ -1,26 +1,26 @@
 module Omocha.Spline where
 
 import Data.Ord (clamp)
+import Data.Tuple.Extra (both)
 import Data.Vector qualified as V
 import Data.Vector.Storable qualified as VS
 import Data.Vector.Storable.Mutable qualified as MVS
 import Linear.Epsilon
 import Linear.V2
-import Linear.V3
 import RIO hiding (trace, traceStack)
 
 data Spline a = Spline
-  { a :: V2 a,
-    b :: V2 a,
-    c :: V2 a,
-    d :: V2 a
+  { a :: a,
+    b :: a,
+    c :: a,
+    d :: a
   }
   deriving (Show, Generic)
 
 isLinear :: (Num a, Epsilon a) => Spline a -> Bool
 isLinear sp = nearZero sp.c && nearZero sp.d
 
-spline :: (HasCallStack, Num a, Fractional a, Storable a) => V.Vector (V2 a) -> V.Vector (Spline a)
+spline :: forall a. (HasCallStack, Num a, Fractional a, Storable a) => V.Vector a -> V.Vector (Spline a)
 spline sp | length sp < 2 = V.empty
 spline sp =
   V.generate (length sp) $ \i ->
@@ -35,9 +35,9 @@ spline sp =
     calculateA i = sp V.! i
     cValues = VS.create $ do
       let num = length sp - 1
-      c :: MVS.MVector s (V2 a) <- MVS.new (length sp)
-      MVS.write c 0 (V2 0 0)
-      MVS.write c num (V2 0 0)
+      c :: MVS.MVector s a <- MVS.new (length sp)
+      MVS.write c 0 0
+      MVS.write c num 0
       forM_
         [1 .. num - 1]
         (\i -> MVS.write c i (3 * (calculateA (i - 1) - 2 * calculateA i + calculateA (i + 1))))
@@ -51,7 +51,7 @@ spline sp =
             MVS.write w i (1 / tmp)
             c1 <- c `MVS.read` (i - 1)
             cc <- c `MVS.read` i
-            let c' = (cc - c1) / pure tmp
+            let c' = (cc - c1) / tmp
             MVS.write c i c'
         )
       forM_
@@ -60,7 +60,7 @@ spline sp =
             c1 <- c `MVS.read` (i + 1)
             cc <- c `MVS.read` i
             wc <- w `MVS.read` i
-            MVS.write c i (cc - c1 * pure wc)
+            MVS.write c i (cc - c1 * wc)
         )
       return c
 
@@ -72,54 +72,44 @@ spline sp =
       | i == len = 0
       | otherwise = calculateA (i + 1) - calculateA i - calculateC i - calculateD i
 
-calcSpline :: (HasCallStack, Num a) => Spline a -> a -> V2 a
-calcSpline (Spline a b c d) t = a + (b + (c + d * dt) * dt) * dt
-  where
-    dt = pure t
+calcSpline :: (HasCallStack, Num a) => Spline a -> a -> a
+calcSpline (Spline a b c d) dt = a + (b + (c + d * dt) * dt) * dt
 
 -- unsafe partial
-findSegment :: (Num a, RealFrac a) => V.Vector (Spline a) -> a -> (Spline a, a)
+findSegment :: (HasCallStack, RealFrac t) => V.Vector a -> t -> (a, t)
 findSegment splines t =
   let j = clamp (0, length splines - 1) (floor t)
    in (splines V.! j, t - fromIntegral j)
 
 -- unsafe partial
-calcSplines :: (Num a, RealFrac a) => V.Vector (Spline a) -> a -> V2 a
+calcSplines :: forall a. (HasCallStack) => (Num a, RealFrac a, Show a) => V.Vector (Spline a) -> a -> a
 calcSplines splines t =
   let (seg, t') = findSegment splines t
    in calcSpline seg t'
 
-interpolate1 :: (Num a, RealFrac a, Storable a) => V.Vector (Int, Float) -> V.Vector (V2 a)
-interpolate1 ps | null ps = V.empty
-interpolate1 ps =
-  V.concatMap (\(i, d) -> V.generate d $ \t -> calcSplines ss (fromIntegral i + fromIntegral t / fromIntegral d)) ds
-    `V.snoc` (fromAxisValue . V.last) ps
-  where
-    ss = spline . fromAxisValues $ ps
-    xs = V.map fst ps
-    ds = V.izipWith (\i a b -> (i, a - b)) (V.tail xs) xs
+calcSplinePairs :: forall a. (HasCallStack) => (Num a, RealFrac a, Show a) => V.Vector (Spline a, Spline a) -> a -> (a, a)
+calcSplinePairs splines t =
+  let (seg, t') = findSegment splines t
+   in both (`calcSpline` t') seg
 
-fromAxisValues :: (Fractional a) => Vector (Int, Float) -> Vector (V2 a)
+fromAxisValues :: (Num a, Fractional a, Real b) => Vector (Int, b) -> Vector a
 fromAxisValues = V.map fromAxisValue
 
-fromAxisValue :: (Fractional a) => (Int, Float) -> V2 a
-fromAxisValue = pairToV2 . (fromIntegral *** realToFrac)
-  where
-    pairToV2 :: (a, a) -> V2 a
-    pairToV2 (a, b) = V2 a b
+fromAxisValue :: forall a b. (Fractional a, Real b) => (Int, b) -> a
+fromAxisValue = snd . (fromIntegral *** realToFrac)
 
-interpolate :: (Num a, RealFrac a) => V.Vector (Spline a) -> V.Vector (V2 a)
-interpolate ps = V.generate ((length ps - 1) * 4 + 1) $ \t -> calcSplines ps (fromIntegral t * 0.25)
+--
+interpolate :: (Num a, RealFrac a, Show a) => V.Vector (Spline a) -> Int -> V.Vector a
+interpolate ps divs = V.generate ((length ps - 1) * divs + 1) $ \t -> calcSplines ps (fromIntegral t * (1 / fromIntegral divs))
 
-type Splines a = (Vector (Spline a), Vector (Spline a))
+type Splines a = Vector (Spline a)
 
-splined2 :: Splines Float -> V2 Float -> V2 Float
+type SplinePair a = Vector (Spline a, Spline a)
+
+type SplinePairs a = (SplinePair a, SplinePair a)
+
+splined2 :: (Splines Float, Splines Float) -> V2 Float -> V2 Float
 splined2 sps (V2 x y) =
-  let x2 = calcSplines (fst sps) x
-      y2 = calcSplines (snd sps) y ^. _yx
+  let x2 = V2 x (calcSplines (fst sps) x)
+      y2 = V2 (calcSplines (snd sps) y) y
    in x2 + y2
-
-splined3 :: Splines Float -> V3 Float -> V3 Float
-splined3 sps (V3 x y z) =
-  let V2 x' z' = splined2 sps (V2 x z)
-   in V3 x' y z'

@@ -1,14 +1,18 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
+{-# OPTIONS_GHC -Wno-unused-do-bind #-}
 
 module MapFileSpec (spec) where
 
 import Data.Aeson
 import Data.BoundingBox qualified as BB
-import Data.Maybe (fromMaybe, isJust, listToMaybe, mapMaybe)
+import Data.List (sortBy)
+import Data.Tuple.Extra (both)
 import Data.Vector qualified as V
-import Linear.V2 (V2 (..))
+import Linear.V2
 import Omocha.MapFile
+import Omocha.Spline (SplinePairs, isLinear)
+import RIO
 import Test.Hspec
   ( Spec,
     describe,
@@ -117,6 +121,58 @@ spec = do
                   [[fromMaybe (DefId 0) (firstJust (\(bb, n) -> if isInside bb x y then Just n else Nothing) $ V.toList r) | x <- [0 .. length (x !! y) - 1]] | y <- [0 .. length x - 1]]
                     `shouldBe` x
                 Left e -> error e
+  describe "adjust" $ do
+    it "keeps start value" $ property $ do
+      forAll
+        genAdjustExpected
+        ( \(x, ls) ->
+            let rs = adjust x (V.fromList ls)
+                s = sortBy (compare `on` fst) (filter ((>= 0) . fst) ls)
+             in snd (V.head rs) `shouldBe` snd (head s)
+        )
+    it "keeps last value" $ property $ do
+      forAll
+        genAdjustExpected
+        ( \(x, ls) ->
+            let rs = adjust x (V.fromList ls)
+                s = sortBy (compare `on` fst) ls
+             in snd (V.last rs) `shouldBe` snd (last s)
+        )
+    it "starts with (0, x)" $ property $ do
+      forAll
+        genAdjustExpected
+        ( \(x, ls) ->
+            let rs = adjust x (V.fromList ls)
+             in fst (V.head rs) `shouldBe` 0
+        )
+    it "end with (sx, x)" $ property $ do
+      forAll
+        genAdjustExpected
+        ( \(x, ls) ->
+            let rs = adjust x (V.fromList ls)
+             in fst (V.last rs) `shouldBe` x
+        )
+  describe "spline1" $ do
+    it "is linear when not axised" $
+      property $
+        forAll
+          ( do
+              Positive x <- arbitrary
+              Positive y <- arbitrary
+              pure (x, y)
+          )
+          ( \(x :: Int, y :: Int) ->
+              spline1 (x, y) Nothing Nothing
+                `shouldSatisfy` \(r :: SplinePairs Float) -> uncurry (&&) (both (V.all (uncurry (&&) . both isLinear)) r)
+          )
+
+  -- it "has x length" $ property $ do
+  --   forAll
+  --     genAdjustExpected
+  --     ( \(x, ls) ->
+  --         adjust x (V.fromList ls)
+  --           `shouldSatisfy` (\r -> length r == x + 1)
+  --     )
 
   describe "MapFile" $ do
     it "wil be a json representation like this" $ do
@@ -178,3 +234,11 @@ genNonEmptyMatrix = do
 
 firstJust :: (a -> Maybe b) -> [a] -> Maybe b
 firstJust f = listToMaybe . mapMaybe f
+
+genAdjustExpected :: Gen (Int, [(Int, Float)])
+genAdjustExpected = do
+  Positive x <- arbitrary
+  f <- abs `fmap` (arbitrary :: Gen Int) `suchThat` (\a -> a <= x && a > 0)
+  s <- arbitrary
+  a <- listOf1 (pure (f, s))
+  pure (x, a)

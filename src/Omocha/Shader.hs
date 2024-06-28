@@ -8,7 +8,7 @@ import Data.Tuple.Extra (both)
 import Data.Vector qualified as V
 import Graphics.GPipe hiding (trace, transpose)
 import Omocha.MapFile
-import Omocha.Spline
+import Omocha.Shape
 import Omocha.Uniform
 import RIO hiding (trace)
 
@@ -213,57 +213,60 @@ gridShader ::
   ApplicationUniforms os ->
   (Int, Int) ->
   Maybe Splined ->
+  Maybe Splined ->
   V2 Float ->
   ContextT ctx os m (CompiledShader os (V2 Int))
-gridShader win unis size@(sx, sy) axes _offset@(V2 ox oy) = do
-  let gridColor :: V4 Float = V4 0.75 0.75 0.75 1
-      s1@(s1x, s1y) = spline1 size axes
-      (xss, yss) = both (\v -> let v' = interpolate v in V.zip v' (V.tail v')) s1
-  let v =
-        V.toList
-          $ V.concatMap
-            ( \(V2 xx xy, V2 xx' xy') ->
-                V.concatMap
-                  ( \(y :: Int) ->
-                      let y' = fromIntegral y
-                          y'' = calcSplines s1y y'
-                          xOffset = y'' ^. _y + ox
-                          yOffset = y'' ^. _x + oy
-                          start = V3 (xx + xOffset) 0 (xy + yOffset)
-                          end = V3 (xx' + xOffset) 0 (xy' + yOffset)
-                       in V.singleton start `V.snoc` end
-                  )
-                  (V.enumFromN 0 (sy + 1))
-            )
-            xss
-          V.++ V.concatMap
-            ( \(V2 yy yx, V2 yy' yx') ->
-                V.concatMap
-                  ( \(x :: Int) ->
-                      let x' = fromIntegral x
-                          x'' = calcSplines s1x x'
-                          yOffset = x'' ^. _y + oy
-                          xOffset = x'' ^. _x + ox
-                          start = V3 (yx + xOffset) 0 (yy + yOffset)
-                          end = V3 (yx' + xOffset) 0 (yy' + yOffset)
-                       in V.singleton start `V.snoc` end
-                  )
-                  (V.enumFromN 0 (sx + 1))
-            )
-            yss
-  vbuf :: Buffer os (B3 Float) <- newBuffer (length v)
-  unless (null v) $ writeBuffer vbuf 0 v
-  s <- compileShader $ do
-    uni <- readGlobalUniform unis
-    prims <- toPrimitiveStream $ \(GridInput _ st) -> (\v' -> (v', gridColor)) <$> st
-    let projected = (\(p, c) -> let (v', _) = proj uni (p, V3 0 1 0) in (v', c)) <$> prims
-    fragmentStream <- rasterize (\(GridInput vp _) -> (Front, ViewPort (V2 0 0) vp, DepthRange 0 1)) projected
-    let colorOption = ContextColorOption (BlendRgbAlpha (FuncAdd, FuncAdd) (BlendingFactors SrcAlpha OneMinusSrcAlpha, BlendingFactors Zero One) (V4 0 0 0 0)) (pure True)
-    drawWindowColor (const (win, colorOption)) fragmentStream
-  return $ \vpSize -> do
-    pArr <- newVertexArray vbuf
-    let pa = toPrimitiveArray LineList pArr
-    s $ GridInput vpSize pa
+gridShader win unis size@(sx, sy) ms cs offset =
+  do
+    let gridColor :: V4 Float = V4 0.75 0.75 0.75 1
+        sps = spline1 size ms cs
+        point = splined sps
+        dts = interval 4 0 1
+        xss = V.generate (sy + 1) $ \y -> do
+          x :: Float <- V.enumFromN 0 sx
+          dt <- dts
+          return $ point (V2 (x + dt) (fromIntegral y))
+        yss = V.generate (sx + 1) $ \x -> do
+          y :: Float <- V.enumFromN 0 sy
+          dt <- dts
+          return $ point (V2 (fromIntegral x) (y + dt))
+        v3 (V2 x y) = V3 x 0 y
+
+    let v =
+          V.toList
+            $ V.concatMap
+              ( \xs ->
+                  V.concatMap
+                    ( \pair ->
+                        let (start, end) = both (+ offset) pair
+                         in V.singleton (v3 start) `V.snoc` v3 end
+                    )
+                    (V.zip xs (V.tail xs))
+              )
+              xss
+            V.++ V.concatMap
+              ( \ys ->
+                  V.concatMap
+                    ( \pair ->
+                        let (start, end) = both (+ offset) pair
+                         in V.singleton (v3 start) `V.snoc` v3 end
+                    )
+                    (V.zip ys (V.tail ys))
+              )
+              yss
+    vbuf :: Buffer os (B3 Float) <- newBuffer (length v)
+    unless (null v) $ writeBuffer vbuf 0 v
+    s <- compileShader $ do
+      uni <- readGlobalUniform unis
+      prims <- toPrimitiveStream $ \(GridInput _ st) -> (\v' -> (v', gridColor)) <$> st
+      let projected = (\(p, c) -> let (v', _) = proj uni (p, V3 0 1 0) in (v', c)) <$> prims
+      fragmentStream <- rasterize (\(GridInput vp _) -> (Front, ViewPort (V2 0 0) vp, DepthRange 0 1)) projected
+      let colorOption = ContextColorOption (BlendRgbAlpha (FuncAdd, FuncAdd) (BlendingFactors SrcAlpha OneMinusSrcAlpha, BlendingFactors Zero One) (V4 0 0 0 0)) (pure True)
+      drawWindowColor (const (win, colorOption)) fragmentStream
+    return $ \vpSize -> do
+      pArr <- newVertexArray vbuf
+      let pa = toPrimitiveArray LineList pArr
+      s $ GridInput vpSize pa
 
 bundle :: (Foldable t, Monad n) => t (b -> n ()) -> (b -> n ())
 bundle fs b = mapM_ (\f' -> f' b) fs

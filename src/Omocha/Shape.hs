@@ -9,6 +9,8 @@ module Omocha.Shape
     interval,
     splined2,
     splined3,
+    boardXZ,
+    boardZ,
   )
 where
 
@@ -20,12 +22,14 @@ import Graphics.GPipe hiding (trace)
 import Omocha.MapFile
 import Omocha.Mesh
 import Omocha.Spline
-import RIO hiding (trace, traceShow, traceStack)
+import RIO hiding (trace, traceStack)
 import Prelude (tail)
 
-plane :: V3 Float -> V3 Float -> V3 Float -> V4 Float -> Splines Float -> V2 Int -> Vector Mesh
-plane unit (V3 w d h) offset color sps divs =
-  let vs = axesedBoardXZ unit sps ((0, w), (0, h)) divs d d d d
+type MapSplines = SplinePairs Float
+
+plane :: (HasCallStack) => Point -> V3 Float -> Float -> V3 Float -> V4 Float -> MapSplines -> V2 Int -> Vector Mesh
+plane p unit d offset color sps divs =
+  let vs = boardXZ unit sps p divs d d d d
    in V.map
         ( \v ->
             Mesh
@@ -39,24 +43,26 @@ plane unit (V3 w d h) offset color sps divs =
         )
         vs
 
--- heightが一定
-cube :: V3 Float -> V3 Float -> V3 Float -> V4 Float -> Splines Float -> V2 Int -> Vector Mesh
-cube unit (V3 w d h) = cube' unit (V2 w h) d d d d
+type Point = ((Float, Float), (Float, Float))
 
-slope :: V3 Float -> Direction -> (Float, (Float, Float), Float) -> V3 Float -> V4 Float -> Splines Float -> V2 Int -> Vector Mesh
-slope unit edge (w, (high, low), h) offset color sps divs =
+-- heightが一定
+cube :: (HasCallStack) => Point -> V3 Float -> Float -> V3 Float -> V4 Float -> MapSplines -> V2 Int -> Vector Mesh
+cube p unit d = cube' p unit d d d d
+
+slope :: (HasCallStack) => Point -> V3 Float -> Direction -> (Float, Float) -> V3 Float -> V4 Float -> MapSplines -> V2 Int -> Vector Mesh
+slope p unit edge (high, low) offset color sps divs =
   let (a, b, c, d) = case edge of
         (Y, False) -> (high, low, low, high)
         (Y, True) -> (low, high, high, low)
         (X, False) -> (high, high, low, low)
         (X, True) -> (low, low, high, high)
-   in cube' unit (V2 w h) a b c d offset color sps divs
+   in cube' p unit a b c d offset color sps divs
 
 -- heightが一定でない
-cube' :: V3 Float -> V2 Float -> Float -> Float -> Float -> Float -> V3 Float -> V4 Float -> Splines Float -> V2 Int -> Vector Mesh
-cube' unit (V2 w h) az bz cz dz offset color sps divs =
-  let top = axesedBoardXZ unit sps ((0, w), (0, h)) divs az bz cz dz
-      bottom = axesedBoardXZ unit sps ((0, w), (h, 0)) divs 0 0 0 0
+cube' :: (HasCallStack) => Point -> V3 Float -> Float -> Float -> Float -> Float -> V3 Float -> V4 Float -> MapSplines -> V2 Int -> Vector Mesh
+cube' ((x, w), (y, h)) unit az bz cz dz offset color sps divs =
+  let top = boardXZ unit sps ((x, w), (y, h)) divs az bz cz dz
+      bottom = boardXZ unit sps ((x, w), (h, y)) divs 0 0 0 0
       facePoints =
         V.concatMap
           ( \ls ->
@@ -88,13 +94,15 @@ cube' unit (V2 w h) az bz cz dz offset color sps divs =
           (\p -> Mesh (V.toList p) Nothing offset Nothing BoardShader (TopologyTriangles TriangleStrip) (Just color))
           (top V.++ bottom)
 
-cylinder :: V3 Float -> Maybe EdgePoint -> V3 Float -> V3 Float -> V4 Float -> Splines Float -> V2 Int -> Vector Mesh
-cylinder unit center size@(V3 w d h) offset color sps@(spx, spy) (V2 divX divY) =
+cylinder :: (HasCallStack) => Point -> V3 Float -> Maybe EdgePoint -> Float -> V3 Float -> V4 Float -> MapSplines -> V2 Int -> Vector Mesh
+cylinder ((x, w), (y, h)) unit center d offset color sps divs =
   let halfSize = size / 2
+      (w', h') = (w - x, h - y)
+      size = V3 w' d h'
       depth = d
       (r, offset') = case center of
-        Nothing -> ((size ^. _xz) / 2, V3 (halfSize ^. _x) 0 (halfSize ^. _z))
-        Just ep -> (size ^. _xz, (\(a, b) -> V3 a 0 b) (both fromBool ep) * size)
+        Nothing -> ((size ^. _xz) / 2, V3 ((halfSize ^. _x) + x) 0 ((halfSize ^. _z) + y))
+        Just ep -> (size ^. _xz, (\(a, b) -> V3 a 0 b) (both fromBool ep) * size + V3 x 0 y)
       (rstart, rend) = case center of
         Nothing -> (0, (-2) * pi)
         Just (False, False) -> (pi * 0.5, 0)
@@ -119,20 +127,20 @@ cylinder unit center size@(V3 w d h) offset color sps@(spx, spy) (V2 divX divY) 
             Nothing -> V.empty
             Just (False, False) ->
               V.empty
-                `V.snoc` axesedBoardY unit (calcSplines spx 0 ^. _x) Y spy (h, 0) divY depth depth depth
-                `V.snoc` axesedBoardY unit (calcSplines spy 0 ^. _x) X spx (w, 0) divX depth depth depth
+                `V.snoc` boardZ unit sps (V2 x y, V2 w y) divs depth depth depth
+                `V.snoc` boardZ unit sps (V2 x y, V2 x h) divs depth depth depth
             Just (False, True) ->
               V.empty
-                `V.snoc` axesedBoardY unit (calcSplines spx 0 ^. _x) Y spy (h, 0) divY depth depth depth
-                `V.snoc` axesedBoardY unit (calcSplines spy h ^. _x) X spx (0, w) divX depth depth depth
+                `V.snoc` boardZ unit sps (V2 x h, V2 w h) divs depth depth depth
+                `V.snoc` boardZ unit sps (V2 x y, V2 x h) divs depth depth depth
             Just (True, False) ->
               V.empty
-                `V.snoc` axesedBoardY unit (calcSplines spx w ^. _x) Y spy (0, h) divY depth depth depth
-                `V.snoc` axesedBoardY unit (calcSplines spy 0 ^. _x) X spx (w, 0) divX depth depth depth
+                `V.snoc` boardZ unit sps (V2 x y, V2 w y) divs depth depth depth
+                `V.snoc` boardZ unit sps (V2 w y, V2 w h) divs depth depth depth
             Just (True, True) ->
               V.empty
-                `V.snoc` axesedBoardY unit (calcSplines spx w ^. _x) Y spy (0, h) divY depth depth depth
-                `V.snoc` axesedBoardY unit (calcSplines spy h ^. _x) X spx (0, w) divX depth depth depth
+                `V.snoc` boardZ unit sps (V2 x h, V2 w h) divs depth depth depth
+                `V.snoc` boardZ unit sps (V2 w h, V2 w y) divs depth depth depth
         )
         `V.snoc` Mesh [Vertex (unit * splined3 sps (p + offset')) (V3 0 (-1) 0) (V2 0 0) | p <- V3 0 0 0 : bottomPoints] Nothing offset Nothing BoardShader (TopologyTriangles TriangleFan) (Just color)
         `V.snoc` Mesh [Vertex (unit * splined3 sps (p + offset')) (V3 0 1 0) (V2 0 0) | p <- V3 0 depth 0 : V.toList topPoints] Nothing offset Nothing BoardShader (TopologyTriangles TriangleFan) (Just color)
@@ -158,12 +166,13 @@ cylinder unit center size@(V3 w d h) offset color sps@(spx, spy) (V2 divX divY) 
           (TopologyTriangles TriangleStrip)
           (Just color)
 
-interval :: (Ord a, Num a, Enum a, Fractional a) => a -> a -> a -> Vector a
+interval :: (Ord a, Num a, Enum a, Fractional a) => Int -> a -> a -> Vector a
 interval _ start end | start == end = V.singleton start
-interval step start end
+interval divs start end
   | start > end && step < 0 = start `V.cons` V.unfoldr (gen (>)) (Just 1 :: Maybe Int)
   | start < end && step > 0 = start `V.cons` V.unfoldr (gen (<)) (Just 1 :: Maybe Int)
   where
+    step = (end - start) / fromIntegral divs
     gen cmp (Just n) =
       let x = start + fromIntegral n * step
        in Just (if x `cmp` end then (x, Just (n + 1)) else (end, Nothing))
@@ -171,17 +180,17 @@ interval step start end
 interval _ start end = V.empty `V.snoc` start `V.snoc` end
 
 ellipticalCircle :: (Enum a, Ord a, Floating a, R2 t) => t a -> a -> (a, a) -> Vector (V3 a)
-ellipticalCircle r y range@(start, end) = ellipticalCircle' r y range step
-  where
-    step = if start > end then -0.25 else 0.25
+ellipticalCircle r y range = ellipticalCircle' r y range 8
 
-ellipticalCircle' :: (Enum a, Ord a, Floating a, R2 t) => t a -> a -> (a, a) -> a -> Vector (V3 a)
-ellipticalCircle' r y (start, end) step =
-  V.map (\t -> V3 (r ^. _x * cos t) y (r ^. _y * sin t)) $ interval step start end
+ellipticalCircle' :: (Enum a, Ord a, Floating a, R2 t) => t a -> a -> (a, a) -> Int -> Vector (V3 a)
+ellipticalCircle' r y (start, end) divs =
+  V.map (\t -> V3 (r ^. _x * cos t) y (r ^. _y * sin t)) $ interval divs start end
 
-cone :: V3 Float -> Maybe EdgePoint -> V3 Float -> V3 Float -> V4 Float -> Splines Float -> Vector Mesh
-cone unit center size@(V3 _ depth _) offset color sps =
-  let r = (size ^. _xz) / 2
+cone :: (HasCallStack) => Point -> V3 Float -> Maybe EdgePoint -> Float -> V3 Float -> V4 Float -> MapSplines -> Vector Mesh
+cone ((x, w), (y, h)) unit center depth offset color sps =
+  let (w', h') = (w - x, h - y)
+      size = V3 w' depth h'
+      r = (size ^. _xz) / 2
       t' =
         unit
           * splined3
@@ -214,11 +223,11 @@ cone unit center size@(V3 _ depth _) offset color sps =
           (TopologyTriangles TriangleFan)
           (Just color)
 
-sphere :: V3 Float -> V3 Float -> V3 Float -> V4 Float -> Splines Float -> Vector Mesh
-sphere unit size@(V3 w d _h) offset color sps =
-  let r = (size ^. _xz) / 2
+sphere :: (HasCallStack) => Point -> V3 Float -> Float -> V3 Float -> V4 Float -> MapSplines -> Vector Mesh
+sphere ((x, w), (y, h)) unit d offset color sps =
+  let size = V3 (w - x) d (h - y)
+      r = (size ^. _xz) / 2
       c = size / 2 & _y .~ 0
-      c' = unit * splined3 sps c
       e1 =
         V.map
           ( \ph ->
@@ -230,19 +239,20 @@ sphere unit size@(V3 w d _h) offset color sps =
                             z = r' * sin th
                          in V3 x y z
                     )
-                    (interval (2 * pi / sliceCount) 0 (2 * pi))
+                    (interval sliceCount 0 (2 * pi))
           )
-          (interval (pi / stackCount) 0 pi)
+          (interval stackCount 0 pi)
+      c' = unit * splined3 sps (c + V3 x 0 y)
       r' =
         V.map
           ( \(a :: Vector (V3 Float), b :: Vector (V3 Float)) ->
               V.concatMap
                 ( \(a, b) ->
-                    let pa' = c' + unit * a
-                        pb' = c' + unit * b
+                    let a' = c' + unit * a
+                        b' = c' + unit * b
                      in V.fromList
-                          [ Vertex pb' (normalize $ pb' - c') (V2 0 0),
-                            Vertex pa' (normalize $ pa' - c') (V2 0 0)
+                          [ Vertex b' (normalize $ b' - c') (V2 0 0),
+                            Vertex a' (normalize $ a' - c') (V2 0 0)
                           ]
                 )
                 (V.zip a b)
@@ -261,8 +271,8 @@ sphere unit size@(V3 w d _h) offset color sps =
         )
         r'
   where
-    sliceCount = w * 8
-    stackCount = d * 8
+    sliceCount = ceiling w * 8
+    stackCount = ceiling d * 8
 
 boardP' :: V3 Float -> V3 Float -> V3 Float -> V3 Float -> V3 Float -> [Vertex]
 boardP' unit a b c d =
@@ -310,188 +320,173 @@ rect normal (V2 w h) midPoint =
         Vertex c n (V2 1 0)
       ]
 
-zipPair :: (a, b) -> (c, d) -> ((a, c), (b, d))
-zipPair (a, b) (c, d) = ((a, c), (b, d))
-
-zipV2 :: (a, a) -> V2 b -> ((a, b), (a, b))
-zipV2 (a, b) (V2 c d) = ((a, c), (b, d))
-
-type AxisPair = (Vector (Spline Float), Segment)
-
-type Segment = ((Float, Float), Int)
-
-axesedBoardXZ :: V3 Float -> Splines Float -> ((Float, Float), (Float, Float)) -> V2 Int -> Float -> Float -> Float -> Float -> Vector (Vector Vertex)
-axesedBoardXZ unit sps range divs az bz cz dz =
-  let (isLinearX, isLinearY) = both (all isLinear) sps
-      spPair@(spxPair, spyPair) = zipPair sps (zipV2 range divs)
+boardXZ :: (HasCallStack) => V3 Float -> MapSplines -> ((Float, Float), (Float, Float)) -> V2 Int -> Float -> Float -> Float -> Float -> Vector (Vector Vertex)
+boardXZ unit sps@(spX, spY) range@(rangeX, rangeY) (V2 divX divY) az bz cz dz =
+  let (isLinearX, isLinearY) = both (V.all (uncurry (&&) . both isLinear)) sps
+      sizeY = abs $ snd rangeY - fst rangeY
    in if
         | isLinearX && isLinearY ->
-            let ((x0, x1), (y0, y1)) =
-                  both
-                    (\((sps, ((f, t), _)) :: AxisPair) -> both (calcSplines sps . fromIntegral) (ceiling f :: Int, floor t :: Int))
-                    spPair
-                a = x0 + y0 ^. _yx
-                b = x0 + y1 ^. _yx
-                c = x1 + y0 ^. _yx
-                d = x1 + y1 ^. _yx
+            let a = splined sps (V2 (fst rangeX) (fst rangeY))
+                b = splined sps (V2 (fst rangeX) (snd rangeY))
+                c = splined sps (V2 (snd rangeX) (fst rangeY))
+                d = splined sps (V2 (snd rangeX) (snd rangeY))
              in V.singleton $ V.fromList $ boardP' unit (v3 a az) (v3 b bz) (v3 c cz) (v3 d dz)
-        | isLinearX -> V.singleton $ axesedDivisions unit X spxPair spyPair az bz cz dz
-        | isLinearY -> V.singleton $ axesedDivisions unit Y spyPair spxPair az cz bz dz
+        | isLinearX -> V.singleton $ divideAlong X unit sps range az bz cz dz
+        | isLinearY -> V.singleton $ divideAlong Y unit sps range az cz bz dz
         | otherwise ->
-            let ys = vs spyPair
-             in V.concatMap
-                  ( \(i, y0, y1) ->
-                      let zAB n = az + ((bz - az) / fromIntegral (length ys - 1)) * fromIntegral n
-                          zCD n = cz + ((dz - cz) / fromIntegral (length ys - 1)) * fromIntegral n
-                       in V.singleton $ axesedDivisions unit X spxPair (fst spyPair, ((y0 ^. _x, y1 ^. _x), 4)) (zAB i) (zAB (i + 1)) (zCD i) (zCD (i + 1))
-                  )
-                  (V.izipWith (,,) ys (V.tail ys))
+            V.generate
+              divY
+              ( \i ->
+                  let zAB n = az + ((bz - az) / (fromIntegral divY - 1)) * fromIntegral n
+                      zCD n = cz + ((dz - cz) / (fromIntegral divY - 1)) * fromIntegral n
+                      yRange = both (\i -> fromIntegral i * sizeY / (fromIntegral divY - 1)) (i, i + 1)
+                   in divideAlong X unit (spX, spY) (rangeX, yRange) (zAB i) (zAB (i + 1)) (zCD i) (zCD (i + 1))
+              )
   where
-    axesedDivisions :: V3 Float -> Axis -> AxisPair -> AxisPair -> Float -> Float -> Float -> Float -> Vector Vertex
-    axesedDivisions unit axis mainPair crossPair az bz cz dz =
-      let (sp, r) = fst <$> mainPair
-       in if null sp
+    divideAlong :: (HasCallStack) => Axis -> V3 Float -> MapSplines -> ((Float, Float), (Float, Float)) -> Float -> Float -> Float -> Float -> Vector Vertex
+    divideAlong _ _ sps _ _ _ _ _ | null (fst sps) = V.empty
+    divideAlong _ _ sps _ _ _ _ _ | null (snd sps) = V.empty
+    divideAlong axis unit sps (range_1, range_2) az bz cz dz =
+      let v2 = case axis of
+            X -> flip V2
+            Y -> V2
+          (crossSeg, alongSeg) = case axis of
+            X -> (range_2, range_1)
+            Y -> (range_1, range_2)
+          (_alongDiv, crossDiv) = case axis of
+            X -> (divY, divX)
+            Y -> (divX, divY)
+          crossPoints = uncurry (interval crossDiv) crossSeg
+
+          ps = V.map (\cp -> both (v2 cp) alongSeg) crossPoints
+       in if length ps < 2
             then V.empty
             else
-              let (start, end) = both (calcSplines sp) r
-                  ys = vs crossPair
-               in if length ys < 2
-                    then V.empty
-                    else
-                      let zAB n = az + ((bz - az) / fromIntegral (length ys - 1)) * fromIntegral n
-                          zCD n = cz + ((dz - cz) / fromIntegral (length ys - 1)) * fromIntegral n
-                          ac = end - start
-                          v i = 1 - fromIntegral i / fromIntegral (length ys - 1)
-                          a0 = v3 (start + ys V.! 0 ^. _yx) az
-                          b0 = v3 (start + ys V.! 1 ^. _yx) (zAB (1 :: Int))
-                          c0 = v3 (start + ac + ys V.! 0 ^. _yx) cz
-                          n0 = normalize $ cross (b0 - a0) (c0 - a0)
-                       in ( case axis of
-                              Y ->
-                                V.empty
-                                  `V.snoc` Vertex (returnV a0) n0 (V2 0 1)
-                                  `V.snoc` Vertex (returnV c0) n0 (V2 0 1)
-                              X ->
-                                V.empty
-                                  `V.snoc` Vertex (returnV c0) n0 (V2 0 1)
-                                  `V.snoc` Vertex (returnV a0) n0 (V2 0 1)
-                          )
-                            V.++ V.concatMap
-                              ( \(i, y0, y1) ->
-                                  let a0 = v3 (start + y0 ^. _yx) (zAB i)
-                                      d1 = v3 (start + ac + y1 ^. _yx) (zCD i)
-                                      b1 = v3 (start + y1 ^. _yx) (zAB (i + 1))
-                                      n = normalize $ cross (d1 - b1) (a0 - b1)
-                                   in case axis of
-                                        Y ->
-                                          V.empty
-                                            `V.snoc` Vertex (returnV b1) n (V2 0 (v i))
-                                            `V.snoc` Vertex (returnV d1) n (V2 1 (v i))
-                                        X ->
-                                          V.empty
-                                            `V.snoc` Vertex (returnV d1) n (V2 1 (v i))
-                                            `V.snoc` Vertex (returnV b1) n (V2 0 (v i))
-                              )
-                              (V.izipWith (,,) ys (V.tail ys))
+              let zAB n = az + ((bz - az) / fromIntegral (length ps - 1)) * fromIntegral n
+                  zCD n = cz + ((dz - cz) / fromIntegral (length ps - 1)) * fromIntegral n
+                  v i = 1 - fromIntegral i / fromIntegral (length ps - 1)
+                  a0 = returnV $ v3 (fst $ ps V.! 0) az
+                  b0 = returnV $ v3 (snd $ ps V.! 0) (zAB (1 :: Int))
+                  c0 = returnV $ v3 (fst $ ps V.! 1) cz
+                  n0 = normalize $ case axis of
+                    X -> cross (b0 - a0) (c0 - a0)
+                    Y -> cross (c0 - a0) (b0 - a0)
+               in ( case axis of
+                      Y ->
+                        V.empty
+                          `V.snoc` Vertex a0 n0 (V2 0 1)
+                          `V.snoc` Vertex b0 n0 (V2 0 1)
+                      X ->
+                        V.empty
+                          `V.snoc` Vertex b0 n0 (V2 0 1)
+                          `V.snoc` Vertex a0 n0 (V2 0 1)
+                  )
+                    V.++ V.concatMap
+                      ( \(i, cl0, cl1) ->
+                          let a1 = returnV $ v3 (fst cl0) (zAB i)
+                              c1 = returnV $ v3 (fst cl1) (zAB (i + 1))
+                              b1 = returnV $ v3 (snd cl0) (zCD i)
+                              d1 = returnV $ v3 (snd cl1) (zCD (i + i))
+                              n = normalize $ case axis of
+                                X -> cross (b1 - a1) (c1 - a1)
+                                Y -> cross (c1 - a1) (b1 - a1)
+                           in case axis of
+                                Y ->
+                                  V.empty
+                                    `V.snoc` Vertex c1 n (V2 0 (v i))
+                                    `V.snoc` Vertex d1 n (V2 1 (v i))
+                                X ->
+                                  V.empty
+                                    `V.snoc` Vertex d1 n (V2 1 (v i))
+                                    `V.snoc` Vertex c1 n (V2 0 (v i))
+                      )
+                      (V.izipWith (,,) ps (V.tail ps))
       where
         returnV v =
-          ( case axis of
-              Y -> v ^. _zyx
-              X -> v ^. _xyz
-          )
+          splined3
+            sps
+            ( case axis of
+                Y -> v ^. _zyx
+                X -> v ^. _xyz
+            )
             * unit
 
-axisValue :: Axis -> Float -> V3 Float
-axisValue X v = V3 v 0 0
-axisValue Y v = V3 0 0 v
-
-crossAxis :: Axis -> Axis
-crossAxis X = Y
-crossAxis Y = X
-
--- height(crossOffset)は一定を仮定
-axesedBoardY :: V3 Float -> Float -> Axis -> Vector (Spline Float) -> (Float, Float) -> Int -> Float -> Float -> Float -> Vector Vertex
-axesedBoardY unit crossOffset axis sp range divs az bz height =
-  let tops = axesedLineStrip unit axis sp range divs az bz
+boardZ :: (HasCallStack) => V3 Float -> MapSplines -> (V2 Float, V2 Float) -> V2 Int -> Float -> Float -> Float -> Vector Vertex
+boardZ unit sps segment divs az bz height =
+  let tops = lineStrip unit sps segment divs az bz
       v i = fromIntegral i / fromIntegral (length tops - 1)
-      offset = axisValue (crossAxis axis) crossOffset
-   in if length tops < 2
-        then V.empty
-        else
-          let t1 = tops V.! 0 + offset
-              t2 = tops V.! 1 + offset
-              a = t1
-              b = t1 & _y -~ height
-              c = t2
-              n = normalize $ case axis of
-                X -> cross (b - a) (c - a)
-                Y -> cross (c - a) (b - a)
-           in ( case axis of -- range増加方向の指定が面法線を軸方向に向かせるように並べる
-                  X ->
-                    V.empty
-                      `V.snoc` Vertex a n (V2 0 0)
-                      `V.snoc` Vertex b n (V2 0 1)
-                  Y ->
-                    V.empty
-                      `V.snoc` Vertex b n (V2 0 1)
-                      `V.snoc` Vertex a n (V2 0 0)
-              )
-                V.++ V.concatMap
-                  ( \(i, t1, t2) ->
-                      let a = t1 + offset
-                          b = a & _y -~ height
-                          c = t2 + offset
-                          d = c & _y -~ height
-                          n = normalize $ case axis of
-                            X -> cross (b - a) (c - a)
-                            Y -> cross (c - a) (b - a)
-                       in case axis of
-                            X ->
-                              V.empty
-                                `V.snoc` Vertex c n (V2 (v (i + 1)) 1)
-                                `V.snoc` Vertex d n (V2 (v (i + 1)) 0)
-                            Y ->
-                              V.empty
-                                `V.snoc` Vertex d n (V2 (v (i + 1)) 0)
-                                `V.snoc` Vertex c n (V2 (v (i + 1)) 1)
-                  )
-                  (V.izipWith (,,) tops (V.tail tops))
+   in ( if length tops < 2
+          then V.empty
+          else
+            let a = tops V.! 0
+                b = a & _y -~ height
+                c = tops V.! 1
+                n = normalize $ cross (b - a) (c - a)
+                tail1 = repeatUntilLengthsMatch (length tops) (V.tail tops)
+                tail2 = repeatUntilLengthsMatch (length tops) (V.tail tail1)
+             in V.empty
+                  `V.snoc` Vertex a n (V2 0 0)
+                  `V.snoc` Vertex b n (V2 0 1)
+                  V.++ V.concatMap
+                    ( \(i, t1, (t2, t3)) ->
+                        let a = t1
+                            c = t2
+                            d = c & _y -~ height
+                            e = t3
+                            n1 = cross (a - c) (d - c)
+                            n2 = cross (d - c) (e - c)
+                            n = normalize $ n1 + n2
+                         in V.empty
+                              `V.snoc` Vertex c n (V2 (v (i + 1)) 1)
+                              `V.snoc` Vertex d n (V2 (v (i + 1)) 0)
+                    )
+                    (V.izipWith (,,) tops (V.zip tail1 tail2))
+      )
 
-axesedLineStrip :: V3 Float -> Axis -> Vector (Spline Float) -> (Float, Float) -> Int -> Float -> Float -> Vector (V3 Float)
-axesedLineStrip unit axis sp range divs az bz =
-  let isLinearAxis = V.all isLinear sp
-      ys = vs (sp, (range, divs))
-      z n = az + ((bz - az) / fromIntegral (length ys - 1)) * fromIntegral n
+repeatUntilLengthsMatch :: Int -> Vector a -> Vector a
+repeatUntilLengthsMatch _ as | null as = V.empty
+repeatUntilLengthsMatch n as =
+  let l = length as
+   in as V.++ V.fromList (replicate (n - l) (V.last as))
+
+lineStrip :: V3 Float -> SplinePairs Float -> (V2 Float, V2 Float) -> V2 Int -> Float -> Float -> Vector (V3 Float)
+lineStrip unit sps (range_1, range_2) (V2 divX divY) az bz =
+  let isLinearAxis = uncurry (&&) (both (V.all (uncurry (&&) . both isLinear)) sps)
+      xs = interval divX (range_1 ^. _x) (range_2 ^. _x)
+      ys = interval divY (range_1 ^. _y) (range_2 ^. _y)
+      n = max (length xs) (length ys)
+      rs =
+        V.zipWith
+          V2
+          (repeatUntilLengthsMatch n xs)
+          (repeatUntilLengthsMatch n ys)
+      z n = az + ((bz - az) / fromIntegral (length rs - 1)) * fromIntegral n
    in ( if
-          | length ys > 2 && isLinearAxis ->
-              let a = v3 (V.head ys) az
-                  b = v3 (V.last ys) (z (1 :: Int))
+          | length ys >= 2 && isLinearAxis ->
+              let a = v3 (V.head rs) az
+                  b = v3 (V.last rs) (z (1 :: Int))
                in V.empty
                     `V.snoc` returnV a
                     `V.snoc` returnV b
-          | length ys < 2 -> V.empty
+          | length rs < 2 -> V.empty
           | otherwise ->
               V.concatMap
                 ( \(i, y0, y1) ->
-                    let a = v3 (y0 ^. _yx) (z i)
-                        b = v3 (y1 ^. _yx) (z (i + 1))
+                    let a = returnV $ v3 y0 (z i)
+                        b = returnV $ v3 y1 (z (i + 1))
                      in V.empty
-                          `V.snoc` returnV a
-                          `V.snoc` returnV b
+                          `V.snoc` a
+                          `V.snoc` b
                 )
-                (V.izipWith (,,) ys (V.tail ys))
+                (V.izipWith (,,) rs (V.tail rs))
       )
   where
     returnV v =
-      ( case axis of
-          Y -> v ^. _zyx
-          X -> v ^. _xyz
-      )
+      splined3
+        sps
+        ( v ^. _xyz
+        )
         * unit
-
-vs :: AxisPair -> Vector (V2 Float)
-vs (sp, ((a, b), _)) | a == b = V.singleton $ calcSplines sp a
-vs (sp, ((a, b), divs)) = V.map (calcSplines sp) (interval ((b - a) / fromIntegral divs) a b)
 
 v3 :: (R2 t) => t a -> a -> V3 a
 v3 v2 z = V3 (v2 ^. _x) z (v2 ^. _y)

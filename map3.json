@@ -1,27 +1,28 @@
 {
        "size": [ 5, 5 ],
     "mapData": [
-        {
+        
+            {
+            "tag": "Fill",
+            "contents": {
+                "color":[0.2,0.4,0.2,0.75],"height":0.10,"tag":"Cube", "yOffset": 0.1
+            }
+        },
+{
             "tag": "Tips",
             "defs": { 
-                "1":{"color":[0.5,0.5,0.5,1],"height":2.5,"tag":"Sphere", "yOffset": 2},
-                "9":{
-                    "tag":"Reference",
-                    "contents": {
-                        "tag": "External",
-                        "contents": "tree.json" 
-                    }
-                }
+                "6":{"color":[0.05,0.3,0.05,1],"height":0.5,"tag":"Cube", "yOffset": 0},
+                "7":{"center":[true, true],"color":[0.5,0.5,0.5,1], "height": 1, "tag":"Cylinder","yOffset":0}
             },
             "maps": [
                 [
                     [0,0,0,0,0],
-                    [0,9,9,9,0],
-                    [0,9,9,9,0],
-                    [0,9,9,9,0],
+                    [0,7,7,0,0],
+                    [0,7,7,0,0],
+                    [0,0,0,0,0],
                     [0,0,0,0,0]
                 ]
             ]
-        }
+            }
     ]
 }

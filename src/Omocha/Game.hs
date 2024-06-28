@@ -3,7 +3,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeOperators #-}
 
-module Omocha.Game (run, transpose, bundle) where
+module Omocha.Game (run, transpose, bundle, parseMapFile) where
 
 import Control.Lens ((+~))
 import Control.Monad
@@ -13,6 +13,7 @@ import Data.Aeson hiding (eitherDecodeFileStrict, json)
 import Data.BoundingBox qualified as BB
 import Data.ByteString.Lazy qualified as BS
 import Data.Map.Strict qualified as M
+import Data.Tuple.Extra (both)
 import Data.Vector qualified as V
 import Debug.Trace (trace)
 import FRP.Elerea.Param qualified as E
@@ -27,6 +28,7 @@ import Omocha.Resource
 import Omocha.Scene
 import Omocha.Shader
 import Omocha.Shape
+import Omocha.Spline (SplinePairs)
 import Omocha.Text (text)
 import Omocha.Uniform
 import Omocha.UserInput
@@ -48,52 +50,56 @@ loadImage bmp = do
   when (siz /= V2 0 0) $ writeTexture2D t 0 0 siz (getPixels img)
   return t
 
-loadMapFile :: FilePath -> IO MapFile
+loadMapFile :: (HasCallStack) => FilePath -> IO MapFile
 loadMapFile path = do
   f <- eitherDecodeFileStrict path
   case f of
     Right m -> return m
     Left m -> E.throw ("invalid map file: " ++ path ++ "\n" ++ m :: String)
 
-parseMapFile :: V2 Float -> MapFile -> IO (Vector Mesh)
-parseMapFile offset = mapMeshes offset 1
-  where
-    mapMeshes :: V2 Float -> V2 Float -> MapFile -> IO (Vector Mesh)
-    mapMeshes offset unit m = do
-      d <- either E.throw return $ foldMapM (parseMapDef m.size) m.mapData
-      toMesh offset unit d
-      where
-        tupleToV4 :: (a, a, a, a) -> V4 a
-        tupleToV4 (a, b, c, d) = V4 a b c d
-        (xs, ys) = spline1 m.size m.spline
-        toMesh :: V2 Float -> V2 Float -> MapDefs -> IO (Vector Mesh)
-        toMesh offset unit m =
-          M.foldMapWithKey
-            ( \_id (n, (sx, sy), pos) ->
-                let isize = V2 sx sy
-                    size :: V2 Float = fmap fromIntegral isize
-                    yScale = ((unit ^. _x + unit ^. _y) / 2)
-                    unit' = V3 (unit ^. _x) yScale (unit ^. _y)
-                 in flip V.foldMap pos $ \a ->
-                      let splines = (V.slice (a ^. _x) (isize ^. _x) xs, V.slice (a ^. _y) (isize ^. _y) ys)
-                          divs = isize
-                       in case n of
-                            Cube {..} -> return $ cube unit' (V3 (size ^. _x) height (size ^. _y)) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines divs
-                            Plane {..} -> return $ plane unit' (V3 (size ^. _x) n.yOffset (size ^. _y)) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines divs
-                            Slope {..} -> return $ slope unit' highEdge (size ^. _x, (high, low), size ^. _y) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines divs
-                            Cylinder {..} -> return $ cylinder unit' center (V3 (size ^. _x) height (size ^. _y)) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines divs
-                            Cone {..} -> return $ cone unit' center (V3 (size ^. _x) height (size ^. _y)) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines
-                            Sphere {..} -> return $ sphere unit' (V3 (size ^. _x) height (size ^. _y)) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines
-                            Meta {} -> return V.empty
-                            Reference r -> do
-                              m <- case r of
-                                (Embed m) -> return m
-                                (External path) -> loadMapFile path -- TODO: check recursive recursion
-                              let unit' = liftA2 (/) size (fromIntegral <$> pairToV2 m.size)
-                                  offset' = splined2 splines (V2 0 0) + offset
-                               in mapMeshes offset' unit' m
-            )
-            m.defs
+tupleToV4 :: (a, a, a, a) -> V4 a
+tupleToV4 (a, b, c, d) = V4 a b c d
+
+itr :: (HasCallStack) => V2 Float -> V2 Float -> SplinePairs Float -> InstanceId -> (MapDef, (Int, Int), Vector (V2 Int)) -> IO (Vector Mesh)
+itr offset unit sps _id (n, size, pos) =
+  let yScale = ((unit ^. _x + unit ^. _y) / 2)
+      unit' = V3 (unit ^. _x) yScale (unit ^. _y)
+   in V.foldMap (parseShape offset unit' n size yScale sps) pos
+
+parseShape :: (HasCallStack) => V2 Float -> V3 Float -> MapDef -> Size Int -> Float -> SplinePairs Float -> V2 Int -> IO (Vector Mesh)
+parseShape offset unit n isize yScale sps a =
+  let splines = sps
+      pos = both (both fromIntegral) ((a ^. _x, a ^. _x + fst isize), (a ^. _y, a ^. _y + snd isize))
+      divs = uncurry V2 isize * 16
+   in case n of
+        Cube {..} -> return $ cube pos unit height (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines divs
+        Plane {..} -> return $ plane pos unit n.yOffset (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines divs
+        Slope {..} -> return $ slope pos unit highEdge (high, low) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines divs
+        Cylinder {..} -> return $ cylinder pos unit center height (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines divs
+        Cone {..} -> return $ cone pos unit center height (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines
+        Sphere {..} -> return $ sphere pos unit height (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines
+        Meta {} -> return V.empty
+        Reference r -> do
+          m <- case r of
+            (Embed m) -> return m
+            (External path) -> loadMapFile path -- TODO: check recursive recursion
+          let msize = fromIntegral <$> uncurry V2 m.size
+              size' :: V2 Float = fromIntegral <$> uncurry V2 isize
+              unit' = liftA2 (/) size' msize
+              offset'' = splined splines (fmap fromIntegral a) + offset
+           in parse offset'' unit' m
+
+toMesh :: (HasCallStack) => V2 Float -> V2 Float -> MapDefs -> SplinePairs Float -> IO (Vector Mesh)
+toMesh offset unit m sps =
+  M.foldMapWithKey (itr offset unit sps) m.defs
+
+parse :: (HasCallStack) => V2 Float -> V2 Float -> MapFile -> IO (Vector Mesh)
+parse offset unit m = do
+  ds <- either E.throw return $ V.mapM (parseMapDef m.size) m.mapData
+  V.foldMap (\d -> toMesh offset unit d (spline1 m.size m.splineX m.splineY)) ds
+
+parseMapFile :: (HasCallStack) => V2 Float -> MapFile -> IO (Vector Mesh)
+parseMapFile offset = parse offset 1
 
 data TextMesh = TextMesh
   { vertexes :: [(V2 Float, V2 Float)],
@@ -160,6 +166,7 @@ data Env os = Env
 type ShaderInput = (V2 Int, String)
 
 buildRenderer ::
+  (HasCallStack) =>
   forall ctx os m.
   (ContextHandler ctx, MonadIO m, E.MonadException m) =>
   Window os RGBAFloat DepthStencil ->
@@ -225,6 +232,7 @@ newPrimitiveArray t p (Just i) = do
   return $ toPrimitiveArrayIndexed t iArr pArr
 
 execGame ::
+  (HasCallStack) =>
   Game ->
   IO ()
 execGame Game {..} =
@@ -303,13 +311,13 @@ meshFromGltf j = V.concatMap (\(GLTF.Mesh _meshName prims _wieghts) -> processMe
 rotationMatrix :: Float -> M44 Float
 rotationMatrix theta = m33_to_m44 $ fromQuaternion $ axisAngle (V3 0 1 0) theta
 
-game :: Game
+game :: (HasCallStack) => Game
 game =
   Game
     { prepare = do
         win <- GameCtx $ newWindow (WindowFormatColorDepthStencilCombined RGBA8 Depth24Stencil8) (GLFW.defaultWindowConfig "omocha")
         font <- loadFont "VL-PGothic-Regular.ttf"
-        json <- liftIO $ GLTF.fromJsonFile "monkey.gltf"
+        json <- liftIO $ GLTF.fromJsonFile "body5.gltf"
         j <- liftIO $ case json of
           Left e -> E.throw . userError $ show e
           Right v' -> return v'
@@ -336,7 +344,7 @@ game =
               clearWindowColor win (V4 0 0.25 1 1)
               clearWindowDepthStencil win 1 0
         ts <- GameCtx $ compileShader $ textShader win unis
-        gs <- GameCtx $ gridShader win unis mf.size mf.spline offset
+        gs <- GameCtx $ gridShader win unis mf.size mf.splineX mf.splineY offset
         renderings <- liftIO $ newIORef $ renderWith unis s $ \vpSize -> do
           clear
           gs vpSize
@@ -374,7 +382,7 @@ game =
                                     V.concatMap (.meshes) scene.objects V.++ mf
                                 }
                         (unis, s) <- buildRenderer win [others, player]
-                        gs <- gridShader win unis f.size f.spline offset
+                        gs <- gridShader win unis f.size f.splineX f.splineY offset
                         let r = renderWith unis s $ \vpSize -> do
                               clear
                               gs vpSize
@@ -404,7 +412,7 @@ game =
                                     V.concatMap (.meshes) scene.objects V.++ mf
                                 }
                         (unis, s) <- buildRenderer win [others, player]
-                        gs <- gridShader win unis f.size f.spline offset
+                        gs <- gridShader win unis f.size f.splineX f.splineY offset
                         let r = renderWith unis s $ \vpSize -> do
                               clear
                               gs vpSize
@@ -515,7 +523,7 @@ game =
       sz <- GameCtx $ getFrameBufferSize win
       let viewUpNorm = V3 0 1 0
           normMat = identity
-          lightDir = V3 (-0.5) 0.25 0.25
+          lightDir = V3 (-0.5) (0.5) 0.5
 
       fpsSetting' <- liftIO $ readIORef fpsSetting
       let timePerFrame = 1 / fpsSetting'
@@ -535,6 +543,7 @@ game =
               | input.save -> GameSave 1
               | input.n == Just 2 -> GameLoad 2
               | input.n == Just 3 -> GameLoad 3
+              | input.n == Just 4 -> GameLoad 4
               | otherwise -> GameContinue
           )
           GlobalUniform {windowSize = sz, modelNorm = normMat, viewCamera = camera, viewTarget = target, viewUp = viewUpNorm, lightDirection = lightDir}

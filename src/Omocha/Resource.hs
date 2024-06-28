@@ -6,9 +6,12 @@
 
 module Omocha.Resource where
 
+import Control.Exception qualified as CE
 import Control.Monad.Exception qualified as E (MonadAsyncException (..), MonadException (throw), catch, fromException, throw)
 import Control.Monad.Trans.Resource (MonadResource (..), ResourceT, resourceMask, runResourceT)
+import Data.Typeable
 import Debug.Trace (trace, traceStack)
+import GHC.Stack (callStack)
 import RIO hiding (traceStack)
 
 newtype GameResource m a = GameResource (ResourceT m a)
@@ -22,12 +25,18 @@ newtype GameResource m a = GameResource (ResourceT m a)
     )
     via (ResourceT m)
 
+data FooException where
+  FooException :: (HasCallStack) => FooException
+
+instance Show FooException where
+  show FooException = "FooException\n" <> show callStack
+
 instance E.MonadException (GameResource IO) where
   throw = liftIO . throwIO
   catch (GameResource action) handler = liftIO $ E.catch (runResourceT' action) handler'
     where
       handler' e = case E.fromException e of
-        Just e' -> traceStack ("handle Just" ++ show e') $ runResourceT' . unResource $ handler e'
+        Just e' -> traceStack ("handle Just " ++ show e') $ runResourceT' . unResource $ handler e'
         Nothing -> traceStack ("handle Nothing" ++ show e) liftIO $ E.throw e
 
 instance E.MonadAsyncException (GameResource IO) where
@@ -39,5 +48,5 @@ instance E.MonadAsyncException (GameResource IO) where
 unResource :: GameResource IO a -> ResourceT IO a
 unResource (GameResource r) = r
 
-runResourceT' :: MonadUnliftIO m => ResourceT m a -> m a
+runResourceT' :: (HasCallStack, MonadUnliftIO m) => ResourceT m a -> m a
 runResourceT' = traceStack "runResourceT." runResourceT
