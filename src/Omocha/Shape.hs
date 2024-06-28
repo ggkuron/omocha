@@ -7,7 +7,6 @@ module Omocha.Shape
     rect,
     sphere,
     interval,
-    splined2,
     splined3,
     boardXZ,
     boardZ,
@@ -52,8 +51,8 @@ cube p unit d = cube' p unit d d d d
 slope :: (HasCallStack) => Point -> V3 Float -> Direction -> (Float, Float) -> V3 Float -> V4 Float -> MapSplines -> V2 Int -> Vector Mesh
 slope p unit edge (high, low) offset color sps divs =
   let (a, b, c, d) = case edge of
-        (Y, False) -> (high, low, low, high)
-        (Y, True) -> (low, high, high, low)
+        (Y, False) -> (high, low, high, low)
+        (Y, True) -> (low, high, low, high)
         (X, False) -> (high, high, low, low)
         (X, True) -> (low, low, high, high)
    in cube' p unit a b c d offset color sps divs
@@ -166,6 +165,12 @@ cylinder ((x, w), (y, h)) unit center d offset color sps divs =
           (TopologyTriangles TriangleStrip)
           (Just color)
 
+repeatUntilLengthsMatch :: Int -> Vector a -> Vector a
+repeatUntilLengthsMatch _ as | null as = V.empty
+repeatUntilLengthsMatch n as =
+  let l = length as
+   in as V.++ V.fromList (replicate (n - l) (V.last as))
+
 interval :: (Ord a, Num a, Enum a, Fractional a) => Int -> a -> a -> Vector a
 interval _ start end | start == end = V.singleton start
 interval divs start end
@@ -195,11 +200,12 @@ cone ((x, w), (y, h)) unit center depth offset color sps =
         unit
           * splined3
             sps
-            ( case center of
-                Nothing -> v3 r depth
-                Just ep -> ((\(a, b) -> V3 a 0 b) (both fromBool ep) * size) & _y .~ depth
+            ( V3 x 0 y
+                + case center of
+                  Nothing -> v3 r depth
+                  Just ep -> ((\(a, b) -> V3 a 0 b) (both fromBool ep) * size) & _y .~ depth
             )
-      c = size / 2 & _y .~ 0
+      c = V3 x 0 y + size / 2 & _y .~ 0
       c' = unit * splined3 sps c
       bottomPoints = V.toList . V.map (+ c) $ ellipticalCircle r 0 (-(2 * pi), 0)
       sides = zip bottomPoints (tail bottomPoints)
@@ -283,6 +289,7 @@ boardP' unit a b c d =
         Vertex (d * unit) n (V2 1 0)
       ]
 
+-- 同一頂点を含む場合は向きを保持した三角形を返す
 boardP :: V3 Float -> V3 Float -> V3 Float -> V3 Float -> V3 Float -> [Vertex]
 boardP unit a b c d =
   let xs = V.fromList [a, b, c, d]
@@ -321,9 +328,10 @@ rect normal (V2 w h) midPoint =
       ]
 
 boardXZ :: (HasCallStack) => V3 Float -> MapSplines -> ((Float, Float), (Float, Float)) -> V2 Int -> Float -> Float -> Float -> Float -> Vector (Vector Vertex)
-boardXZ unit sps@(spX, spY) range@(rangeX, rangeY) (V2 divX divY) az bz cz dz =
+boardXZ unit sps range@(rangeX, rangeY) (V2 divX divY) az bz cz dz =
   let (isLinearX, isLinearY) = both (V.all (uncurry (&&) . both isLinear)) sps
       sizeY = abs $ snd rangeY - fst rangeY
+      divY = 4
    in if
         | isLinearX && isLinearY ->
             let a = splined sps (V2 (fst rangeX) (fst rangeY))
@@ -340,7 +348,7 @@ boardXZ unit sps@(spX, spY) range@(rangeX, rangeY) (V2 divX divY) az bz cz dz =
                   let zAB n = az + ((bz - az) / (fromIntegral divY - 1)) * fromIntegral n
                       zCD n = cz + ((dz - cz) / (fromIntegral divY - 1)) * fromIntegral n
                       yRange = both (\i -> fromIntegral i * sizeY / (fromIntegral divY - 1)) (i, i + 1)
-                   in divideAlong X unit (spX, spY) (rangeX, yRange) (zAB i) (zAB (i + 1)) (zCD i) (zCD (i + 1))
+                   in divideAlong X unit sps (rangeX, yRange) (zAB i) (zAB (i + 1)) (zCD i) (zCD (i + 1))
               )
   where
     divideAlong :: (HasCallStack) => Axis -> V3 Float -> MapSplines -> ((Float, Float), (Float, Float)) -> Float -> Float -> Float -> Float -> Vector Vertex
@@ -405,11 +413,9 @@ boardXZ unit sps@(spX, spY) range@(rangeX, rangeY) (V2 divX divY) az bz cz dz =
         returnV v =
           splined3
             sps
-            ( case axis of
-                Y -> v ^. _zyx
-                X -> v ^. _xyz
-            )
-            * unit
+            v
+            ^. _xyz
+              * unit
 
 boardZ :: (HasCallStack) => V3 Float -> MapSplines -> (V2 Float, V2 Float) -> V2 Int -> Float -> Float -> Float -> Vector Vertex
 boardZ unit sps segment divs az bz height =
@@ -442,12 +448,6 @@ boardZ unit sps segment divs az bz height =
                     )
                     (V.izipWith (,,) tops (V.zip tail1 tail2))
       )
-
-repeatUntilLengthsMatch :: Int -> Vector a -> Vector a
-repeatUntilLengthsMatch _ as | null as = V.empty
-repeatUntilLengthsMatch n as =
-  let l = length as
-   in as V.++ V.fromList (replicate (n - l) (V.last as))
 
 lineStrip :: V3 Float -> SplinePairs Float -> (V2 Float, V2 Float) -> V2 Int -> Float -> Float -> Vector (V3 Float)
 lineStrip unit sps (range_1, range_2) (V2 divX divY) az bz =

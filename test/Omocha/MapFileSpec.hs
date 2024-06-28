@@ -14,13 +14,6 @@ import Omocha.MapFile
 import Omocha.Spline (SplinePairs, isLinear)
 import RIO
 import Test.Hspec
-  ( Spec,
-    describe,
-    it,
-    shouldBe,
-    shouldMatchList,
-    shouldSatisfy,
-  )
 import Test.QuickCheck
 import Text.RawString.QQ
 import Prelude
@@ -175,52 +168,56 @@ spec = do
   --     )
 
   describe "MapFile" $ do
-    it "wil be a json representation like this" $ do
+    it "will be a json representation like this" $ do
       let exampleJson =
             [r|{
-                  "mapData":
-                  [
-                      {
-                          "tag": "Tips",
-                          "defs":{
-                              "1":{"color":[0.4,0.2,0.4,1],"height":1,"tag":"Cube", "yOffset": 0},
-                              "2":{"color":[0.5,0.5,0.5,1],"height":2,"tag":"Cube", "yOffset": 0},
-                              "8":{"color":[0.5,0.5,0.5,1],"height":8,"tag":"Cube", "yOffset": 4},
-                              "3":{"color":[0.5,0.5,0.5,1],"high":1, "low": 0.02, "tag":"Slope", "highEdge": ["Y", true], "yOffset": 0},
-                              "4":{
-                                "tag":"Reference",
-                                "contents": {
-                                  "tag": "Embed",
-                                  "contents": {
-                                    "size": [2, 2],
-                                    "mapData": []
-                                  }
+                    "mapData":
+                    [
+                        {
+                            "tag": "Tips",
+                            "defs":{
+                                "1":{"color":[0.4,0.2,0.4,1],"height":1,"tag":"Cube", "yOffset": 0},
+                                "2":{"color":[0.5,0.5,0.5,1],"height":2,"tag":"Cube", "yOffset": 0},
+                                "8":{"color":[0.5,0.5,0.5,1],"height":8,"tag":"Cube", "yOffset": 4},
+                                "3":{"color":[0.5,0.5,0.5,1],"high":1, "low": 0.02, "tag":"Slope", "highEdge": ["Y", true], "yOffset": 0},
+                                "4":{
+                                  "tag":"Reference",
+                                  "contents": [
+                                    {
+                                      "tag": "Embed",
+                                      "contents": {
+                                        "size": [2, 2],
+                                        "mapData": []
+                                      }
+                                    },
+                                    0
+                                  ]
                                 }
-                              }
-                          },
-                          "maps":[
-                            [
-                              [0,0,0,0,0],
-                              [0,1,0,0,0],
-                              [0,2,2,1,1],
-                              [0,2,2,4,0],
-                              [0,8,0,0,0]
+                            },
+                            "maps":[
+                              [
+                                [0,0,0,0,0],
+                                [0,1,0,0,0],
+                                [0,2,2,1,1],
+                                [0,2,2,4,0],
+                                [0,8,0,0,0]
+                              ]
                             ]
-                          ]
-                      },
-                      {
-                          "tag": "Fill",
-                          "contents":{
-                              "color":[0.2,0.4,0.2,1],
-                              "height":0.05,
-                              "tag":"Cube",
-                              "yOffset": 0
-                          }
-                      }
-                  ],
-                  "size":[5,5]
+                        },
+                        {
+                            "tag": "Fill",
+                            "contents": {
+                                "color":[0.2,0.4,0.2,1],
+                                "height":0.05,
+                                "tag":"Cube",
+                                "yOffset": 0
+                            }
+                        }
+                    ],
+                    "size":[5,5]
                 }|]
-      (decode exampleJson :: Maybe MapFile) `shouldSatisfy` isJust
+      let a :: Either String MapFile = eitherDecodeStrict exampleJson
+      a `shouldSatisfy` isRight
 
 genMatrix :: forall a. (Arbitrary a) => Gen [[a]]
 genMatrix = do

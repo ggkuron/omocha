@@ -6,7 +6,6 @@ import Data.Vector qualified as V
 import Data.Vector.Storable qualified as VS
 import Data.Vector.Storable.Mutable qualified as MVS
 import Linear.Epsilon
-import Linear.V2
 import RIO hiding (trace, traceStack)
 
 data Spline a = Spline
@@ -96,7 +95,7 @@ fromAxisValues :: (Num a, Fractional a, Real b) => Vector (Int, b) -> Vector a
 fromAxisValues = V.map fromAxisValue
 
 fromAxisValue :: forall a b. (Fractional a, Real b) => (Int, b) -> a
-fromAxisValue = snd . (fromIntegral *** realToFrac)
+fromAxisValue = snd . second realToFrac
 
 --
 interpolate :: (Num a, RealFrac a, Show a) => V.Vector (Spline a) -> Int -> V.Vector a
@@ -107,9 +106,3 @@ type Splines a = Vector (Spline a)
 type SplinePair a = Vector (Spline a, Spline a)
 
 type SplinePairs a = (SplinePair a, SplinePair a)
-
-splined2 :: (Splines Float, Splines Float) -> V2 Float -> V2 Float
-splined2 sps (V2 x y) =
-  let x2 = V2 x (calcSplines (fst sps) x)
-      y2 = V2 (calcSplines (snd sps) y) y
-   in x2 + y2

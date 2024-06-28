@@ -66,7 +66,7 @@ data MapDef
         yOffset :: Float,
         highEdge :: Direction
       }
-  | Reference MapReference
+  | Reference MapReference Float
   | Cylinder
       { height :: Float,
         color :: Color,
@@ -84,7 +84,6 @@ data MapDef
         color :: Color,
         yOffset :: Float
       }
-  | Meta Meta
   deriving (Show, Generic, Eq, Ord, ToJSON, FromJSON)
 
 data MapData
@@ -116,6 +115,7 @@ data MapFile = MapFile
   { size :: Size Int,
     splineX :: Maybe Splined,
     splineY :: Maybe Splined,
+    crossed :: Maybe (Maybe Bool, Maybe Bool),
     mapData :: Vector MapData
   }
   deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
@@ -132,6 +132,7 @@ mf :: MapFile
 mf =
   MapFile
     { size = (6, 5),
+      crossed = Nothing,
       splineY =
         Just
           $ Splined
@@ -158,7 +159,7 @@ mf =
                       (3, Cube 2 (0.4, 0.8, 0.4, 1) 0),
                       (8, Cube 8 (0.5, 0.5, 0.5, 1) 0),
                       (5, Cylinder 0.01 (0.5, 0.5, 0.5, 1) 0 Nothing),
-                      (8, Reference (Embed (MapFile (2, 2) Nothing Nothing V.empty)))
+                      (8, Reference (Embed (MapFile (2, 2) Nothing Nothing Nothing V.empty)) 0)
                     ]
               }
           ]
@@ -187,41 +188,67 @@ parseMap (sw, sh) mapData
 isInside :: BB.Box V2 Int -> Int -> Int -> Bool
 isInside bb x y = BB.isInside (fmap fromIntegral (V2 x y) + (V2 0.5 0.5 :: V2 Float)) (fmap fromIntegral bb)
 
-newtype MapDefs = MapDefs
-  { defs :: M.Map InstanceId (MapDef, Size Int, Vector (V2 Int))
+newtype MapDefs a = MapDefs
+  { defs :: M.Map InstanceId (MapDef, Size Int, a)
   }
   deriving (Show)
 
-instance Monoid MapDefs where
+instance Monoid (MapDefs (Vector a)) where
   mempty = MapDefs M.empty
 
-instance Semigroup MapDefs where
+instance Semigroup (MapDefs (Vector a)) where
   (MapDefs im) <> (MapDefs im') = MapDefs (im `M.union` M.mapKeys (+ leftMaxId) im')
     where
       leftMaxId = M.foldlWithKey' (\a i _ -> max a i) 1 im
 
-parseMapDef :: (HasCallStack) => (Int, Int) -> MapData -> Either String MapDefs
+parseMapDef :: (HasCallStack) => (Int, Int) -> MapData -> Either String (Vector (BB.Box V2 Int, MapDef))
+parseMapDef (x, y) (Fill def) = Right $ V.singleton (BB.Box (V2 0 0) (V2 x y), def)
 parseMapDef size (Tips {..}) = do
   bmap <- mapM (parseMap size) maps
-  ls <-
-    mapM
-      ( \(BB.Box start end, k) -> do
-          let V2 w h = end - start
-          def <- maybeToRight ("key: " ++ show k ++ " not found") (defs M.!? k)
-          return (start, (w, h), def)
-      )
-      (join bmap)
+  mapM
+    ( \(bb, k) -> do
+        def <- maybeToRight ("key: " ++ show k ++ " not found") (defs M.!? k)
+        return (bb, def)
+    )
+    (join bmap)
+
+mapHeight :: Vector (BB.Box V2 Int, MapDef) -> V3 Float -> BB.Box V2 Float -> Float
+mapHeight vs offset t@(BB.Box start end) =
+  case V.find (\(bb, _) -> any (\t' -> BB.isInside (t' - offset ^. _xz) (fmap fromIntegral bb)) (BB.corners t)) vs of
+    Just (_, Cube {..}) -> yOffset + height
+    Just (_, Plane {}) -> 0
+    Just (BB.Box ts te, Slope {..}) ->
+      let width = fmap fromIntegral $ te - ts
+       in yOffset + case highEdge of
+            (X, False) -> low + (high - low) * (1 - (center ^. _x - fromIntegral (ts ^. _x)) / (width ^. _x))
+            (X, True) -> low + (high - low) * ((center ^. _x - fromIntegral (ts ^. _x)) / (width ^. _x))
+            (Y, False) -> low + (high - low) * (1 - (center ^. _y - fromIntegral (ts ^. _y)) / (width ^. _y))
+            (Y, True) -> low + (high - low) * ((center ^. _y - fromIntegral (ts ^. _y)) / (width ^. _y))
+    Just (_, Sphere {..}) -> height
+    Just (_, Cylinder {..}) -> height
+    Just (_, Cone {..}) -> height
+    Just (_, Reference _ y) -> y
+    Nothing -> 0
+  where
+    center :: V2 Float = start + (end - start) / 2 - offset ^. _xz
+
+parseMapDef' :: (HasCallStack) => (Int, Int) -> MapData -> Either String (Vector (BB.Box V2 Int, MapDef), MapDefs (Vector (V2 Int)))
+parseMapDef' size md = do
+  ls <- parseMapDef size md
   return
-    $ MapDefs
-      ( foldl'
-          ( \im (i, (pos, size, def)) ->
-              let id = InstanceId i
-               in M.alter (Just . maybe (def, size, V.singleton pos) (third3 (`V.snoc` pos))) id im
-          )
-          M.empty
-          (V.imap (,) ls)
-      )
-parseMapDef (x, y) (Fill def) = Right $ MapDefs (M.singleton 0 (def, (x, y), V.singleton (V2 0 0)))
+    ( ls,
+      MapDefs
+        ( foldl'
+            ( \im (i, (BB.Box start end, def)) ->
+                let id = InstanceId i
+                    V2 w h = end - start
+                    size = (w, h)
+                 in M.alter (Just . maybe (def, size, V.singleton start) (third3 (`V.snoc` start))) id im
+            )
+            M.empty
+            (V.imap (,) ls)
+        )
+    )
 
 adjust :: Int -> Vector (Int, Float) -> V.Vector (Int, Float)
 adjust sz v =
@@ -310,7 +337,6 @@ splined3 sps (V3 x y z) =
   let V2 x' z' = splined sps (V2 x z)
    in V3 x' y z'
 
--- interpolate1 ::  (Num a, RealFrac a, Fractional a,  Storable a, Show a) => Axis -> V.Vector (Int, Float) -> V.Vector (V2 a)
 interpolate1 :: V.Vector (Int, Float) -> V.Vector Float
 interpolate1 ps | null ps = V.empty
 interpolate1 ps =

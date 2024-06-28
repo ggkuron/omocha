@@ -22,6 +22,10 @@ type BUV = B2 Float
 
 data RenderInput os = RenderInput (V2 Int) (PrimitiveArray Triangles (BPosition, BNormal, BUV)) (Texture2D os (Format RGBAFloat))
 
+data PointsInput os = PointsInput (V2 Int) (V4 Float) (PrimitiveArray Points (BPosition, BNormal))
+
+data LinesInput os = LinesInput (V2 Int) (V4 Float) (PrimitiveArray Lines (BPosition, BNormal))
+
 data PlainInput os = PlainInput (V2 Int) (V4 Float) (PrimitiveArray Triangles (BPosition, BNormal))
 
 data TextInput os = TextInput (V2 Int) (PrimitiveArray Triangles (BScreenPosition, BUV)) (Texture2D os (Format RGBAFloat))
@@ -64,6 +68,44 @@ boardShader win unis oid = do
       depthOption = DepthOption Lequal True
       stencilOptions = FrontBack (StencilOption Equal 0 OpKeep OpKeep (complement 0) (complement 0)) (StencilOption Equal 0 OpKeep OpKeep (complement 0) (complement 0))
   drawWindowColorDepthStencil (const (win, colorOption, DepthStencilOption stencilOptions depthOption (FrontBack OpKeep OpKeep))) fragsWithDepth
+
+lineShader ::
+  Window os RGBAFloat DepthStencil ->
+  ApplicationUniforms os ->
+  Shader os (LinesInput os) ()
+lineShader win unis =
+  do
+    uni <- readGlobalUniform unis
+    prims <- toPrimitiveStream $ \(LinesInput _ c st) -> (\v -> (v, c)) <$> st
+    let projected = (\((v, _), c) -> let (v', _) = proj uni (v, V3 0 1 0) in (v', c)) <$> prims
+    fragmentStream <- rasterize (\(LinesInput ri _ _) -> (FrontAndBack, ViewPort (V2 0 0) ri, DepthRange 0 1)) projected
+    let litFrags =
+          withRasterizedInfo
+            (\p x -> (p, rasterizedFragCoord x ^. _z))
+            fragmentStream
+    let colorOption = ContextColorOption (BlendRgbAlpha (FuncAdd, Min) (BlendingFactors SrcAlpha OneMinusSrcAlpha, BlendingFactors SrcAlpha DstAlpha) (V4 0 0 0 0)) (pure True)
+        depthOption = DepthOption Lequal True
+        stencilOptions = FrontBack (StencilOption Equal 0 OpKeep OpKeep (complement 0) (complement 0)) (StencilOption Equal 0 OpKeep OpKeep (complement 0) (complement 0))
+    drawWindowColorDepthStencil (const (win, colorOption, DepthStencilOption stencilOptions depthOption (FrontBack OpKeep OpKeep))) litFrags
+
+pointShader ::
+  Window os RGBAFloat DepthStencil ->
+  ApplicationUniforms os ->
+  Shader os (PointsInput os) ()
+pointShader win unis =
+  do
+    uni <- readGlobalUniform unis
+    prims <- toPrimitiveStream $ \(PointsInput _ c st) -> (\v -> (v, c)) <$> st
+    let projected = (\((v, _), c) -> let (v', _) = proj uni (v, V3 0 1 0) in (v', c :: V4 VFloat)) <$> prims
+    fragmentStream <- rasterize (\(PointsInput ri _ _) -> (FrontAndBack, ViewPort (V2 0 0) ri, DepthRange 0 1)) projected
+    let litFrags =
+          withRasterizedInfo
+            (\p x -> (p, rasterizedFragCoord x ^. _z))
+            fragmentStream
+    let colorOption = ContextColorOption (BlendRgbAlpha (FuncAdd, Min) (BlendingFactors SrcAlpha OneMinusSrcAlpha, BlendingFactors SrcAlpha DstAlpha) (V4 0 0 0 0)) (pure True)
+        depthOption = DepthOption Lequal True
+        stencilOptions = FrontBack (StencilOption Equal 0 OpKeep OpKeep (complement 0) (complement 0)) (StencilOption Equal 0 OpKeep OpKeep (complement 0) (complement 0))
+    drawWindowColorDepthStencil (const (win, colorOption, DepthStencilOption stencilOptions depthOption (FrontBack OpKeep OpKeep))) litFrags
 
 monoStencil ::
   Window os RGBAFloat DepthStencil ->
@@ -115,7 +157,7 @@ phongShader win unis oid = do
   g <- readGlobalUniform unis
   o <- readObjectUniform unis oid
   boards <- toPrimitiveStream $ \(PlainInput _ c st) -> (\v -> (v, c)) <$> st
-  let projected = (\((v, n), c) -> let (v', n') = proj g (v + o.position, n) in (v', (n', c))) <$> boards
+  let projected = (\((v, n), c) -> let (v', n') = proj g (normalizePoint (o.proj !* point v) + o.position, n) in (v', (n', c))) <$> boards
   fragmentStream <- rasterize (\(PlainInput ri _ _) -> (Front, ViewPort (V2 0 0) ri, DepthRange 0 1)) projected
   unif <- readGlobalUniform unis
   let lightDir :: V3 FFloat = normalizeS unif.lightDirection
@@ -214,7 +256,7 @@ gridShader ::
   (Int, Int) ->
   Maybe Splined ->
   Maybe Splined ->
-  V2 Float ->
+  V3 Float ->
   ContextT ctx os m (CompiledShader os (V2 Int))
 gridShader win unis size@(sx, sy) ms cs offset =
   do
@@ -238,7 +280,7 @@ gridShader win unis size@(sx, sy) ms cs offset =
               ( \xs ->
                   V.concatMap
                     ( \pair ->
-                        let (start, end) = both (+ offset) pair
+                        let (start, end) = both (+ offset ^. _xz) pair
                          in V.singleton (v3 start) `V.snoc` v3 end
                     )
                     (V.zip xs (V.tail xs))
@@ -248,7 +290,7 @@ gridShader win unis size@(sx, sy) ms cs offset =
               ( \ys ->
                   V.concatMap
                     ( \pair ->
-                        let (start, end) = both (+ offset) pair
+                        let (start, end) = both (+ offset ^. _xz) pair
                          in V.singleton (v3 start) `V.snoc` v3 end
                     )
                     (V.zip ys (V.tail ys))

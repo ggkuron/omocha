@@ -58,6 +58,7 @@
 
 # Ignore some builtin hints
 - ignore: {name: Use tuple-section}
+- ignore: {name: Redundant multi-way if }
 # - ignore: {name: Use const, within: SpecialModule} # Only within certain modules
 
 

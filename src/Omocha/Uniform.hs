@@ -24,7 +24,7 @@ import RIO
 
 data ApplicationUniforms os = ApplicationUniforms
   { global :: Buffer os (Uniform ({- WindowSize -} B2 Int32 {- Normal -}, V3 (B3 Float {- CameraPosition -}), B3 Float {- CameraTarget -}, B3 Float {- CameraUp -}, B3 Float {- LightDirection -}, B3 Float)),
-    objects :: Buffer os (Uniform ({- Uniform (V3 (B3 Float) {- Normal -} , -} B3 Float {- Position -})),
+    objects :: Buffer os (Uniform ({- Uniform (V3 (B3 Float) {- Normal -} , -} B3 Float {- Position -}, V4 (B4 Float))),
     sizeOfObjects :: Natural
   }
 
@@ -44,8 +44,9 @@ type GlobalUniformS a = GlobalUniform (S a Int) (S a Float)
 
 type GlobalUniformB = GlobalUniform Int Float
 
-newtype ObjectUniform f = ObjectUniform
-  { position :: V3 f
+data ObjectUniform f = ObjectUniform
+  { position :: V3 f,
+    proj :: M44 f
   }
 
 type ObjectUniformS a = ObjectUniform (S a Float)
@@ -61,8 +62,8 @@ readGlobalUniform unis = do
 readObjectUniform :: ApplicationUniforms os -> ObjectId -> Shader os s (ObjectUniformS a)
 readObjectUniform unis (ObjectId id) = do
   uni <- getUniform (const (unis.objects, id))
-  let position = uni
-  return $ ObjectUniform position
+  let (position, modelProj) = uni
+  return $ ObjectUniform position modelProj
 
 writeGlobal :: (MonadIO m, ContextHandler ctx) => ApplicationUniforms os -> GlobalUniformB -> ContextT ctx os m ()
 writeGlobal uni g =
@@ -84,6 +85,6 @@ renderWith ::
   ContextT ctx os m ()
 renderWith uni r clear g os = do
   writeGlobal uni g
-  writeBuffer uni.objects 0 [maybe (V3 0 0 0) (.position) (M.lookup (ObjectId i) os) | i <- [0 .. fromIntegral uni.sizeOfObjects]]
+  writeBuffer uni.objects 0 [maybe (V3 0 0 0, identity) (\a -> (a.position, a.proj)) (M.lookup (ObjectId i) os) | i <- [0 .. fromIntegral uni.sizeOfObjects]]
   render $ clear g.windowSize
   render $ r g

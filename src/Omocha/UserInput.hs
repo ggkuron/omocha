@@ -5,6 +5,7 @@ import Graphics.GPipe.Context.GLFW qualified as GLFW
 import RIO
 
 data Direction = DirUp | DirDown | DirLeft | DirRight
+  deriving (Show, Eq)
 
 data Input = Input
   { direction1 :: Maybe Direction,
@@ -14,11 +15,12 @@ data Input = Input
     hardReset :: Bool,
     enter :: Bool,
     rotation :: Maybe Bool,
+    speedUp :: Bool,
     n :: Maybe Int
   }
 
 readInput ::
-  MonadIO m =>
+  (MonadIO m) =>
   Window os c ds ->
   (Input -> IO a) ->
   ContextT GLFW.Handle os m (Maybe Double)
@@ -47,47 +49,49 @@ readInput win keyInputSink = do
   n9 <- isPressed GLFW.Key'9
   n0 <- isPressed GLFW.Key'0
   ctl <- isPressed GLFW.Key'LeftControl
+  shift <- isPressed GLFW.Key'LeftShift
 
   let keyInput =
         Input
           { direction1 =
               if
-                  | ctl -> Nothing
-                  | h -> Just DirLeft
-                  | j -> Just DirDown
-                  | k -> Just DirUp
-                  | l -> Just DirRight
-                  | otherwise -> Nothing,
+                | ctl -> Nothing
+                | h -> Just DirLeft
+                | j -> Just DirDown
+                | k -> Just DirUp
+                | l -> Just DirRight
+                | otherwise -> Nothing,
             direction2 =
               if
-                  | ctl -> Nothing
-                  | a -> Just DirLeft
-                  | s -> Just DirDown
-                  | w -> Just DirUp
-                  | d -> Just DirRight
-                  | otherwise -> Nothing,
+                | ctl -> Nothing
+                | a -> Just DirLeft
+                | s -> Just DirDown
+                | w -> Just DirUp
+                | d -> Just DirRight
+                | otherwise -> Nothing,
             reset = not ctl && space,
             hardReset = ctl && space,
             enter = f,
             save = ctl && s,
+            speedUp = shift,
             rotation =
               if
-                  | z -> Just True
-                  | f -> Just False
-                  | otherwise -> Nothing,
+                | z -> Just True
+                | f -> Just False
+                | otherwise -> Nothing,
             n =
               if
-                  | n0 -> Just 0
-                  | n1 -> Just 1
-                  | n2 -> Just 2
-                  | n3 -> Just 3
-                  | n4 -> Just 4
-                  | n5 -> Just 5
-                  | n6 -> Just 6
-                  | n7 -> Just 7
-                  | n8 -> Just 8
-                  | n9 -> Just 9
-                  | otherwise -> Nothing
+                | n0 -> Just 0
+                | n1 -> Just 1
+                | n2 -> Just 2
+                | n3 -> Just 3
+                | n4 -> Just 4
+                | n5 -> Just 5
+                | n6 -> Just 6
+                | n7 -> Just 7
+                | n8 -> Just 8
+                | n9 -> Just 9
+                | otherwise -> Nothing
           }
   _ <- liftIO $ keyInputSink keyInput
   return $ if closeKeyPressed then Nothing else t'

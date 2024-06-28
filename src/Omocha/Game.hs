@@ -5,15 +5,14 @@
 
 module Omocha.Game (run, transpose, bundle, parseMapFile) where
 
-import Control.Lens ((+~))
+import Control.Lens ((+~), (-~))
 import Control.Monad
 import Control.Monad.Exception qualified as E (MonadException (catch, throw), throw)
-import Data.Aeson (eitherDecodeFileStrict)
-import Data.Aeson hiding (eitherDecodeFileStrict, json)
+import Data.Aeson hiding (json)
 import Data.BoundingBox qualified as BB
 import Data.ByteString.Lazy qualified as BS
 import Data.Map.Strict qualified as M
-import Data.Tuple.Extra (both)
+import Data.Tuple.Extra (both, fst3, snd3)
 import Data.Vector qualified as V
 import Debug.Trace (trace)
 import FRP.Elerea.Param qualified as E
@@ -28,7 +27,7 @@ import Omocha.Resource
 import Omocha.Scene
 import Omocha.Shader
 import Omocha.Shape
-import Omocha.Spline (SplinePairs)
+import Omocha.Spline
 import Omocha.Text (text)
 import Omocha.Uniform
 import Omocha.UserInput
@@ -60,45 +59,49 @@ loadMapFile path = do
 tupleToV4 :: (a, a, a, a) -> V4 a
 tupleToV4 (a, b, c, d) = V4 a b c d
 
-itr :: (HasCallStack) => V2 Float -> V2 Float -> SplinePairs Float -> InstanceId -> (MapDef, (Int, Int), Vector (V2 Int)) -> IO (Vector Mesh)
-itr offset unit sps _id (n, size, pos) =
-  let yScale = ((unit ^. _x + unit ^. _y) / 2)
-      unit' = V3 (unit ^. _x) yScale (unit ^. _y)
-   in V.foldMap (parseShape offset unit' n size yScale sps) pos
-
-parseShape :: (HasCallStack) => V2 Float -> V3 Float -> MapDef -> Size Int -> Float -> SplinePairs Float -> V2 Int -> IO (Vector Mesh)
+parseShape :: (HasCallStack) => V3 Float -> V3 Float -> MapDef -> Size Int -> Float -> SplinePairs Float -> V2 Int -> IO (Vector Mesh)
 parseShape offset unit n isize yScale sps a =
   let splines = sps
       pos = both (both fromIntegral) ((a ^. _x, a ^. _x + fst isize), (a ^. _y, a ^. _y + snd isize))
       divs = uncurry V2 isize * 16
    in case n of
-        Cube {..} -> return $ cube pos unit height (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines divs
-        Plane {..} -> return $ plane pos unit n.yOffset (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines divs
-        Slope {..} -> return $ slope pos unit highEdge (high, low) (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines divs
-        Cylinder {..} -> return $ cylinder pos unit center height (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines divs
-        Cone {..} -> return $ cone pos unit center height (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines
-        Sphere {..} -> return $ sphere pos unit height (V3 (offset ^. _x) (yOffset * yScale) (offset ^. _y)) (tupleToV4 color) splines
-        Meta {} -> return V.empty
-        Reference r -> do
+        Cube {..} -> return $ cube pos unit height (V3 (offset ^. _x) (offset ^. _y + yOffset * yScale) (offset ^. _z)) (tupleToV4 color) splines divs
+        Plane {..} -> return $ plane pos unit n.yOffset (V3 (offset ^. _x) (offset ^. _y + yOffset * yScale) (offset ^. _z)) (tupleToV4 color) splines divs
+        Slope {..} -> return $ slope pos unit highEdge (high, low) (V3 (offset ^. _x) (offset ^. _y + yOffset * yScale) (offset ^. _z)) (tupleToV4 color) splines divs
+        Cylinder {..} -> return $ cylinder pos unit center height (V3 (offset ^. _x) (offset ^. _y + yOffset * yScale) (offset ^. _z)) (tupleToV4 color) splines divs
+        Cone {..} -> return $ cone pos unit center height (V3 (offset ^. _x) (offset ^. _y + yOffset * yScale) (offset ^. _z)) (tupleToV4 color) splines
+        Sphere {..} -> return $ sphere pos unit height (V3 (offset ^. _x) (offset ^. _y + yOffset * yScale) (offset ^. _z)) (tupleToV4 color) splines
+        Reference r yOffset -> do
           m <- case r of
             (Embed m) -> return m
             (External path) -> loadMapFile path -- TODO: check recursive recursion
           let msize = fromIntegral <$> uncurry V2 m.size
               size' :: V2 Float = fromIntegral <$> uncurry V2 isize
               unit' = liftA2 (/) size' msize
-              offset'' = splined splines (fmap fromIntegral a) + offset
-           in parse offset'' unit' m
+              offset' = splined splines (fmap fromIntegral a) + offset ^. _xz
+              offset'' = V3 (offset' ^. _x) yOffset (offset' ^. _y)
+           in do
+                a <- parse offset'' unit' m
+                return $ snd3 a
 
-toMesh :: (HasCallStack) => V2 Float -> V2 Float -> MapDefs -> SplinePairs Float -> IO (Vector Mesh)
+toMesh :: (HasCallStack) => V3 Float -> V2 Float -> MapDefs (Vector (V2 Int)) -> SplinePairs Float -> IO (Vector Mesh)
 toMesh offset unit m sps =
-  M.foldMapWithKey (itr offset unit sps) m.defs
+  M.foldMapWithKey
+    ( \_id (n, size, pos) ->
+        let yScale = ((unit ^. _x + unit ^. _y) / 2)
+            unit' = V3 (unit ^. _x) yScale (unit ^. _y)
+         in V.foldMap (parseShape offset unit' n size yScale sps) pos
+    )
+    m.defs
 
-parse :: (HasCallStack) => V2 Float -> V2 Float -> MapFile -> IO (Vector Mesh)
+parse :: (HasCallStack) => V3 Float -> V2 Float -> MapFile -> IO (Vector (BB.Box V2 Int, MapDef), Vector Mesh, SplinePairs Float)
 parse offset unit m = do
-  ds <- either E.throw return $ V.mapM (parseMapDef m.size) m.mapData
-  V.foldMap (\d -> toMesh offset unit d (spline1 m.size m.splineX m.splineY)) ds
+  ds <- either E.throw return $ V.mapM (parseMapDef' m.size) m.mapData
+  let sps = spline1 m.size m.splineX m.splineY
+  r <- V.foldMap (\(_, d) -> toMesh offset unit d sps) ds
+  return (V.concatMap fst ds, r, sps)
 
-parseMapFile :: (HasCallStack) => V2 Float -> MapFile -> IO (Vector Mesh)
+parseMapFile :: (HasCallStack) => V3 Float -> MapFile -> IO (Vector (BB.Box V2 Int, MapDef), Vector Mesh, SplinePairs Float)
 parseMapFile offset = parse offset 1
 
 data TextMesh = TextMesh
@@ -160,7 +163,8 @@ data Env os = Env
   { win :: Window os RGBAFloat DepthStencil,
     textureStorage :: IORef (M.Map (Double, Char) (Texture2D os (Format RGBAFloat))),
     fpsSetting :: IORef Double,
-    lastRenderedTime :: IORef Double
+    lastRenderedTime :: IORef Double,
+    maps :: IORef (Vector (BB.Box V2 Int, MapDef), V3 Float, SplinePairs Float)
   }
 
 type ShaderInput = (V2 Int, String)
@@ -174,6 +178,8 @@ buildRenderer ::
   ContextT ctx os m (ApplicationUniforms os, CompiledShader os GlobalUniformB)
 buildRenderer win os = do
   unis <- newUniforms . fromIntegral . length $ os
+  ps <- compileShader $ pointShader win unis
+  ls <- compileShader $ lineShader win unis
   r <- forM os $ \obj -> do
     bs <- compileShader $ boardShader win unis obj.id
     ts <- compileShader $ boardShader win unis obj.id
@@ -217,7 +223,14 @@ buildRenderer win os = do
                   clearWindowStencil win 0
                   let input = PlainInput i.windowSize (fromMaybe (V4 0 0 0 0.75) color) prims
                   ms input
-                p -> trace ("unsupported topology " ++ show p) $ return ()
+                TopologyLines p -> do
+                  pArr <- newVertexArray vbuf
+                  let prims = toPrimitiveArray p pArr
+                  ls $ LinesInput i.windowSize (fromMaybe (V4 0 0 0 0.75) color) prims
+                TopologyPoints p -> do
+                  pArr <- newVertexArray vbuf
+                  let prims = toPrimitiveArray p pArr
+                  ps $ PointsInput i.windowSize (fromMaybe (V4 0 0 0 0.75) color) prims
     rankBundle rs
   return
     (unis, bundle r)
@@ -239,7 +252,7 @@ execGame Game {..} =
   runResourceT' . unResource $ runContextT (GLFW.defaultHandleConfig {GLFW.configEventPolicy = Just GLFW.Poll}) $ unCtx $ do
     rs@(_, _, Env {..}) <- prepare
 
-    (keyInput, keyInputSink) <- liftIO $ E.external (Input {direction1 = Nothing, direction2 = Nothing, reset = False, enter = False, rotation = Nothing, n = Nothing, hardReset = False, save = False})
+    (keyInput, keyInputSink) <- liftIO $ E.external (Input {direction1 = Nothing, direction2 = Nothing, reset = False, enter = False, rotation = Nothing, n = Nothing, hardReset = False, save = False, speedUp = False})
     nw <- liftIO $ network rs keyInput
 
     _ <- liftIO $ GLFW.setTime 0
@@ -260,7 +273,6 @@ data GameOrder = GameReset | GameLoad Int | GameContinue | GameSave Int
 
 data Game = Game
   { prepare ::
-      (HasCallStack) =>
       forall os.
       (GameCtx os)
         ( GameOrder ->
@@ -271,7 +283,6 @@ data Game = Game
           Env os
         ),
     network ::
-      (HasCallStack) =>
       forall os.
       ( GameOrder -> GlobalUniformB -> M.Map ObjectId ObjectUniformB -> GameCtx os (),
         Maybe (BB.Box V2 Double) -> ShaderInput -> GameCtx os (),
@@ -317,7 +328,7 @@ game =
     { prepare = do
         win <- GameCtx $ newWindow (WindowFormatColorDepthStencilCombined RGBA8 Depth24Stencil8) (GLFW.defaultWindowConfig "omocha")
         font <- loadFont "VL-PGothic-Regular.ttf"
-        json <- liftIO $ GLTF.fromJsonFile "body5.gltf"
+        json <- liftIO $ GLTF.fromJsonFile "monkey.gltf"
         j <- liftIO $ case json of
           Left e -> E.throw . userError $ show e
           Right v' -> return v'
@@ -331,8 +342,10 @@ game =
                 { id = ObjectId 0,
                   meshes = meshFromGltf j
                 }
-            offset = -V2 10 10
-        mapFileMeshes <- liftIO $ parseMapFile offset mf
+            offset = -V3 0 0 0
+        (m, mapFileMeshes, sps) <- liftIO $ parseMapFile offset mf
+        maps <- liftIO $ newIORef (m, offset, sps)
+
         let meshes =
               SceneObject
                 { id = ObjectId 1,
@@ -373,7 +386,8 @@ game =
                   E.catch
                     ( do
                         f <- liftIO $ loadMapFile "map.json"
-                        mf <- liftIO $ parseMapFile offset f
+                        (m, mf, sps) <- liftIO $ parseMapFile offset f
+                        writeIORef maps (m, offset, sps)
 
                         let others =
                               SceneObject
@@ -403,7 +417,8 @@ game =
                   E.catch
                     ( do
                         f <- liftIO $ loadMapFile $ "map" ++ show i ++ ".json"
-                        mf <- liftIO $ parseMapFile offset f
+                        (m, mf, sps) <- liftIO $ parseMapFile offset f
+                        writeIORef maps (m, offset, sps)
 
                         let others =
                               SceneObject
@@ -422,37 +437,42 @@ game =
                   r <- liftIO $ readIORef renderings
                   r g o
 
-        return (update, renderText, Env win textureStorage fpsSetting lastRenderTime),
+        return (update, renderText, Env win textureStorage fpsSetting lastRenderTime maps),
       network = \(update, renderText, env) keyInput ->
         E.start $ do
           dt <- genDeltaTime
           moveUnit <- E.transfer 0 (\_ dt' _ -> realToFrac $ 3 * dt') dt
 
           ki <- keyInput
+          maps <- E.effectful $ readIORef env.maps
+
           target <-
-            E.transfer2
-              (V3 0 0 0)
-              ( \_ input mu t ->
-                  if
-                    | input.reset -> V3 0 0 0
-                    | input.n == Just 1 -> V3 0 0 0
-                    | otherwise ->
-                        t
-                          & _x
-                          +~ ( case input.direction1 of
-                                 Just DirRight -> mu
-                                 Just DirLeft -> -mu
-                                 _ -> 0
-                             )
-                            & _z
-                          +~ ( case input.direction1 of
-                                 Just DirDown -> mu
-                                 Just DirUp -> -mu
-                                 _ -> 0
-                             )
+            E.transfer3
+              (V3 0 0 0, V3 (0 :: Float) 0 1, Nothing)
+              ( \_ input mu (ms, offset, _) (t, d, current) ->
+                  let d' = case input.direction1 of
+                        Just n -> case current of
+                          Just current' | n == current' -> d
+                          _ -> case n of
+                            DirUp -> d
+                            DirDown -> -d
+                            DirRight -> fromQuaternion (axisAngle (V3 0 1 0) (-(pi / 2))) !* d
+                            DirLeft -> fromQuaternion (axisAngle (V3 0 1 0) (pi / 2)) !* d
+                        Nothing -> d
+                      t' =
+                        if
+                          | input.reset -> V3 0 0 0
+                          | isJust input.direction1 ->
+                              let t' = t + d * pure mu * if input.speedUp then 3 else 1
+                                  h = mapHeight ms offset (BB.Box (t' ^. _xz & _y -~ 0.55 & _x +~ 0.80) (t' ^. _xz & _y +~ 0.15 & _x +~ 1))
+                                  mh = h - 0.35
+                               in if mh < t' ^. _y - 0.5 || mh > t' ^. _y + 0.5 then t else t' & _y .~ mh
+                          | otherwise -> t
+                   in (t', d', input.direction1)
               )
               ki
               moveUnit
+              maps
           -- p :: (Fractional a) => V3 a -> V3 a -> a -> V3 a
           -- p p0 v0 t = V3 (p0 ^. _x + v0 ^. _x * t) (p0 ^. _y + v0 ^. _y * t - 0.5 * 9.81 * t * t) (p0 ^. _z + v0 ^. _z * t)
 
@@ -472,35 +492,39 @@ game =
           camera' <-
             E.transfer4
               (V3 0 5 7.5)
-              ( \_ theta' t input mu p ->
+              ( \_ theta (t, dir, d) input mu p ->
                   if
-                    | input.reset -> V3 0 5 7.5
+                    | input.reset -> V3 0 2 2.5
                     | input.n == Just 0 -> V3 0 30 0
                     | otherwise ->
-                        let t' =
-                              p
-                                & _y
-                                +~ ( case input.direction2 of
-                                       Just DirRight -> mu
-                                       Just DirLeft -> -mu
-                                       _ -> 0
-                                   )
-                                  & _z
-                                +~ ( case input.direction2 of
-                                       Just DirUp -> mu
-                                       Just DirDown -> -mu
-                                       _ -> 0
-                                   )
+                        if isJust d
+                          then
+                            (p + ((t - 10 * dir) & _y +~ 3)) / 2
+                          else
+                            let t' =
+                                  p
+                                    & _y
+                                    +~ ( case input.direction2 of
+                                           Just DirRight -> mu
+                                           Just DirLeft -> -mu
+                                           _ -> 0
+                                       )
+                                      & _z
+                                    +~ ( case input.direction2 of
+                                           Just DirUp -> mu
+                                           Just DirDown -> -mu
+                                           _ -> 0
+                                       )
 
-                            traslated = t' - t
-                            rotated = rotationMatrix theta' !* point traslated
-                         in rotated ^. _xyz + t
+                                traslated = t' - t
+                                rotated = rotationMatrix theta !* point traslated
+                             in rotated ^. _xyz + t
               )
               theta
               target
               ki
               moveUnit
-          return $ updateFrame env update renderText <$> camera' <*> target <*> ki
+          return $ updateFrame env update renderText <$> camera' <*> fmap fst3 target <*> fmap snd3 target <*> ki
     }
   where
     genDeltaTime = do
@@ -517,17 +541,23 @@ game =
       (Maybe (BB.Box V2 Double) -> ShaderInput -> GameCtx os ()) ->
       V3 Float ->
       V3 Float ->
+      V3 Float ->
       Input ->
       (GameCtx os) ()
-    updateFrame Env {..} update renderText camera target input = do
+    updateFrame Env {..} update renderText camera target dir input = do
       sz <- GameCtx $ getFrameBufferSize win
       let viewUpNorm = V3 0 1 0
           normMat = identity
-          lightDir = V3 (-0.5) (0.5) 0.5
+          modelProj =
+            mkTransformation (axisAngle (V3 0 1 0) (unangle (dir ^. _zx))) (V3 1 0 (-0.25))
+              !*! mkTransformation zero (V3 (-1) 0 0.25)
+
+          lightDir = V3 (-0.5) 0.5 0.5
 
       fpsSetting' <- liftIO $ readIORef fpsSetting
       let timePerFrame = 1 / fpsSetting'
       current <- liftIO GLFW.getTime
+      (_, _, sps) <- liftIO $ readIORef maps
       lastRenderTime' <- liftIO $ readIORef lastRenderedTime
       let current' = fromMaybe lastRenderTime' current
       liftIO $ writeIORef lastRenderedTime current'
@@ -547,6 +577,6 @@ game =
               | otherwise -> GameContinue
           )
           GlobalUniform {windowSize = sz, modelNorm = normMat, viewCamera = camera, viewTarget = target, viewUp = viewUpNorm, lightDirection = lightDir}
-          (M.singleton (ObjectId 0) (ObjectUniform {position = target}))
+          (M.singleton (ObjectId 0) (ObjectUniform {position = splined3 sps target, proj = modelProj}))
       _ <- renderText Nothing (sz, inp)
       GameCtx $ swapWindowBuffers win
