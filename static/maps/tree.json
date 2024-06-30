@@ -3,15 +3,15 @@
     "mapData":[
         {
             "defs":{
-                "1":{"color":[0.1,0.1,0.15,1],"height":4,"tag":"Cylinder", "yOffset": 0},
-                "2":{"color":[0.05,0.3,0.05,1],"height":8,"tag":"Cone","yOffset":2},
-                "3":{"color":[0.05,0.3,0.05,1],"height":1.5,"tag":"Sphere", "yOffset": 4},
-                "4":{"color":[0.05,0.3,0.05,1],"height":1.5,"tag":"Sphere", "yOffset": 3},
-                "5":{"color":[0.05,0.3,0.05,1],"height":1.5,"tag":"Sphere", "yOffset": 3},
-                "6":{"color":[0.05,0.3,0.05,1],"height":1.5,"tag":"Sphere", "yOffset": 3},
-                "7":{"color":[0.05,0.3,0.05,1],"height":1.5,"tag":"Sphere", "yOffset": 4.5},
-                "8":{"color":[0.05,0.3,0.05,1],"height":1.5,"tag":"Sphere", "yOffset": 8},
-                "9":{"color":[0.05,0.3,0.05,1],"height":1.5,"tag":"Sphere", "yOffset": 6}
+                "1":{"color":[20,20,30,255],"height":4,"tag":"Cylinder", "yOffset": 0},
+                "2":{"color":[10,60,10,255],"height":8,"tag":"Cone","yOffset":2},
+                "3":{"color":[10,60,10,255],"height":1.5,"tag":"Sphere", "yOffset": 4},
+                "4":{"color":[10,60,10,255],"height":1.5,"tag":"Sphere", "yOffset": 3},
+                "5":{"color":[10,60,10,255],"height":1.5,"tag":"Sphere", "yOffset": 3},
+                "6":{"color":[10,60,10,255],"height":1.5,"tag":"Sphere", "yOffset": 3},
+                "7":{"color":[10,60,10,255],"height":1.5,"tag":"Sphere", "yOffset": 4.5},
+                "8":{"color":[10,60,10,255],"height":1.5,"tag":"Sphere", "yOffset": 8},
+                "9":{"color":[10,60,10,255],"height":1.5,"tag":"Sphere", "yOffset": 6}
             },
             "maps":[
                 [

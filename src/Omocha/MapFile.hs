@@ -14,6 +14,7 @@ import Data.Vector.Algorithms.Intro qualified as VAI
 import Linear.V2
 import Linear.V3
 import Omocha.Spline
+import Omocha.Uniform
 import RIO
 
 type EdgePoint = (Bool, Bool)
@@ -30,6 +31,11 @@ data MapReference = Embed MapFile | External FilePath
   deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
 
 type Color = (Float, Float, Float, Float)
+
+type RGBA = (Int, Int, Int, Int)
+
+rgba :: RGBA -> Color
+rgba (r, g, b, a) = (fromIntegral r / 255, fromIntegral g / 255, fromIntegral b / 255, fromIntegral a / 255)
 
 data Meta
   = SplineStart
@@ -50,40 +56,50 @@ data Meta
   deriving (Eq, Show, Ord, Generic, ToJSON, FromJSON)
 
 data MapDef
-  = Cube
+  = Empty
+  | Cube
       { height :: Float,
-        color :: Color,
+        color :: RGBA,
         yOffset :: Float
       }
   | Plane
-      { color :: Color,
+      { color :: RGBA,
         yOffset :: Float
       }
   | Slope
       { high :: Float,
         low :: Float,
-        color :: Color,
+        color :: RGBA,
         yOffset :: Float,
         highEdge :: Direction
+      }
+  | Tetra
+      { high :: Float,
+        low :: Float,
+        color :: RGBA,
+        yOffset :: Float,
+        edge :: EdgePoint
       }
   | Reference MapReference Float
   | Cylinder
       { height :: Float,
-        color :: Color,
+        color :: RGBA,
         yOffset :: Float,
         center :: Maybe EdgePoint
       }
   | Cone
       { height :: Float,
-        color :: Color,
+        color :: RGBA,
         yOffset :: Float,
         center :: Maybe EdgePoint
       }
   | Sphere
       { height :: Float,
-        color :: Color,
+        color :: RGBA,
         yOffset :: Float
       }
+  | Gltf FilePath
+  | Glb FilePath
   deriving (Show, Generic, Eq, Ord, ToJSON, FromJSON)
 
 data MapData
@@ -115,7 +131,6 @@ data MapFile = MapFile
   { size :: Size Int,
     splineX :: Maybe Splined,
     splineY :: Maybe Splined,
-    crossed :: Maybe (Maybe Bool, Maybe Bool),
     mapData :: Vector MapData
   }
   deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
@@ -124,15 +139,14 @@ newtype DefId = DefId Int
   deriving (Generic)
   deriving (Eq, Show, Num, Ord, Ix, ToJSON, FromJSON, ToJSONKey, FromJSONKey) via Int
 
-newtype InstanceId = InstanceId Int
-  deriving (Generic)
-  deriving (Eq, Show, Num, Ord, Ix, ToJSON, FromJSON, ToJSONKey, FromJSONKey) via Int
+-- newtype InstanceId = InstanceId Int
+--   deriving (Generic)
+--   deriving (Eq, Show, Num, Ord, Ix, ToJSON, FromJSON, ToJSONKey, FromJSONKey) via Int
 
 mf :: MapFile
 mf =
   MapFile
     { size = (6, 5),
-      crossed = Nothing,
       splineY =
         Just
           $ Splined
@@ -154,12 +168,12 @@ mf =
                       ],
                 defs =
                   M.fromList
-                    [ (1, Cube 1 (0.4, 0.2, 0.4, 1) 0),
-                      (2, Cube 2 (0.5, 0.5, 0.5, 1) 0),
-                      (3, Cube 2 (0.4, 0.8, 0.4, 1) 0),
-                      (8, Cube 8 (0.5, 0.5, 0.5, 1) 0),
-                      (5, Cylinder 0.01 (0.5, 0.5, 0.5, 1) 0 Nothing),
-                      (8, Reference (Embed (MapFile (2, 2) Nothing Nothing Nothing V.empty)) 0)
+                    [ (1, Cube 1 (100, 30, 100, 255) 0),
+                      (2, Cube 2 (127, 127, 127, 255) 0),
+                      (3, Cube 2 (100, 200, 100, 255) 0),
+                      (8, Cube 8 (127, 127, 127, 255) 0),
+                      (5, Cylinder 0.01 (127, 127, 127, 255) 0 Nothing),
+                      (8, Reference (Embed (MapFile (2, 2) Nothing Nothing V.empty)) 0)
                     ]
               }
           ]
@@ -188,65 +202,52 @@ parseMap (sw, sh) mapData
 isInside :: BB.Box V2 Int -> Int -> Int -> Bool
 isInside bb x y = BB.isInside (fmap fromIntegral (V2 x y) + (V2 0.5 0.5 :: V2 Float)) (fmap fromIntegral bb)
 
-newtype MapDefs a = MapDefs
-  { defs :: M.Map InstanceId (MapDef, Size Int, a)
+newtype MapDefs b = MapDefs
+  { defs :: M.Map ObjectId (MapDef, Size Int, b)
   }
   deriving (Show)
 
 instance Monoid (MapDefs (Vector a)) where
   mempty = MapDefs M.empty
 
+data Maps = Maps
+  { unit :: V2 Float,
+    defs :: Vector (BB.Box V2 Int, MapDef, ObjectId),
+    offset :: V3 Float,
+    splines :: SplinePairs Float,
+    dir :: FilePath
+  }
+
 instance Semigroup (MapDefs (Vector a)) where
   (MapDefs im) <> (MapDefs im') = MapDefs (im `M.union` M.mapKeys (+ leftMaxId) im')
     where
       leftMaxId = M.foldlWithKey' (\a i _ -> max a i) 1 im
 
-parseMapDef :: (HasCallStack) => (Int, Int) -> MapData -> Either String (Vector (BB.Box V2 Int, MapDef))
-parseMapDef (x, y) (Fill def) = Right $ V.singleton (BB.Box (V2 0 0) (V2 x y), def)
-parseMapDef size (Tips {..}) = do
-  bmap <- mapM (parseMap size) maps
-  mapM
-    ( \(bb, k) -> do
+parse :: (HasCallStack) => (Int, Int) -> MapData -> Either String (Vector (BB.Box V2 Int, MapDef, ObjectId))
+parse (x, y) (Fill def) = Right $ V.singleton (BB.Box (V2 0 0) (V2 x y), def, ObjectId 1)
+parse size (Tips {..}) = do
+  b <- foldMapM (parseMap size) maps
+  V.imapM
+    ( \i (bb, k) -> do
         def <- maybeToRight ("key: " ++ show k ++ " not found") (defs M.!? k)
-        return (bb, def)
+        return (bb, def, ObjectId i + 1)
     )
-    (join bmap)
+    b
 
-mapHeight :: Vector (BB.Box V2 Int, MapDef) -> V3 Float -> BB.Box V2 Float -> Float
-mapHeight vs offset t@(BB.Box start end) =
-  case V.find (\(bb, _) -> any (\t' -> BB.isInside (t' - offset ^. _xz) (fmap fromIntegral bb)) (BB.corners t)) vs of
-    Just (_, Cube {..}) -> yOffset + height
-    Just (_, Plane {}) -> 0
-    Just (BB.Box ts te, Slope {..}) ->
-      let width = fmap fromIntegral $ te - ts
-       in yOffset + case highEdge of
-            (X, False) -> low + (high - low) * (1 - (center ^. _x - fromIntegral (ts ^. _x)) / (width ^. _x))
-            (X, True) -> low + (high - low) * ((center ^. _x - fromIntegral (ts ^. _x)) / (width ^. _x))
-            (Y, False) -> low + (high - low) * (1 - (center ^. _y - fromIntegral (ts ^. _y)) / (width ^. _y))
-            (Y, True) -> low + (high - low) * ((center ^. _y - fromIntegral (ts ^. _y)) / (width ^. _y))
-    Just (_, Sphere {..}) -> height
-    Just (_, Cylinder {..}) -> height
-    Just (_, Cone {..}) -> height
-    Just (_, Reference _ y) -> y
-    Nothing -> 0
-  where
-    center :: V2 Float = start + (end - start) / 2 - offset ^. _xz
-
-parseMapDef' :: (HasCallStack) => (Int, Int) -> MapData -> Either String (Vector (BB.Box V2 Int, MapDef), MapDefs (Vector (V2 Int)))
-parseMapDef' size md = do
-  ls <- parseMapDef size md
+parseMapDef :: (HasCallStack) => (Int, Int) -> MapData -> Either String (Vector (BB.Box V2 Int, MapDef, ObjectId), MapDefs (Vector (V2 Int, ObjectId)))
+parseMapDef size md = do
+  ls <- parse size md
   return
     ( ls,
       MapDefs
-        ( foldl'
-            ( \im (i, (BB.Box start end, def)) ->
-                let id = InstanceId i
-                    V2 w h = end - start
+        ( V.foldl'
+            ( \im (BB.Box start end, def, objId) ->
+                let V2 w h = end - start
                     size = (w, h)
-                 in M.alter (Just . maybe (def, size, V.singleton start) (third3 (`V.snoc` start))) id im
+                 in M.alter (Just . maybe (def, size, V.singleton (start, objId)) (third3 (`V.snoc` (start, objId)))) objId im
             )
             M.empty
-            (V.imap (,) ls)
+            ls
         )
     )
 

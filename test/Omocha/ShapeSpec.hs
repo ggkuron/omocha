@@ -1,4 +1,4 @@
-module ShapeSpec (spec) where
+module Omocha.ShapeSpec (spec) where
 
 import Data.Vector qualified as V
 import Omocha.Shape

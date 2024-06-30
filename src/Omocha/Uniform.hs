@@ -9,7 +9,7 @@ module Omocha.Uniform
     readObjectUniform,
     GlobalUniformB,
     ObjectUniformS,
-    ObjectUniformB,
+    ObjectUniformB (..),
     ObjectId (..),
     renderWith,
   )
@@ -29,7 +29,7 @@ data ApplicationUniforms os = ApplicationUniforms
   }
 
 newtype ObjectId = ObjectId Int
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Num)
 
 data GlobalUniform i f = GlobalUniform
   { windowSize :: V2 i,
@@ -44,14 +44,18 @@ type GlobalUniformS a = GlobalUniform (S a Int) (S a Float)
 
 type GlobalUniformB = GlobalUniform Int Float
 
-data ObjectUniform f = ObjectUniform
+data ObjectUniform f b = ObjectUniform
   { position :: V3 f,
     proj :: M44 f
   }
 
-type ObjectUniformS a = ObjectUniform (S a Float)
+type ObjectUniformS a = ObjectUniform (S a Float) (S a Int)
 
-type ObjectUniformB = ObjectUniform Float
+data ObjectUniformB = ObjectUniformB
+  { position :: V3 Float,
+    proj :: M44 Float,
+    visible :: Bool
+  }
 
 readGlobalUniform :: ApplicationUniforms os -> Shader os s (GlobalUniformS a)
 readGlobalUniform unis = do
@@ -78,7 +82,7 @@ newUniforms numOfObjects = do
 renderWith ::
   (MonadIO m, ContextHandler ctx, Control.Monad.Exception.MonadException m) =>
   ApplicationUniforms os ->
-  CompiledShader os GlobalUniformB ->
+  CompiledShader os (GlobalUniformB, M.Map ObjectId ObjectUniformB) ->
   CompiledShader os (V2 Int) ->
   GlobalUniformB ->
   M.Map ObjectId ObjectUniformB ->
@@ -87,4 +91,4 @@ renderWith uni r clear g os = do
   writeGlobal uni g
   writeBuffer uni.objects 0 [maybe (V3 0 0 0, identity) (\a -> (a.position, a.proj)) (M.lookup (ObjectId i) os) | i <- [0 .. fromIntegral uni.sizeOfObjects]]
   render $ clear g.windowSize
-  render $ r g
+  render $ r (g, os)

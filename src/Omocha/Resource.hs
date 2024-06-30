@@ -6,11 +6,9 @@
 
 module Omocha.Resource where
 
-import Control.Exception qualified as CE
 import Control.Monad.Exception qualified as E (MonadAsyncException (..), MonadException (throw), catch, fromException, throw)
 import Control.Monad.Trans.Resource (MonadResource (..), ResourceT, resourceMask, runResourceT)
-import Data.Typeable
-import Debug.Trace (trace, traceStack)
+import Debug.Trace (traceStack)
 import GHC.Stack (callStack)
 import RIO hiding (traceStack)
 

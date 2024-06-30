@@ -7,6 +7,7 @@ module Omocha.Scene
   )
 where
 
+import Data.BoundingBox qualified as BB
 import Graphics.GPipe
 import Omocha.Mesh
 import Omocha.Uniform
@@ -14,7 +15,8 @@ import RIO
 
 data SceneObject = SceneObject
   { meshes :: Vector Mesh,
-    id :: ObjectId
+    id :: ObjectId,
+    bbox :: BB.Box V2 Int
   }
   deriving (Show)
 

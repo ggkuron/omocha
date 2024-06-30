@@ -1,19 +1,19 @@
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE RecursiveDo #-}
 
-module Omocha.Game (run, transpose, bundle, parseMapFile) where
+module Omocha.Game (run, transpose, bundle) where
 
-import Control.Lens ((+~), (-~))
+import Control.Lens ((+~))
 import Control.Monad
-import Control.Monad.Exception qualified as E (MonadException (catch, throw), throw)
+import Control.Monad.Exception qualified as E (MonadException (catch))
 import Data.Aeson hiding (json)
 import Data.Bits (xor)
 import Data.BoundingBox qualified as BB
+import Data.BoundingBox.V2 qualified as BB
 import Data.ByteString.Lazy qualified as BS
 import Data.Map.Strict qualified as M
-import Data.Tuple.Extra (both, snd3)
+import Data.Tuple.Extra (both)
 import Data.Vector qualified as V
 import Debug.Trace (trace)
 import FRP.Elerea.Param qualified as E
@@ -23,23 +23,18 @@ import Numeric (showFFloat)
 import Omocha.Bitmap
 import Omocha.Context
 import Omocha.Font
+import Omocha.Gltf
+import Omocha.Map
 import Omocha.MapFile
 import Omocha.Mesh
 import Omocha.Resource
 import Omocha.Scene
 import Omocha.Shader
-import Omocha.Shape
-import Omocha.Spline
 import Omocha.Text (text)
 import Omocha.Uniform
 import Omocha.UserInput
-import Paths_omocha
 import RIO hiding (trace, traceStack)
-import Text.GLTF.Loader (Gltf (gltfMeshes))
-import Text.GLTF.Loader qualified as GLTF
-import Prelude (userError)
-
-loadBitmapsWith [|getDataFileName|] "../../static/images"
+import RIO.FilePath (takeDirectory)
 
 loadImage ::
   (MonadIO m, ContextHandler ctx) =>
@@ -50,61 +45,6 @@ loadImage bmp = do
   t <- newTexture2D RGBA8 siz maxBound
   when (siz /= V2 0 0) $ writeTexture2D t 0 0 siz (getPixels img)
   return t
-
-loadMapFile :: (HasCallStack) => FilePath -> IO MapFile
-loadMapFile path = do
-  f <- eitherDecodeFileStrict path
-  case f of
-    Right m -> return m
-    Left m -> E.throw ("invalid map file: " ++ path ++ "\n" ++ m :: String)
-
-tupleToV4 :: (a, a, a, a) -> V4 a
-tupleToV4 (a, b, c, d) = V4 a b c d
-
-parseShape :: (HasCallStack) => V3 Float -> V3 Float -> MapDef -> Size Int -> Float -> SplinePairs Float -> V2 Int -> IO (Vector Mesh)
-parseShape offset unit n isize yScale sps a =
-  let splines = sps
-      pos = both (both fromIntegral) ((a ^. _x, a ^. _x + fst isize), (a ^. _y, a ^. _y + snd isize))
-      divs = uncurry V2 isize * 16
-   in case n of
-        Cube {..} -> return $ cube pos unit height (V3 (offset ^. _x) (offset ^. _y + yOffset * yScale) (offset ^. _z)) (tupleToV4 color) splines divs
-        Plane {..} -> return $ plane pos unit n.yOffset (V3 (offset ^. _x) (offset ^. _y + yOffset * yScale) (offset ^. _z)) (tupleToV4 color) splines divs
-        Slope {..} -> return $ slope pos unit highEdge (high, low) (V3 (offset ^. _x) (offset ^. _y + yOffset * yScale) (offset ^. _z)) (tupleToV4 color) splines divs
-        Cylinder {..} -> return $ cylinder pos unit center height (V3 (offset ^. _x) (offset ^. _y + yOffset * yScale) (offset ^. _z)) (tupleToV4 color) splines divs
-        Cone {..} -> return $ cone pos unit center height (V3 (offset ^. _x) (offset ^. _y + yOffset * yScale) (offset ^. _z)) (tupleToV4 color) splines
-        Sphere {..} -> return $ sphere pos unit height (V3 (offset ^. _x) (offset ^. _y + yOffset * yScale) (offset ^. _z)) (tupleToV4 color) splines
-        Reference r yOffset -> do
-          m <- case r of
-            (Embed m) -> return m
-            (External path) -> loadMapFile path -- TODO: check recursive recursion
-          let msize = fromIntegral <$> uncurry V2 m.size
-              size' :: V2 Float = fromIntegral <$> uncurry V2 isize
-              unit' = liftA2 (/) size' msize
-              offset' = splined splines (fmap fromIntegral a) + offset ^. _xz
-              offset'' = V3 (offset' ^. _x) yOffset (offset' ^. _y)
-           in do
-                a <- parse offset'' unit' m
-                return $ snd3 a
-
-toMesh :: (HasCallStack) => V3 Float -> V2 Float -> MapDefs (Vector (V2 Int)) -> SplinePairs Float -> IO (Vector Mesh)
-toMesh offset unit m sps =
-  M.foldMapWithKey
-    ( \_id (n, size, pos) ->
-        let yScale = ((unit ^. _x + unit ^. _y) / 2)
-            unit' = V3 (unit ^. _x) yScale (unit ^. _y)
-         in V.foldMap (parseShape offset unit' n size yScale sps) pos
-    )
-    m.defs
-
-parse :: (HasCallStack) => V3 Float -> V2 Float -> MapFile -> IO (Vector (BB.Box V2 Int, MapDef), Vector Mesh, SplinePairs Float)
-parse offset unit m = do
-  ds <- either E.throw return $ V.mapM (parseMapDef' m.size) m.mapData
-  let sps = spline1 m.size m.splineX m.splineY
-  r <- V.foldMap (\(_, d) -> toMesh offset unit d sps) ds
-  return (V.concatMap fst ds, r, sps)
-
-parseMapFile :: (HasCallStack) => V3 Float -> MapFile -> IO (Vector (BB.Box V2 Int, MapDef), Vector Mesh, SplinePairs Float)
-parseMapFile offset = parse offset 1
 
 data TextMesh = TextMesh
   { vertexes :: [(V2 Float, V2 Float)],
@@ -130,38 +70,12 @@ charMeshes font bbox piel = text font piel renderer bbox
         (V2 x' y', V2 0 0)
       ]
 
-scene :: Scene
-scene =
-  Scene
-    { camera = V3 0 0.25 1,
-      objects =
-        V.fromList
-          [ SceneObject
-              { id = ObjectId 0,
-                meshes =
-                  V.fromList
-                    [ Mesh
-                        (rect (V3 0 1 0) (V2 1 1) (V3 0.5 0 0.5))
-                        Nothing
-                        (V3 0 0 0)
-                        (Just _maptips_grass_png)
-                        BoardShader
-                        (TopologyTriangles TriangleStrip)
-                        Nothing,
-                      Mesh
-                        (rect (V3 0 0 1) (V2 2 2) (V3 0 1 0))
-                        Nothing
-                        (V3 0 0 0)
-                        (Just _front0_png)
-                        BoardShader
-                        (TopologyTriangles TriangleStrip)
-                        Nothing
-                    ]
-              }
-          ]
-    }
-
-type Maps = (Vector (BB.Box V2 Int, MapDef), V3 Float, SplinePairs Float)
+position :: Maps -> Position -> V2 Int
+position m p =
+  let V2 x y = (p.position ^. _xz + BB.center p.bbox - m.offset ^. _xz)
+   in V2 (floor $ clamp (x / (m.unit ^. _x)) 0 (fst size')) (floor $ clamp (y / (m.unit ^. _y)) 0 (snd size'))
+  where
+    size' :: (Float, Float) = both (fromIntegral . (\a -> a - 1) . length) m.splines
 
 data Env os = Env
   { win :: Window os RGBAFloat DepthStencil,
@@ -176,6 +90,7 @@ type ShaderInput = (V2 Int, String)
 data Position = Position
   { position :: V3 Float,
     direction :: V3 Float,
+    bbox :: BB.Box V2 Float,
     inputDirection :: Maybe Omocha.UserInput.Direction,
     a :: V3 Float,
     v :: V3 Float,
@@ -194,20 +109,25 @@ showV3F = concatMap showF
 instance Show Position where
   show Position {..} = "pos: " ++ showV3F position ++ "\n\tdir: " ++ showV3F direction ++ "\n\ta: " ++ showV3F a ++ "\n\tv: " ++ showV3F v ++ "\n\tstate: " ++ show state
 
-updatePosition :: Position -> Input -> Maps -> Position
-updatePosition p input (ms, offset, _) =
+playerBox :: BB.Box V2 Float
+playerBox = BB.Box (V2 0.8 (-0.55)) (V2 1 0.15)
+
+updatePosition :: Position -> InputE -> Maps -> IO Position
+updatePosition p input m =
   if
-    | input.reset ->
-        Position
-          { position = V3 0 0 0,
-            direction = p.direction,
-            inputDirection = input.direction1,
-            state = Grounded,
-            a = V3 0 0 0,
-            v = V3 0 0 0
-          }
-    | otherwise ->
-        let (d', keepMoving) = case input.direction1 of
+    | fst input.reset ->
+        return
+          $ Position
+            { position = V3 0 0 0,
+              direction = p.direction,
+              bbox = playerBox,
+              inputDirection = fst input.direction1,
+              state = Grounded,
+              a = V3 0 0 0,
+              v = V3 0 0 0
+            }
+    | otherwise -> do
+        let (d', keepMoving) = case justInput input.direction1 of
               Just n -> case p.inputDirection of
                 Just current' | n == current' -> (p.direction, True)
                 _ -> case n of
@@ -221,73 +141,77 @@ updatePosition p input (ms, offset, _) =
             grounded = p.state == Grounded
             a' =
               if
-                | hovering && isJust input.direction1 && not keepMoving -> d' * if input.speedUp then 1.5 else 0.5
-                | hovering && input.stop -> -p.v
-                | input.stop -> V3 0 0 0
-                | not hovering && input.jump && p.state == Grounded -> (p.a + V3 0 60 0) / 2
+                | hovering && isJust (justInput input.direction1) && not keepMoving -> d' * if justInput input.speedUp then 1.5 else 0.5
+                | hovering && justInput input.stop -> -p.v
+                | justInput input.stop -> V3 0 0 0
+                | not hovering && edgeInput input.jump && p.state == Grounded -> (p.a + V3 0 60 0) / 2
                 | not hovering && p.state == Jumping -> V3 0 (-9.81) 0
                 | otherwise -> V3 0 0 0
-            hovering' = hovering `xor` input.hover
+            hovering' = hovering `xor` edgeInput input.hover
             v' =
               min
                 (pure 3)
                 if
-                  | grounded && input.stop -> V3 0 0 0
-                  | grounded && isJust input.direction1 -> d' * if input.speedUp then 3 else 1
+                  | grounded && justInput input.stop -> V3 0 0 0
+                  | grounded && isJust (justInput input.direction1) -> d' * if justInput input.speedUp then 3 else 1
                   | grounded -> V3 0 (a' ^. _y * perFrameTime) 0 -- 加速度による滑りを消しているが、加速度計算で考慮する方がおそらく良い
                   | otherwise -> p.v + a' * pure perFrameTime
-            (t', grounded') =
-              let t = p.position + v' * pure perFrameTime
-                  h = mapHeight ms offset (BB.Box (t ^. _xz & _y -~ 0.55 & _x +~ 0.80) (t ^. _xz & _y +~ 0.15 & _x +~ 1))
-                  mountable = h < (p.position ^. _y) + 0.5 && h > (p.position ^. _y) - 0.5
-                  t' =
-                    ( if
-                        | mountable -> t
-                        | hovering -> t
-                        | otherwise -> t & _xz .~ (p.position ^. _xz)
-                    )
-                      & _y
-                      .~ ( if
-                             | hovering ->
-                                 if
-                                   | mountable -> min h (t ^. _y)
-                                   | h > t ^. _y - 0.5 -> (t ^. _y) + 0.5
-                                   | otherwise -> t ^. _y
-                             | grounded ->
-                                 if
-                                   | mountable -> max (t ^. _y) h
-                                   | otherwise -> p.position ^. _y
-                             | otherwise -> max h (t ^. _y)
-                         )
-               in (t', if not mountable && not hovering then p.state == Grounded else t' ^. _y <= h)
-         in Position
-              { position = t',
-                direction = d',
-                inputDirection = input.direction1,
-                a = if grounded' then a' & _y .~ 0 else a',
-                v = if grounded' then v' & _y .~ 0 else v',
-                state =
-                  if
-                    | hovering' -> Hovering
-                    | grounded' -> Grounded
-                    | otherwise -> Jumping
-              }
+        (t', grounded') <- do
+          let t = p.position + v' * pure perFrameTime
+          h <- mapHeight m (p.bbox `BB.move` (t ^. _xz)) 0
+
+          let mountable = h < (p.position ^. _y) + 0.5 && h > (p.position ^. _y) - 0.5
+              t' =
+                ( if
+                    | mountable -> t
+                    | hovering -> t
+                    | otherwise -> t & _xz .~ (p.position ^. _xz)
+                )
+                  & _y
+                  .~ ( if
+                         | hovering ->
+                             if
+                               | mountable -> min h (t ^. _y)
+                               | h > t ^. _y - 0.5 -> (t ^. _y) + 0.5
+                               | otherwise -> t ^. _y
+                         | grounded ->
+                             if
+                               | mountable -> max (t ^. _y) h
+                               | otherwise -> p.position ^. _y
+                         | otherwise -> max h (t ^. _y)
+                     )
+          return (t', if not mountable && not hovering then p.state == Grounded else t' ^. _y <= h)
+        return
+          $ Position
+            { position = t',
+              direction = d',
+              bbox = BB.Box (V2 0.8 (-0.55)) (V2 1 0.15),
+              inputDirection = fst input.direction1,
+              a = if grounded' then a' & _y .~ 0 else a',
+              v = if grounded' then v' & _y .~ 0 else v',
+              state =
+                if
+                  | hovering' -> Hovering
+                  | grounded' -> Grounded
+                  | otherwise -> Jumping
+            }
 
 buildRenderer ::
   (HasCallStack) =>
   forall ctx os m.
   (ContextHandler ctx, MonadIO m, E.MonadException m) =>
   Window os RGBAFloat DepthStencil ->
-  [SceneObject] ->
-  ContextT ctx os m (ApplicationUniforms os, CompiledShader os GlobalUniformB)
+  Vector SceneObject ->
+  ContextT ctx os m (ApplicationUniforms os, CompiledShader os (GlobalUniformB, M.Map ObjectId ObjectUniformB))
 buildRenderer win os = do
   unis <- newUniforms . fromIntegral . length $ os
   ps <- compileShader $ pointShader win unis
   ls <- compileShader $ lineShader win unis
+  ms <- compileShader $ monoShader win unis
+  bs <- compileShader $ boardShader win unis
+  ts <- compileShader $ boardShader win unis
+
   r <- forM os $ \obj -> do
-    bs <- compileShader $ boardShader win unis obj.id
-    ts <- compileShader $ boardShader win unis obj.id
-    ms <- compileShader $ monoShader win unis obj.id
     rs <- forM obj.meshes $ \(Mesh {..}) -> do
       ibuf <- case indices of
         Just indices' -> do
@@ -308,33 +232,37 @@ buildRenderer win os = do
           when (l > 0) $ writeBuffer vbuf 0 [(position + offset, normal, uv) | Vertex {..} <- vertices]
           return
             $ V.singleton
-            $ \i ->
-              case topology of
-                TopologyTriangles p -> do
-                  prims <- newPrimitiveArray p vbuf ibuf
-                  shader' $ RenderInput i.windowSize prims t'
-                p -> trace ("unsupported topology " ++ show p) $ return ()
+            $ \(i, m) ->
+              when
+                (maybe False (\o -> o.visible) $ M.lookup obj.id m)
+                $ case topology of
+                  TopologyTriangles p -> do
+                    prims <- newPrimitiveArray p vbuf ibuf
+                    shader' $ RenderInput i.windowSize prims t'
+                  p -> trace ("unsupported topology " ++ show p) $ return ()
         Nothing -> do
           vbuf <- newBuffer l
           when (l > 0) $ writeBuffer vbuf 0 [(position + offset, normal) | Vertex {..} <- vertices]
 
           return
             $ V.singleton
-            $ \i ->
-              case topology of
-                TopologyTriangles p -> do
-                  prims <- newPrimitiveArray p vbuf ibuf
-                  clearWindowStencil win 0
-                  let input = PlainInput i.windowSize (fromMaybe (V4 0 0 0 0.75) color) prims
-                  ms input
-                TopologyLines p -> do
-                  pArr <- newVertexArray vbuf
-                  let prims = toPrimitiveArray p pArr
-                  ls $ LinesInput i.windowSize (fromMaybe (V4 0 0 0 0.75) color) prims
-                TopologyPoints p -> do
-                  pArr <- newVertexArray vbuf
-                  let prims = toPrimitiveArray p pArr
-                  ps $ PointsInput i.windowSize (fromMaybe (V4 0 0 0 0.75) color) prims
+            $ \(i, m) ->
+              when
+                (maybe False (\o -> o.visible) $ M.lookup obj.id m)
+                $ case topology of
+                  TopologyTriangles p -> do
+                    prims <- newPrimitiveArray p vbuf ibuf
+                    clearWindowStencil win 0
+                    let input = PlainInput i.windowSize (fromMaybe (V4 0 0 0 0.75) color) obj prims
+                    ms input
+                  TopologyLines p -> do
+                    pArr <- newVertexArray vbuf
+                    let prims = toPrimitiveArray p pArr
+                    ls $ LinesInput i.windowSize (fromMaybe (V4 0 0 0 0.75) color) prims
+                  TopologyPoints p -> do
+                    pArr <- newVertexArray vbuf
+                    let prims = toPrimitiveArray p pArr
+                    ps $ PointsInput i.windowSize (fromMaybe (V4 0 0 0 0.75) color) prims
     rankBundle rs
   return
     (unis, bundle r)
@@ -397,46 +325,13 @@ data Game = Game
       IO (Double -> IO (GameCtx os ()))
   }
 
-meshFromGltf :: GLTF.Gltf -> Vector Mesh
-meshFromGltf j = V.concatMap (\(GLTF.Mesh _meshName prims _wieghts) -> processMeshPrimitive <$> prims) (gltfMeshes j)
-  where
-    processMeshPrimitive :: GLTF.MeshPrimitive -> Mesh
-    processMeshPrimitive (GLTF.MeshPrimitive indices _material mode normals positions texcoords) =
-      Mesh
-        { vertices = V.toList $ V.zipWith3 Vertex positions normals texcoords,
-          indices = Just . V.toList $ V.map fromIntegral indices,
-          offset = V3 1 1 0,
-          texture = Nothing,
-          topology = case mode of
-            GLTF.Points -> TopologyPoints PointList
-            GLTF.Lines -> TopologyLines LineList
-            GLTF.LineLoop -> TopologyLines LineLoop
-            GLTF.LineStrip -> TopologyLines LineStrip
-            GLTF.TriangleFan -> TopologyTriangles TriangleFan
-            GLTF.TriangleStrip -> TopologyTriangles TriangleStrip
-            GLTF.Triangles -> TopologyTriangles TriangleList,
-          shader = TargetBoard,
-          color =
-            do
-              i <- _material
-              m <- j.gltfMaterials V.!? i
-              metallicRoughness <- m.materialPbrMetallicRoughness
-              return metallicRoughness.pbrBaseColorFactor
-        }
-
-rotationMatrix :: Float -> M44 Float
-rotationMatrix theta = m33_to_m44 $ fromQuaternion $ axisAngle (V3 0 1 0) theta
-
 game :: (HasCallStack) => Game
 game =
   Game
     { prepare = do
         win <- GameCtx $ newWindow (WindowFormatColorDepthStencilCombined RGBA8 Depth24Stencil8) (GLFW.defaultWindowConfig "omocha")
         font <- loadFont "VL-PGothic-Regular.ttf"
-        json <- liftIO $ GLTF.fromJsonFile "monkey.gltf"
-        j <- liftIO $ case json of
-          Left e -> E.throw . userError $ show e
-          Right v' -> return v'
+        pmesh <- liftIO $ fromGltf "monkey.gltf"
 
         textureStorage <- liftIO $ newIORef M.empty
         fpsSetting <- liftIO $ newIORef 60
@@ -445,24 +340,23 @@ game =
         let player =
               SceneObject
                 { id = ObjectId 0,
-                  meshes = meshFromGltf j
+                  meshes = pmesh,
+                  bbox = BB.Box (V2 0 0) (V2 1 1)
                 }
-            offset = -V3 0 0 0
-        (m, mapFileMeshes, sps) <- liftIO $ parseMapFile offset mf
-        maps <- liftIO $ newIORef (m, offset, sps)
+            offset = V3 0 0 0
+            unit = V2 20 20
 
-        let meshes =
-              SceneObject
-                { id = ObjectId 1,
-                  meshes =
-                    V.concatMap (.meshes) scene.objects V.++ mapFileMeshes
-                }
-        (unis, s) <- GameCtx $ buildRenderer win [meshes, player]
+        let mapFile = "static/maps/group1/group.json"
+        g <- liftIO $ loadMapFile mapFile
+        (m, objs, sps) <- liftIO $ parseMapFile (takeDirectory mapFile) offset unit g
+
+        maps <- liftIO $ newIORef (Maps unit m offset sps (takeDirectory mapFile))
+        (unis, s) <- GameCtx $ buildRenderer win (player `V.cons` objs)
         let clear = do
               clearWindowColor win (V4 0 0.25 1 1)
               clearWindowDepthStencil win 1 0
         ts <- GameCtx $ compileShader $ textShader win unis
-        gs <- GameCtx $ gridShader win unis mf.size mf.splineX mf.splineY offset
+        gs <- GameCtx $ gridShader win unis g unit offset
         renderings <- liftIO $ newIORef $ renderWith unis s $ \vpSize -> do
           clear
           gs vpSize
@@ -490,18 +384,13 @@ game =
                 GameReset -> do
                   E.catch
                     ( do
-                        f <- liftIO $ loadMapFile "map.json"
-                        (m, mf, sps) <- liftIO $ parseMapFile offset f
-                        writeIORef maps (m, offset, sps)
+                        let mapFile = "static/maps/group1/group.json"
+                        (f, (m, objs, sps)) <- liftIO $ loadMap mapFile unit
 
-                        let others =
-                              SceneObject
-                                { id = ObjectId 1,
-                                  meshes =
-                                    V.concatMap (.meshes) scene.objects V.++ mf
-                                }
-                        (unis, s) <- buildRenderer win [others, player]
-                        gs <- gridShader win unis f.size f.splineX f.splineY offset
+                        writeIORef maps (Maps unit m offset sps (takeDirectory mapFile))
+                        (unis, s) <- buildRenderer win (player `V.cons` objs)
+
+                        gs <- gridShader win unis f unit offset
                         let r = renderWith unis s $ \vpSize -> do
                               clear
                               gs vpSize
@@ -521,18 +410,13 @@ game =
                 GameLoad i -> do
                   E.catch
                     ( do
-                        f <- liftIO $ loadMapFile $ "map" ++ show i ++ ".json"
-                        (m, mf, sps) <- liftIO $ parseMapFile offset f
-                        writeIORef maps (m, offset, sps)
+                        let dir = "static/maps/group" ++ show i
+                        (f, (m, objs, sps)) <- liftIO $ loadMap (dir ++ "/group.json") unit
 
-                        let others =
-                              SceneObject
-                                { id = ObjectId 1,
-                                  meshes =
-                                    V.concatMap (.meshes) scene.objects V.++ mf
-                                }
-                        (unis, s) <- buildRenderer win [others, player]
-                        gs <- gridShader win unis f.size f.splineX f.splineY offset
+                        writeIORef maps (Maps 1 m offset sps $ "static/maps/group" ++ show i)
+                        (unis, s) <- buildRenderer win (player `V.cons` objs)
+
+                        gs <- gridShader win unis f 1 offset
                         let r = renderWith unis s $ \vpSize -> do
                               clear
                               gs vpSize
@@ -544,28 +428,39 @@ game =
 
         return (update, renderText, Env win textureStorage fpsSetting lastRenderTime maps),
       network = \(update, renderText, env) keyInput ->
-        E.start $ do
+        E.start $ mdo
           dt <- genDeltaTime
           moveUnit <- E.transfer 0 (\_ dt' _ -> realToFrac $ 3 * dt') dt
 
           ki <- keyInput
+          ki' <-
+            E.transfer
+              initialInputE
+              (\_ i p -> diffInput i $ onlyInput p)
+              ki
+
           maps <- E.effectful $ readIORef env.maps
 
-          target <-
-            E.transfer3
+          p <-
+            E.delay
               ( Position
                   { position = V3 0 0 0,
                     direction = V3 0 0 1,
+                    bbox = BB.Box (V2 0.8 (-0.55)) (V2 1 0.15),
                     inputDirection = Nothing,
                     a = V3 0 0 0,
                     v = V3 0 0 0,
                     state = Grounded
                   }
               )
-              (\_ input _ maps p -> updatePosition p input maps)
-              ki
+              target
+          target <-
+            E.effectful4
+              (\input _ maps p -> updatePosition p input maps)
+              ki'
               moveUnit
               maps
+              p
 
           theta <-
             E.transfer2
@@ -587,6 +482,7 @@ game =
                   if
                     | input.reset -> V3 0 2 2.5
                     | input.n == Just 0 -> V3 0 30 0
+                    | input.cameraLock -> p
                     | otherwise ->
                         if isJust t.inputDirection
                           then (p + ((t.position - 10 * t.direction) & _y +~ 3)) / 2
@@ -607,7 +503,7 @@ game =
                                        )
 
                                 traslated = t' - t.position
-                                rotated = rotationMatrix theta !* point traslated
+                                rotated = fromQuaternion (axisAngle (V3 0 1 0) theta) !* traslated
                              in rotated ^. _xyz + t.position
               )
               theta
@@ -620,53 +516,71 @@ game =
     genDeltaTime = do
       sig <- E.stateful (0, 0) (\t (_, p) -> (t - p, t))
       return $ fst <$> sig
-    updateFrame ::
-      forall os.
-      Env os ->
-      ( GameOrder ->
-        GlobalUniformB ->
-        M.Map ObjectId ObjectUniformB ->
-        GameCtx os ()
-      ) ->
-      (Maybe (BB.Box V2 Double) -> ShaderInput -> GameCtx os ()) ->
-      V3 Float ->
-      Position ->
-      Input ->
-      (GameCtx os) ()
-    updateFrame Env {..} update renderText camera target input = do
-      sz <- GameCtx $ getFrameBufferSize win
-      let viewUpNorm = V3 0 1 0
-          normMat = identity
-          modelProj =
-            (if target.state == Hovering then mkTransformation (axisAngle target.direction (pi / 2)) zero else identity)
-              !*! mkTransformation (axisAngle (V3 0 1 0) (unangle (target.direction ^. _zx))) (V3 1 0 (-0.25))
-              !*! mkTransformation zero (V3 (-1) 0 0.25)
 
-          lightDir = V3 (-0.5) 0.5 0.5
+updateFrame ::
+  forall os.
+  Env os ->
+  ( GameOrder ->
+    GlobalUniformB ->
+    M.Map ObjectId ObjectUniformB ->
+    GameCtx os ()
+  ) ->
+  (Maybe (BB.Box V2 Double) -> ShaderInput -> GameCtx os ()) ->
+  V3 Float ->
+  Position ->
+  Input ->
+  (GameCtx os) ()
+updateFrame env update renderText camera target input = do
+  sz <- GameCtx $ getFrameBufferSize env.win
+  let viewUpNorm = V3 0 1 0
+      normMat = identity
+      modelProj =
+        (if target.state == Hovering then mkTransformation (axisAngle target.direction (pi / 2)) zero else identity)
+          !*! mkTransformation (axisAngle (V3 0 1 0) (unangle (target.direction ^. _zx))) (V3 1 0 (-0.25))
+          !*! mkTransformation zero (V3 (-1) 0 0.25)
 
-      fpsSetting' <- liftIO $ readIORef fpsSetting
-      let timePerFrame = 1 / fpsSetting'
-      current <- liftIO GLFW.getTime
-      (_, _, sps) <- liftIO $ readIORef maps
-      lastRenderTime' <- liftIO $ readIORef lastRenderedTime
-      let current' = fromMaybe lastRenderTime' current
-      liftIO $ writeIORef lastRenderedTime current'
-      let delta = current' - lastRenderTime'
-          waitTime = timePerFrame - delta
-          fps = 1 / delta
-      when (waitTime > 0) $ liftIO $ threadDelay $ floor $ waitTime * 1000000
-      let inp = "target: " ++ show target ++ "\ncamera: " ++ showV3F camera ++ "\nfps: " ++ showF fps ++ "\nmid:" ++ show input.n
-      _ <-
-        update
-          ( if
-              | input.hardReset -> GameReset
-              | input.save -> GameSave 1
-              | input.n == Just 2 -> GameLoad 2
-              | input.n == Just 3 -> GameLoad 3
-              | input.n == Just 4 -> GameLoad 4
-              | otherwise -> GameContinue
-          )
-          GlobalUniform {windowSize = sz, modelNorm = normMat, viewCamera = camera, viewTarget = target.position, viewUp = viewUpNorm, lightDirection = lightDir}
-          (M.singleton (ObjectId 0) (ObjectUniform {position = splined3 sps target.position, proj = modelProj}))
-      _ <- renderText Nothing (sz, inp)
-      GameCtx $ swapWindowBuffers win
+      lightDir = V3 (-0.5) 0.5 0.5
+
+  fpsSetting' <- liftIO $ readIORef env.fpsSetting
+  let timePerFrame = 1 / fpsSetting'
+  current <- liftIO GLFW.getTime
+  m <- liftIO $ readIORef env.maps
+  lastRenderTime' <- liftIO $ readIORef env.lastRenderedTime
+  let current' = fromMaybe lastRenderTime' current
+  liftIO $ writeIORef env.lastRenderedTime current'
+  let delta = current' - lastRenderTime'
+      waitTime = timePerFrame - delta
+      fps = 1 / delta
+      pos = position m target
+  when (waitTime > 0) $ liftIO $ threadDelay $ floor $ waitTime * 1000000
+  let inp = "target: " ++ show target ++ "\ncamera: " ++ showV3F camera ++ "\nfps: " ++ showF fps ++ "\nmid:" ++ show input.n ++ "\np: " ++ show pos
+      visibleBox :: BB.Box V2 Int = BB.Box (V2 0 0) (V2 1 1) `BB.move` pos
+  _ <-
+    update
+      ( if
+          | input.hardReset -> GameReset
+          | input.save -> GameSave 1
+          | input.n == Just 2 -> GameLoad 2
+          | input.n == Just 3 -> GameLoad 3
+          | input.n == Just 4 -> GameLoad 4
+          | otherwise -> GameContinue
+      )
+      GlobalUniform {windowSize = sz, modelNorm = normMat, viewCamera = camera, viewTarget = target.position, viewUp = viewUpNorm, lightDirection = lightDir}
+      ( M.fromAscList
+          $ (ObjectId 0, ObjectUniformB {position = splined3 m.splines target.position, proj = modelProj, visible = True})
+          : V.toList
+            ( V.map
+                ( \(_, _, id) ->
+                    ( id,
+                      ObjectUniformB
+                        { position = V3 0 0 0,
+                          proj = identity,
+                          visible = True
+                        }
+                    )
+                )
+                (V.filter (\(box, _, _) -> BB.aabb box visibleBox) m.defs)
+            )
+      )
+  _ <- renderText Nothing (sz, inp)
+  GameCtx $ swapWindowBuffers env.win
