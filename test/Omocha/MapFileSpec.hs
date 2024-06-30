@@ -1,8 +1,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
-{-# OPTIONS_GHC -Wno-unused-do-bind #-}
 
-module MapFileSpec (spec) where
+module Omocha.MapFileSpec (spec) where
 
 import Data.Aeson
 import Data.BoundingBox qualified as BB
@@ -176,10 +175,10 @@ spec = do
                         {
                             "tag": "Tips",
                             "defs":{
-                                "1":{"color":[0.4,0.2,0.4,1],"height":1,"tag":"Cube", "yOffset": 0},
-                                "2":{"color":[0.5,0.5,0.5,1],"height":2,"tag":"Cube", "yOffset": 0},
-                                "8":{"color":[0.5,0.5,0.5,1],"height":8,"tag":"Cube", "yOffset": 4},
-                                "3":{"color":[0.5,0.5,0.5,1],"high":1, "low": 0.02, "tag":"Slope", "highEdge": ["Y", true], "yOffset": 0},
+                                "1":{"color":[100, 28,100,255],"height":1,"tag":"Cube", "yOffset": 0},
+                                "2":{"color":[127,127,127,255],"height":2,"tag":"Cube", "yOffset": 0},
+                                "8":{"color":[127,127,127,255],"height":8,"tag":"Cube", "yOffset": 4},
+                                "3":{"color":[127,127,127,255],"high":1, "low": 0.02, "tag":"Slope", "highEdge": ["Y", true], "yOffset": 0},
                                 "4":{
                                   "tag":"Reference",
                                   "contents": [
@@ -207,7 +206,7 @@ spec = do
                         {
                             "tag": "Fill",
                             "contents": {
-                                "color":[0.2,0.4,0.2,1],
+                                "color":[24,100,24,255],
                                 "height":0.05,
                                 "tag":"Cube",
                                 "yOffset": 0
@@ -216,7 +215,7 @@ spec = do
                     ],
                     "size":[5,5]
                 }|]
-      let a :: Either String MapFile = eitherDecodeStrict exampleJson
+      let a :: Either String (MapFile MapDef) = eitherDecodeStrict exampleJson
       a `shouldSatisfy` isRight
 
 genMatrix :: forall a. (Arbitrary a) => Gen [[a]]

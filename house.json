@@ -3,9 +3,9 @@
     "mapData":[
         {
             "defs":{
-                "1":{"color":[0.1,0.1,0.15,1],"height":4,"tag":"Cube", "yOffset": 0},
-                "2":{"color":[0.5,0.5,0.5,1],"high":2.5, "low": 0, "tag":"Slope", "highEdge": ["Y", false], "yOffset": 4},
-                "3":{"color":[0.5,0.5,0.5,1],"high":2.5, "low": 0, "tag":"Slope", "highEdge": ["Y", true], "yOffset": 4}
+                "1":{"color":[25,25,30,255],"height":4,"tag":"Cube", "yOffset": 0},
+                "2":{"color":[127,127,127,255],"high":2.5, "low": 0, "tag":"Slope", "highEdge": ["Y", false], "yOffset": 4},
+                "3":{"color":[127,127,127,255],"high":2.5, "low": 0, "tag":"Slope", "highEdge": ["Y", true], "yOffset": 4}
            },
             "maps":[
                 [

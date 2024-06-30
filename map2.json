@@ -13,7 +13,7 @@
         {
             "tag": "Tips",
             "defs": { 
-                "1":{"color":[0.05,0.3,0.05,1],"height":0.5,"tag":"Cube", "yOffset": 0}
+                "1":{"color":[10,30,10,255],"height":0.5,"tag":"Cube", "yOffset": 0}
             },
             "maps": [
                 [

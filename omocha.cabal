@@ -64,8 +64,10 @@ common shared-properties
 library
   import:          shared-properties
   exposed-modules:
+    Data.BoundingBox.V2
     Omocha.Game
     Omocha.MapFile
+    Omocha.Map
     Omocha.Shape
     Omocha.Spline
 
@@ -102,13 +104,14 @@ test-suite omocha-test
   type:             exitcode-stdio-1.0
   main-is:          Spec.hs
   other-modules:
-    GameSpec
-    MapFileSpec
+    Data.BoundingBox.V2Spec
+    Omocha.GameSpec
+    Omocha.MapFileSpec
+    Omocha.ShapeSpec
+    Omocha.SplineSpec
     Paths_omocha
-    ShapeSpec
-    SplineSpec
 
-  hs-source-dirs:   test/Omocha
+  hs-source-dirs:   test
   build-depends:
     , hspec
     , omocha

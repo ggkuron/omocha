@@ -1,4 +1,8 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Omocha.Shader where
 
@@ -8,6 +12,7 @@ import Data.Tuple.Extra (both)
 import Data.Vector qualified as V
 import Graphics.GPipe hiding (trace, transpose)
 import Omocha.MapFile
+import Omocha.Scene (SceneObject (..))
 import Omocha.Shape
 import Omocha.Uniform
 import RIO hiding (trace)
@@ -26,7 +31,7 @@ data PointsInput os = PointsInput (V2 Int) (V4 Float) (PrimitiveArray Points (BP
 
 data LinesInput os = LinesInput (V2 Int) (V4 Float) (PrimitiveArray Lines (BPosition, BNormal))
 
-data PlainInput os = PlainInput (V2 Int) (V4 Float) (PrimitiveArray Triangles (BPosition, BNormal))
+data PlainInput os = PlainInput (V2 Int) (V4 Float) SceneObject (PrimitiveArray Triangles (BPosition, BNormal))
 
 data TextInput os = TextInput (V2 Int) (PrimitiveArray Triangles (BScreenPosition, BUV)) (Texture2D os (Format RGBAFloat))
 
@@ -46,13 +51,11 @@ boardStencilShader win unis = do
 boardShader ::
   Window os RGBAFloat DepthStencil ->
   ApplicationUniforms os ->
-  ObjectId ->
   Shader os (RenderInput os) ()
-boardShader win unis oid = do
+boardShader win unis = do
   g <- readGlobalUniform unis
-  o <- readObjectUniform unis oid
   boards <- toPrimitiveStream (\(RenderInput _ ri _) -> ri)
-  let projected = (\(v, n, uv) -> let (v', n') = proj g (v + o.position, n) in (v', (n', uv))) <$> boards
+  let projected = (\(v, n, uv) -> let (v', n') = proj g (v, n) in (v', (n', uv))) <$> boards
       filterMode = SamplerFilter Linear Linear Linear (Just 16)
       edge = (pure ClampToEdge, 1.0)
   samp <- newSampler2D $ \(RenderInput _ _ tex) -> (tex, filterMode, edge)
@@ -113,9 +116,9 @@ monoStencil ::
   Shader os (PlainInput os) ()
 monoStencil win unis = do
   uni <- readGlobalUniform unis
-  boards <- toPrimitiveStream $ \(PlainInput _ c st) -> (\v -> (v, c)) <$> st
+  boards <- toPrimitiveStream $ \(PlainInput _ c _ st) -> (\v -> (v, c)) <$> st
   let projected = (\((v, n), _c) -> let (v', n') = proj uni (v, n) in let _ = v' ^. _xyz + (n' * 0.1) in (v', V4 1 0 1 1 :: V4 VFloat)) <$> boards
-  frags <- rasterize (\(PlainInput ri _ _) -> (Front, ViewPort (V2 0 0) ri, DepthRange 0 1)) projected
+  frags <- rasterize (\(PlainInput ri _ _ _) -> (Front, ViewPort (V2 0 0) ri, DepthRange 0 1)) projected
   let stencilOption = StencilOption Always 1 OpKeep OpReplace (complement 0) (complement 0)
   let colorOption = ContextColorOption NoBlending (pure True)
   -- depthOption = DepthOption Lequal True
@@ -135,10 +138,10 @@ gouraudShader ::
 gouraudShader win unis oid = do
   g <- readGlobalUniform unis
   o <- readObjectUniform unis oid
-  boards <- toPrimitiveStream $ \(PlainInput _ c st) -> (\v -> (v, c)) <$> st
+  boards <- toPrimitiveStream $ \(PlainInput _ c _ st) -> (\v -> (v, c)) <$> st
   let lightDir :: V3 VFloat = normalizeS g.lightDirection
   let projected = (\((v, n), c :: V4 VFloat) -> let (v', _) = proj g (v + o.position, n) in (v', let diffuse :: V4 VFloat = point . return $ clamp (lightDir `dot` n) 0.1 1.0 in c * diffuse)) <$> boards
-  fragmentStream <- rasterize (\(PlainInput ri _ _) -> (Front, ViewPort (V2 0 0) ri, DepthRange 0 1)) projected
+  fragmentStream <- rasterize (\(PlainInput ri _ _ _) -> (Front, ViewPort (V2 0 0) ri, DepthRange 0 1)) projected
   let litFrags =
         withRasterizedInfo
           (\p x -> (p, rasterizedFragCoord x ^. _z))
@@ -148,17 +151,31 @@ gouraudShader win unis oid = do
       stencilOptions = FrontBack (StencilOption Equal 0 OpKeep OpKeep (complement 0) (complement 0)) (StencilOption Equal 0 OpKeep OpKeep (complement 0) (complement 0))
   drawWindowColorDepthStencil (const (win, colorOption, DepthStencilOption stencilOptions depthOption (FrontBack OpKeep OpKeep))) litFrags
 
+-- instance ShaderType (PlainInput x) x where
+--   type ShaderBaseType (PlainInput x) = ShaderBaseType (S x Float, S x Int)
+--   toBase x ~(PlainInput f i) = toBase x (f, i)
+--   fromBase x b = let (f,i) = fromBase x b in (PlainInput f i)
+
+readObjectUniform' :: ApplicationUniforms os -> Shader os (PlainInput os) (ObjectUniformS a)
+readObjectUniform' unis = do
+  uni <- getUniform (\(PlainInput _ _ a _) -> let (ObjectId id) = a.id in (unis.objects, id))
+  let (position, modelProj) = uni
+  return $ ObjectUniform position modelProj
+
 phongShader ::
   Window os RGBAFloat DepthStencil ->
   ApplicationUniforms os ->
-  ObjectId ->
   Shader os (PlainInput os) ()
-phongShader win unis oid = do
+phongShader win unis = do
   g <- readGlobalUniform unis
-  o <- readObjectUniform unis oid
-  boards <- toPrimitiveStream $ \(PlainInput _ c st) -> (\v -> (v, c)) <$> st
+  o <- readObjectUniform' unis
+  -- ifThen
+  -- (o.visible /=* 0)
+  -- ( \_ -> do
+  -- guard' (\s -> s)
+  boards <- toPrimitiveStream $ \(PlainInput _ c _ st) -> (\v -> (v, c)) <$> st
   let projected = (\((v, n), c) -> let (v', n') = proj g (normalizePoint (o.proj !* point v) + o.position, n) in (v', (n', c))) <$> boards
-  fragmentStream <- rasterize (\(PlainInput ri _ _) -> (Front, ViewPort (V2 0 0) ri, DepthRange 0 1)) projected
+  fragmentStream <- rasterize (\(PlainInput ri _ _ _) -> (Front, ViewPort (V2 0 0) ri, DepthRange 0 1)) projected
   unif <- readGlobalUniform unis
   let lightDir :: V3 FFloat = normalizeS unif.lightDirection
   -- eyeDir = normalizeS $ unif.viewCamera
@@ -177,7 +194,9 @@ phongShader win unis oid = do
       stencilOptions = FrontBack (StencilOption Equal 0 OpKeep OpKeep (complement 0) (complement 0)) (StencilOption Equal 0 OpKeep OpKeep (complement 0) (complement 0))
   drawWindowColorDepthStencil (const (win, colorOption, DepthStencilOption stencilOptions depthOption (FrontBack OpKeep OpKeep))) litFrags
 
-monoShader :: Window os RGBAFloat DepthStencil -> ApplicationUniforms os -> ObjectId -> Shader os (PlainInput os) ()
+-- ) $ return ()
+
+monoShader :: Window os RGBAFloat DepthStencil -> ApplicationUniforms os -> Shader os (PlainInput os) ()
 monoShader = phongShader
 
 monoShader' ::
@@ -188,9 +207,9 @@ monoShader' ::
 monoShader' win unis oid = do
   g <- readGlobalUniform unis
   o <- readObjectUniform unis oid
-  boards <- toPrimitiveStream $ \(PlainInput _ c st) -> (\v -> (v, c)) <$> st
+  boards <- toPrimitiveStream $ \(PlainInput _ c _ st) -> (\v -> (v, c)) <$> st
   let projected = (\((v, n), c) -> let (v', _) = proj g (v + o.position, n) in (v', c)) <$> boards
-  fragmentStream <- rasterize (\(PlainInput ri _ _) -> (Front, ViewPort (V2 0 0) ri, DepthRange 0 1)) projected
+  fragmentStream <- rasterize (\(PlainInput ri _ _ _) -> (Front, ViewPort (V2 0 0) ri, DepthRange 0 1)) projected
   let litFrags =
         withRasterizedInfo
           (\p x -> (p, rasterizedFragCoord x ^. _z))
@@ -253,25 +272,25 @@ gridShader ::
   (HasCallStack, ContextHandler ctx, MonadIO m, Control.Monad.Exception.MonadException m) =>
   Window os RGBAFloat DepthStencil ->
   ApplicationUniforms os ->
-  (Int, Int) ->
-  Maybe Splined ->
-  Maybe Splined ->
+  MapFile MapDef ->
+  V2 Float ->
   V3 Float ->
   ContextT ctx os m (CompiledShader os (V2 Int))
-gridShader win unis size@(sx, sy) ms cs offset =
+gridShader win unis m unit offset =
   do
     let gridColor :: V4 Float = V4 0.75 0.75 0.75 1
-        sps = spline1 size ms cs
+        size@(sx, sy) = m.size
+        sps = spline1 size m.splineX m.splineY
         point = splined sps
         dts = interval 4 0 1
         xss = V.generate (sy + 1) $ \y -> do
           x :: Float <- V.enumFromN 0 sx
           dt <- dts
-          return $ point (V2 (x + dt) (fromIntegral y))
+          return $ point (V2 ((x + dt) * (unit ^. _x)) (fromIntegral y * (unit ^. _y)))
         yss = V.generate (sx + 1) $ \x -> do
           y :: Float <- V.enumFromN 0 sy
           dt <- dts
-          return $ point (V2 (fromIntegral x) (y + dt))
+          return $ point (V2 (fromIntegral x * (unit ^. _x)) ((y + dt) * (unit ^. _y)))
         v3 (V2 x y) = V3 x 0 y
 
     let v =

@@ -1,4 +1,4 @@
-module SplineSpec (spec) where
+module Omocha.SplineSpec (spec) where
 
 import Data.List (nub, sort)
 import Data.Vector qualified as V

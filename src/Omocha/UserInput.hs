@@ -7,17 +7,103 @@ import RIO
 data Direction = DirUp | DirDown | DirLeft | DirRight
   deriving (Show, Eq)
 
-data Input = Input
-  { direction1 :: Maybe Direction,
-    direction2 :: Maybe Direction,
-    reset :: Bool,
-    save :: Bool,
-    hardReset :: Bool,
-    enter :: Bool,
-    rotation :: Maybe Bool,
-    speedUp :: Bool,
-    n :: Maybe Int
+type Input = InputG (Maybe Direction) Bool (Maybe Bool) (Maybe Int)
+
+data InputG d b r select = Input
+  { direction1 :: d,
+    direction2 :: d,
+    reset :: b,
+    save :: b,
+    stop :: b,
+    hardReset :: b,
+    enter :: b,
+    rotation :: r,
+    speedUp :: b,
+    hover :: b,
+    n :: select,
+    jump :: b,
+    cameraLock :: b
   }
+
+type InputE = InputG (Maybe Direction, Bool) (Bool, Bool) (Maybe Bool, Bool) (Maybe Int, Bool)
+
+initialInput :: Input
+initialInput =
+  Input
+    { direction1 = Nothing,
+      direction2 = Nothing,
+      stop = False,
+      reset = False,
+      enter = False,
+      rotation = Nothing,
+      n = Nothing,
+      hover = False,
+      hardReset = False,
+      save = False,
+      speedUp = False,
+      jump = False,
+      cameraLock = False
+    }
+
+initialInputE :: InputE
+initialInputE =
+  Input
+    { direction1 = (Nothing, False),
+      direction2 = (Nothing, False),
+      stop = (False, False),
+      reset = (False, False),
+      enter = (False, False),
+      rotation = (Nothing, False),
+      n = (Nothing, False),
+      hover = (False, False),
+      hardReset = (False, False),
+      save = (False, False),
+      speedUp = (False, False),
+      jump = (False, False),
+      cameraLock = (False, False)
+    }
+
+onlyInput :: InputE -> Input
+onlyInput i =
+  Input
+    { direction1 = fst i.direction1,
+      direction2 = fst i.direction2,
+      stop = fst i.stop,
+      reset = fst i.reset,
+      enter = fst i.enter,
+      rotation = fst i.rotation,
+      n = fst i.n,
+      hover = fst i.hover,
+      hardReset = fst i.hardReset,
+      save = fst i.save,
+      speedUp = fst i.speedUp,
+      jump = fst i.jump,
+      cameraLock = fst i.cameraLock
+    }
+
+diffInput :: Input -> Input -> InputE
+diffInput a b =
+  Input
+    { direction1 = (a.direction1, a.direction1 /= b.direction1),
+      direction2 = (a.direction2, a.direction2 /= b.direction2),
+      stop = (a.stop, a.stop /= b.stop),
+      reset = (a.reset, a.reset /= b.reset),
+      enter = (a.enter, a.enter /= b.enter),
+      rotation = (a.rotation, a.rotation /= b.rotation),
+      n = (a.n, a.n /= b.n),
+      hover = (a.hover, a.hover /= b.hover),
+      hardReset = (a.hardReset, a.hardReset /= b.hardReset),
+      save = (a.save, a.save /= b.save),
+      speedUp = (a.speedUp, a.speedUp /= b.speedUp),
+      jump = (a.jump, a.jump /= b.jump),
+      cameraLock = (a.cameraLock, a.cameraLock /= b.cameraLock)
+    }
+
+edgeInput :: (Bool, Bool) -> Bool
+edgeInput (a, b) = a && b
+
+justInput :: (a, Bool) -> a
+justInput = fst
 
 readInput ::
   (MonadIO m) =>
@@ -32,9 +118,13 @@ readInput win keyInputSink = do
   k <- isPressed GLFW.Key'K
   l <- isPressed GLFW.Key'L
   space <- isPressed GLFW.Key'Space
-  w <- isPressed GLFW.Key'W
   a <- isPressed GLFW.Key'A
+  w <- isPressed GLFW.Key'W
+  x <- isPressed GLFW.Key'X
+  c <- isPressed GLFW.Key'C
   s <- isPressed GLFW.Key'S
+  e <- isPressed GLFW.Key'E
+  g <- isPressed GLFW.Key'G
   d <- isPressed GLFW.Key'D
   f <- isPressed GLFW.Key'F
   z <- isPressed GLFW.Key'Z
@@ -61,24 +151,28 @@ readInput win keyInputSink = do
                 | k -> Just DirUp
                 | l -> Just DirRight
                 | otherwise -> Nothing,
+            cameraLock = z,
             direction2 =
               if
                 | ctl -> Nothing
-                | a -> Just DirLeft
-                | s -> Just DirDown
-                | w -> Just DirUp
-                | d -> Just DirRight
+                | s -> Just DirLeft
+                | d -> Just DirDown
+                | e -> Just DirUp
+                | g -> Just DirRight
                 | otherwise -> Nothing,
-            reset = not ctl && space,
-            hardReset = ctl && space,
+            reset = not shift && space,
+            hardReset = shift && space,
             enter = f,
             save = ctl && s,
+            stop = c,
             speedUp = shift,
             rotation =
               if
-                | z -> Just True
+                | w -> Just True
                 | f -> Just False
                 | otherwise -> Nothing,
+            jump = a,
+            hover = x,
             n =
               if
                 | n0 -> Just 0

@@ -1,4 +1,4 @@
-module GameSpec (spec) where
+module Omocha.GameSpec (spec) where
 
 import Data.List qualified as L
 import Data.Vector qualified as V
