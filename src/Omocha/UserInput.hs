@@ -12,12 +12,32 @@ data Input = Input
     direction2 :: Maybe Direction,
     reset :: Bool,
     save :: Bool,
+    stop :: Bool,
     hardReset :: Bool,
     enter :: Bool,
     rotation :: Maybe Bool,
     speedUp :: Bool,
-    n :: Maybe Int
+    hover :: Bool,
+    n :: Maybe Int,
+    jump :: Bool
   }
+
+initialInput :: Input
+initialInput =
+  Input
+    { direction1 = Nothing,
+      direction2 = Nothing,
+      stop = False,
+      reset = False,
+      enter = False,
+      rotation = Nothing,
+      n = Nothing,
+      hover = False,
+      hardReset = False,
+      save = False,
+      speedUp = False,
+      jump = False
+    }
 
 readInput ::
   (MonadIO m) =>
@@ -32,9 +52,13 @@ readInput win keyInputSink = do
   k <- isPressed GLFW.Key'K
   l <- isPressed GLFW.Key'L
   space <- isPressed GLFW.Key'Space
-  w <- isPressed GLFW.Key'W
   a <- isPressed GLFW.Key'A
+  x <- isPressed GLFW.Key'X
+  w <- isPressed GLFW.Key'W
+  c <- isPressed GLFW.Key'C
   s <- isPressed GLFW.Key'S
+  e <- isPressed GLFW.Key'E
+  g <- isPressed GLFW.Key'G
   d <- isPressed GLFW.Key'D
   f <- isPressed GLFW.Key'F
   z <- isPressed GLFW.Key'Z
@@ -64,21 +88,24 @@ readInput win keyInputSink = do
             direction2 =
               if
                 | ctl -> Nothing
-                | a -> Just DirLeft
-                | s -> Just DirDown
-                | w -> Just DirUp
-                | d -> Just DirRight
+                | s -> Just DirLeft
+                | d -> Just DirDown
+                | e -> Just DirUp
+                | g -> Just DirRight
                 | otherwise -> Nothing,
             reset = not ctl && space,
             hardReset = ctl && space,
             enter = f,
             save = ctl && s,
+            stop = c,
             speedUp = shift,
             rotation =
               if
                 | z -> Just True
                 | f -> Just False
                 | otherwise -> Nothing,
+            jump = a,
+            hover = x,
             n =
               if
                 | n0 -> Just 0

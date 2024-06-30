@@ -9,15 +9,17 @@ import Control.Lens ((+~), (-~))
 import Control.Monad
 import Control.Monad.Exception qualified as E (MonadException (catch, throw), throw)
 import Data.Aeson hiding (json)
+import Data.Bits (xor)
 import Data.BoundingBox qualified as BB
 import Data.ByteString.Lazy qualified as BS
 import Data.Map.Strict qualified as M
-import Data.Tuple.Extra (both, fst3, snd3)
+import Data.Tuple.Extra (both, snd3)
 import Data.Vector qualified as V
 import Debug.Trace (trace)
 import FRP.Elerea.Param qualified as E
 import Graphics.GPipe hiding (trace, transpose)
 import Graphics.GPipe.Context.GLFW qualified as GLFW
+import Numeric (showFFloat)
 import Omocha.Bitmap
 import Omocha.Context
 import Omocha.Font
@@ -159,15 +161,117 @@ scene =
           ]
     }
 
+type Maps = (Vector (BB.Box V2 Int, MapDef), V3 Float, SplinePairs Float)
+
 data Env os = Env
   { win :: Window os RGBAFloat DepthStencil,
     textureStorage :: IORef (M.Map (Double, Char) (Texture2D os (Format RGBAFloat))),
     fpsSetting :: IORef Double,
     lastRenderedTime :: IORef Double,
-    maps :: IORef (Vector (BB.Box V2 Int, MapDef), V3 Float, SplinePairs Float)
+    maps :: IORef Maps
   }
 
 type ShaderInput = (V2 Int, String)
+
+data Position = Position
+  { position :: V3 Float,
+    direction :: V3 Float,
+    inputDirection :: Maybe Omocha.UserInput.Direction,
+    a :: V3 Float,
+    v :: V3 Float,
+    state :: PositionState
+  }
+
+data PositionState = Hovering | Jumping | Grounded
+  deriving (Show, Eq)
+
+showF :: (RealFloat a) => a -> String
+showF a = showFFloat (Just 2) a " "
+
+showV3F :: V3 Float -> String
+showV3F = concatMap showF
+
+instance Show Position where
+  show Position {..} = "pos: " ++ showV3F position ++ "\n\tdir: " ++ showV3F direction ++ "\n\ta: " ++ showV3F a ++ "\n\tv: " ++ showV3F v ++ "\n\tstate: " ++ show state
+
+updatePosition :: Position -> Input -> Maps -> Position
+updatePosition p input (ms, offset, _) =
+  if
+    | input.reset ->
+        Position
+          { position = V3 0 0 0,
+            direction = p.direction,
+            inputDirection = input.direction1,
+            state = Grounded,
+            a = V3 0 0 0,
+            v = V3 0 0 0
+          }
+    | otherwise ->
+        let (d', keepMoving) = case input.direction1 of
+              Just n -> case p.inputDirection of
+                Just current' | n == current' -> (p.direction, True)
+                _ -> case n of
+                  DirUp -> (p.direction, False)
+                  DirDown -> (-p.direction, False)
+                  DirRight -> (fromQuaternion (axisAngle (V3 0 1 0) (-(pi / 2))) !* p.direction, False)
+                  DirLeft -> (fromQuaternion (axisAngle (V3 0 1 0) (pi / 2)) !* p.direction, False)
+              Nothing -> (p.direction, False)
+            perFrameTime = 1 / 5
+            hovering = p.state == Hovering
+            grounded = p.state == Grounded
+            a' =
+              if
+                | hovering && isJust input.direction1 && not keepMoving -> d' * if input.speedUp then 1.5 else 0.5
+                | hovering && input.stop -> -p.v
+                | input.stop -> V3 0 0 0
+                | not hovering && input.jump && p.state == Grounded -> (p.a + V3 0 60 0) / 2
+                | not hovering && p.state == Jumping -> V3 0 (-9.81) 0
+                | otherwise -> V3 0 0 0
+            hovering' = hovering `xor` input.hover
+            v' =
+              min
+                (pure 3)
+                if
+                  | grounded && input.stop -> V3 0 0 0
+                  | grounded && isJust input.direction1 -> d' * if input.speedUp then 3 else 1
+                  | grounded -> V3 0 (a' ^. _y * perFrameTime) 0 -- 加速度による滑りを消しているが、加速度計算で考慮する方がおそらく良い
+                  | otherwise -> p.v + a' * pure perFrameTime
+            (t', grounded') =
+              let t = p.position + v' * pure perFrameTime
+                  h = mapHeight ms offset (BB.Box (t ^. _xz & _y -~ 0.55 & _x +~ 0.80) (t ^. _xz & _y +~ 0.15 & _x +~ 1))
+                  mountable = h < (p.position ^. _y) + 0.5 && h > (p.position ^. _y) - 0.5
+                  t' =
+                    ( if
+                        | mountable -> t
+                        | hovering -> t
+                        | otherwise -> t & _xz .~ (p.position ^. _xz)
+                    )
+                      & _y
+                      .~ ( if
+                             | hovering ->
+                                 if
+                                   | mountable -> min h (t ^. _y)
+                                   | h > t ^. _y - 0.5 -> (t ^. _y) + 0.5
+                                   | otherwise -> t ^. _y
+                             | grounded ->
+                                 if
+                                   | mountable -> max (t ^. _y) h
+                                   | otherwise -> p.position ^. _y
+                             | otherwise -> max h (t ^. _y)
+                         )
+               in (t', if not mountable && not hovering then p.state == Grounded else t' ^. _y <= h)
+         in Position
+              { position = t',
+                direction = d',
+                inputDirection = input.direction1,
+                a = if grounded' then a' & _y .~ 0 else a',
+                v = if grounded' then v' & _y .~ 0 else v',
+                state =
+                  if
+                    | hovering' -> Hovering
+                    | grounded' -> Grounded
+                    | otherwise -> Jumping
+              }
 
 buildRenderer ::
   (HasCallStack) =>
@@ -252,7 +356,8 @@ execGame Game {..} =
   runResourceT' . unResource $ runContextT (GLFW.defaultHandleConfig {GLFW.configEventPolicy = Just GLFW.Poll}) $ unCtx $ do
     rs@(_, _, Env {..}) <- prepare
 
-    (keyInput, keyInputSink) <- liftIO $ E.external (Input {direction1 = Nothing, direction2 = Nothing, reset = False, enter = False, rotation = Nothing, n = Nothing, hardReset = False, save = False, speedUp = False})
+    (keyInput, keyInputSink) <- liftIO $ E.external initialInput
+
     nw <- liftIO $ network rs keyInput
 
     _ <- liftIO $ GLFW.setTime 0
@@ -448,33 +553,19 @@ game =
 
           target <-
             E.transfer3
-              (V3 0 0 0, V3 (0 :: Float) 0 1, Nothing)
-              ( \_ input mu (ms, offset, _) (t, d, current) ->
-                  let d' = case input.direction1 of
-                        Just n -> case current of
-                          Just current' | n == current' -> d
-                          _ -> case n of
-                            DirUp -> d
-                            DirDown -> -d
-                            DirRight -> fromQuaternion (axisAngle (V3 0 1 0) (-(pi / 2))) !* d
-                            DirLeft -> fromQuaternion (axisAngle (V3 0 1 0) (pi / 2)) !* d
-                        Nothing -> d
-                      t' =
-                        if
-                          | input.reset -> V3 0 0 0
-                          | isJust input.direction1 ->
-                              let t' = t + d * pure mu * if input.speedUp then 3 else 1
-                                  h = mapHeight ms offset (BB.Box (t' ^. _xz & _y -~ 0.55 & _x +~ 0.80) (t' ^. _xz & _y +~ 0.15 & _x +~ 1))
-                                  mh = h - 0.35
-                               in if mh < t' ^. _y - 0.5 || mh > t' ^. _y + 0.5 then t else t' & _y .~ mh
-                          | otherwise -> t
-                   in (t', d', input.direction1)
+              ( Position
+                  { position = V3 0 0 0,
+                    direction = V3 0 0 1,
+                    inputDirection = Nothing,
+                    a = V3 0 0 0,
+                    v = V3 0 0 0,
+                    state = Grounded
+                  }
               )
+              (\_ input _ maps p -> updatePosition p input maps)
               ki
               moveUnit
               maps
-          -- p :: (Fractional a) => V3 a -> V3 a -> a -> V3 a
-          -- p p0 v0 t = V3 (p0 ^. _x + v0 ^. _x * t) (p0 ^. _y + v0 ^. _y * t - 0.5 * 9.81 * t * t) (p0 ^. _z + v0 ^. _z * t)
 
           theta <-
             E.transfer2
@@ -492,14 +583,13 @@ game =
           camera' <-
             E.transfer4
               (V3 0 5 7.5)
-              ( \_ theta (t, dir, d) input mu p ->
+              ( \_ theta (t :: Position) input mu p ->
                   if
                     | input.reset -> V3 0 2 2.5
                     | input.n == Just 0 -> V3 0 30 0
                     | otherwise ->
-                        if isJust d
-                          then
-                            (p + ((t - 10 * dir) & _y +~ 3)) / 2
+                        if isJust t.inputDirection
+                          then (p + ((t.position - 10 * t.direction) & _y +~ 3)) / 2
                           else
                             let t' =
                                   p
@@ -516,15 +606,15 @@ game =
                                            _ -> 0
                                        )
 
-                                traslated = t' - t
+                                traslated = t' - t.position
                                 rotated = rotationMatrix theta !* point traslated
-                             in rotated ^. _xyz + t
+                             in rotated ^. _xyz + t.position
               )
               theta
               target
               ki
               moveUnit
-          return $ updateFrame env update renderText <$> camera' <*> fmap fst3 target <*> fmap snd3 target <*> ki
+          return $ updateFrame env update renderText <$> camera' <*> target <*> ki
     }
   where
     genDeltaTime = do
@@ -540,16 +630,16 @@ game =
       ) ->
       (Maybe (BB.Box V2 Double) -> ShaderInput -> GameCtx os ()) ->
       V3 Float ->
-      V3 Float ->
-      V3 Float ->
+      Position ->
       Input ->
       (GameCtx os) ()
-    updateFrame Env {..} update renderText camera target dir input = do
+    updateFrame Env {..} update renderText camera target input = do
       sz <- GameCtx $ getFrameBufferSize win
       let viewUpNorm = V3 0 1 0
           normMat = identity
           modelProj =
-            mkTransformation (axisAngle (V3 0 1 0) (unangle (dir ^. _zx))) (V3 1 0 (-0.25))
+            (if target.state == Hovering then mkTransformation (axisAngle target.direction (pi / 2)) zero else identity)
+              !*! mkTransformation (axisAngle (V3 0 1 0) (unangle (target.direction ^. _zx))) (V3 1 0 (-0.25))
               !*! mkTransformation zero (V3 (-1) 0 0.25)
 
           lightDir = V3 (-0.5) 0.5 0.5
@@ -565,7 +655,7 @@ game =
           waitTime = timePerFrame - delta
           fps = 1 / delta
       when (waitTime > 0) $ liftIO $ threadDelay $ floor $ waitTime * 1000000
-      let inp = "target: " ++ show target ++ "\ncamera: " ++ show camera ++ "\nfps: " ++ show fps ++ "\nmid:" ++ show input.n
+      let inp = "target: " ++ show target ++ "\ncamera: " ++ showV3F camera ++ "\nfps: " ++ showF fps ++ "\nmid:" ++ show input.n
       _ <-
         update
           ( if
@@ -576,7 +666,7 @@ game =
               | input.n == Just 4 -> GameLoad 4
               | otherwise -> GameContinue
           )
-          GlobalUniform {windowSize = sz, modelNorm = normMat, viewCamera = camera, viewTarget = target, viewUp = viewUpNorm, lightDirection = lightDir}
-          (M.singleton (ObjectId 0) (ObjectUniform {position = splined3 sps target, proj = modelProj}))
+          GlobalUniform {windowSize = sz, modelNorm = normMat, viewCamera = camera, viewTarget = target.position, viewUp = viewUpNorm, lightDirection = lightDir}
+          (M.singleton (ObjectId 0) (ObjectUniform {position = splined3 sps target.position, proj = modelProj}))
       _ <- renderText Nothing (sz, inp)
       GameCtx $ swapWindowBuffers win
