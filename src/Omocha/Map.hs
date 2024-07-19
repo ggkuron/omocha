@@ -60,7 +60,7 @@ parseShape :: (HasCallStack, Exception String) => FilePath -> V3 Float -> V3 Flo
 parseShape workingDir offset unit n isize sps (a, _id) =
   let a' = fromIntegral <$> a
       pos' = ((a' ^. _x, a' ^. _x + fst isize), (a' ^. _y, a' ^. _y + snd isize))
-      yScale = mapY unit
+      yScale = unit ^. _y
       divs = uncurry V2 (both ((* 16) . floor) isize)
       colorToV4 t = let (a, b, c, d) = rgba t in V4 a b c d
    in case n of
@@ -73,9 +73,9 @@ parseShape workingDir offset unit n isize sps (a, _id) =
         Cone {..} -> return $ cone pos' unit center height (V3 (offset ^. _x) (offset ^. _y + yOffset * yScale) (offset ^. _z)) (colorToV4 color) sps
         Sphere {..} -> return $ sphere pos' unit height (V3 (offset ^. _x) (offset ^. _y + yOffset * yScale) (offset ^. _z)) (colorToV4 color) sps
         Reference r yOffset -> do
-          let offset' = unit * referenceOffset offset sps yOffset (fromIntegral <$> a)
-          a <- loadReference offset' unit isize workingDir r
-          return $ V.concatMap (.meshes) (snd3 a)
+          let offset' = unit * referenceOffset offset sps yOffset a'
+          r <- loadReference offset' unit isize workingDir r
+          return $ V.concatMap (.meshes) (snd3 r)
         Glb path -> do
           let offset' = unit * referenceOffset offset sps 0 (fromIntegral <$> a)
           V.map (\m -> (m {offset = offset'} :: Mesh)) <$> fromGlb path
@@ -157,7 +157,7 @@ mapHeight m t@(BB.Box start end) offset = do
                 offset' = referenceOffset offset m.splines y ts
             mdef <- loadReferenceDef m.dir r
             let u'' = referenceUnit mdef.size (sx, sy)
-                yScale' = mapY (size / (fromIntegral <$> uncurry V2 mdef.size))
+                yScale' = mapY u''
             (m', _, sps) <- loadReference offset' 1 (sx, sy) m.dir r
             h <- mapHeight (Maps u'' m' offset' sps m.dir) t offset'
             return $ yScale' * (h + y)

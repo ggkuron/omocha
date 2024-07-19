@@ -18,7 +18,7 @@ meshFromGltf j = V.concatMap (\(GLTF.Mesh _meshName prims _wieghts) -> processMe
       Mesh
         { vertices = V.toList $ V.zipWith3 Vertex positions normals texcoords,
           indices = Just . V.toList $ V.map fromIntegral indices,
-          offset = V3 1 1 0,
+          offset = V3 1 0 0,
           texture = Nothing,
           topology = case mode of
             GLTF.Points -> TopologyPoints PointList

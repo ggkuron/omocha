@@ -5,8 +5,8 @@
         {
             "tag": "Tips",
             "defs":{
-                "1": { "tag": "Reference", "contents": [{ "tag": "External", "contents": "map3.json"} , 0]},
-                "2": { "tag": "Reference", "contents": [{ "tag": "External", "contents": "map.json"}, 0]}
+                "1": { "tag": "Reference", "contents": [{ "tag": "External", "contents": "map1.json"} , 0]},
+                "2": { "tag": "Reference", "contents": [{ "tag": "External", "contents": "map2.json"}, 0]}
 
             },
             "maps":[

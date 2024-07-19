@@ -153,8 +153,8 @@ updatePosition p input m =
                 (pure 3)
                 if
                   | grounded && justInput input.stop -> V3 0 0 0
-                  | grounded && isJust (justInput input.direction1) -> d' * if justInput input.speedUp then 3 else 1
-                  | grounded -> V3 0 (a' ^. _y * perFrameTime) 0 -- 加速度による滑りを消しているが、加速度計算で考慮する方がおそらく良い
+                  | grounded && a' ^. _y == 0 && isJust (justInput input.direction1) -> d' * if justInput input.speedUp then 3 else 1
+                  | grounded && a' ^. _y == 0 -> V3 0 (a' ^. _y * perFrameTime) 0 -- 加速度による滑りを消しているが、加速度計算で考慮する方がおそらく良い
                   | otherwise -> p.v + a' * pure perFrameTime
         (t', grounded') <- do
           let t = p.position + v' * pure perFrameTime
@@ -205,8 +205,6 @@ buildRenderer ::
   ContextT ctx os m (ApplicationUniforms os, CompiledShader os (GlobalUniformB, M.Map ObjectId ObjectUniformB))
 buildRenderer win os = do
   unis <- newUniforms . fromIntegral . length $ os
-  ps <- compileShader $ pointShader win unis
-  ls <- compileShader $ lineShader win unis
   ms <- compileShader $ monoShader win unis
   bs <- compileShader $ boardShader win unis
   ts <- compileShader $ boardShader win unis
@@ -255,14 +253,7 @@ buildRenderer win os = do
                     clearWindowStencil win 0
                     let input = PlainInput i.windowSize (fromMaybe (V4 0 0 0 0.75) color) obj prims
                     ms input
-                  TopologyLines p -> do
-                    pArr <- newVertexArray vbuf
-                    let prims = toPrimitiveArray p pArr
-                    ls $ LinesInput i.windowSize (fromMaybe (V4 0 0 0 0.75) color) prims
-                  TopologyPoints p -> do
-                    pArr <- newVertexArray vbuf
-                    let prims = toPrimitiveArray p pArr
-                    ps $ PointsInput i.windowSize (fromMaybe (V4 0 0 0 0.75) color) prims
+                  p -> trace ("unsupported topology " ++ show p) $ return ()
     rankBundle rs
   return
     (unis, bundle r)
@@ -331,8 +322,7 @@ game =
     { prepare = do
         win <- GameCtx $ newWindow (WindowFormatColorDepthStencilCombined RGBA8 Depth24Stencil8) (GLFW.defaultWindowConfig "omocha")
         font <- loadFont "VL-PGothic-Regular.ttf"
-        pmesh <- liftIO $ fromGltf "monkey.gltf"
-
+        pmesh <- liftIO $ fromGlb "A.glb" --  "blockhuman.glb"
         textureStorage <- liftIO $ newIORef M.empty
         fpsSetting <- liftIO $ newIORef 60
         lastRenderTime <- liftIO $ newIORef 0
@@ -413,10 +403,10 @@ game =
                         let dir = "static/maps/group" ++ show i
                         (f, (m, objs, sps)) <- liftIO $ loadMap (dir ++ "/group.json") unit
 
-                        writeIORef maps (Maps 1 m offset sps $ "static/maps/group" ++ show i)
+                        writeIORef maps (Maps unit m offset sps $ "static/maps/group" ++ show i)
                         (unis, s) <- buildRenderer win (player `V.cons` objs)
 
-                        gs <- gridShader win unis f 1 offset
+                        gs <- gridShader win unis f unit offset
                         let r = renderWith unis s $ \vpSize -> do
                               clear
                               gs vpSize
@@ -426,7 +416,17 @@ game =
                   r <- liftIO $ readIORef renderings
                   r g o
 
-        return (update, renderText, Env win textureStorage fpsSetting lastRenderTime maps),
+        return
+          ( update,
+            renderText,
+            Env
+              { win = win,
+                textureStorage = textureStorage,
+                fpsSetting = fpsSetting,
+                lastRenderedTime = lastRenderTime,
+                maps = maps
+              }
+          ),
       network = \(update, renderText, env) keyInput ->
         E.start $ mdo
           dt <- genDeltaTime
@@ -579,8 +579,9 @@ updateFrame env update renderText camera target input = do
                         }
                     )
                 )
-                (V.filter (\(box, _, _) -> BB.aabb box visibleBox) m.defs)
+                . V.filter (\(box, _, _) -> BB.aabb box visibleBox)
+                $ m.defs
             )
       )
-  _ <- renderText Nothing (sz, inp)
+  renderText Nothing (sz, inp)
   GameCtx $ swapWindowBuffers env.win

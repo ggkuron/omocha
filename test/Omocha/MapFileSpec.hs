@@ -215,7 +215,7 @@ spec = do
                     ],
                     "size":[5,5]
                 }|]
-      let a :: Either String (MapFile MapDef) = eitherDecodeStrict exampleJson
+      let a :: Either String MapFile = eitherDecodeStrict exampleJson
       a `shouldSatisfy` isRight
 
 genMatrix :: forall a. (Arbitrary a) => Gen [[a]]

@@ -6,12 +6,13 @@
             "tag": "Tips",
             "defs":{
                 "1": { "tag": "Reference", "contents": [{ "tag": "External", "contents": "map3.json"} , 0]},
-                "2": { "tag": "Reference", "contents": [{ "tag": "External", "contents": "map.json"}, 0]}
+                "2": { "tag": "Reference", "contents": [{ "tag": "External", "contents": "map.json"}, 0]},
+                "3": { "tag": "Reference", "contents": [{ "tag": "External", "contents": "map0.json"}, 0]}
 
             },
             "maps":[
                 [
-                      [0, 2, 2, 1, 1, 0],
+                      [3, 2, 2, 1, 1, 0],
                       [0, 2, 2, 0, 0, 0],
                       [0, 0, 0, 0, 0, 0],
                       [0, 0, 0, 0, 0, 0],
