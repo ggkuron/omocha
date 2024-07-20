@@ -277,18 +277,16 @@ gridShader ::
 gridShader win unis m unit offset =
   do
     let gridColor :: V4 Float = V4 0.75 0.75 0.75 1
-        size@(sx, sy) = m.size
-        sps = spline1 size m.splineX m.splineY
-        point = splined sps
+        (sx, sy) = m.size
         dts = interval 4 0 1
         xss = V.generate (sy + 1) $ \y -> do
           x :: Float <- V.enumFromN 0 sx
           dt <- dts
-          return $ point (V2 ((x + dt) * (unit ^. _x)) (fromIntegral y * (unit ^. _y)))
+          return (V2 ((x + dt) * (unit ^. _x)) (fromIntegral y * (unit ^. _y)))
         yss = V.generate (sx + 1) $ \x -> do
           y :: Float <- V.enumFromN 0 sy
           dt <- dts
-          return $ point (V2 (fromIntegral x * (unit ^. _x)) ((y + dt) * (unit ^. _y)))
+          return (V2 (fromIntegral x * (unit ^. _x)) ((y + dt) * (unit ^. _y)))
         v3 (V2 x y) = V3 x 0 y
 
     let v =

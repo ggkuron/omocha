@@ -13,7 +13,7 @@
                 "6":{"color":[ 30,100, 30,255],"height":0.1,"tag":"Cube", "yOffset": 0},
                 "7":{"color":[ 20,140, 70,255],"height":10.0,"tag":"Cube", "yOffset": 0},
                 "8":{"color":[127,127,127,255],"high":1, "low": 0, "tag":"Slope", "highEdge": ["X", true], "yOffset": 0},
-                "9":{"color":[127,127,127,255],"high":0.55, "low": 0, "tag":"Tetra", "edge": [true, true], "yOffset": 0}
+                "9":{"color":[127,127,127,255],"high":0.55, "low": 0, "tag":"Tetra", "edge": [false, false], "yOffset": 0}
            },
             "maps":[
                 [
@@ -59,7 +59,7 @@
                     "contents": [{
                         "tag": "External",
                         "contents": "../house.json" 
-                    }, 0.0]
+                    }, 2.0]
                 }
             },
             "maps":[

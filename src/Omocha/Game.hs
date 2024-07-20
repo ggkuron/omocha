@@ -7,13 +7,10 @@ module Omocha.Game (run, transpose, bundle) where
 import Control.Lens ((+~))
 import Control.Monad
 import Control.Monad.Exception qualified as E (MonadException (catch))
-import Data.Aeson hiding (json)
 import Data.Bits (xor)
 import Data.BoundingBox qualified as BB
 import Data.BoundingBox.V2 qualified as BB
-import Data.ByteString.Lazy qualified as BS
 import Data.Map.Strict qualified as M
-import Data.Tuple.Extra (both)
 import Data.Vector qualified as V
 import Debug.Trace (trace)
 import FRP.Elerea.Param qualified as E
@@ -73,9 +70,9 @@ charMeshes font bbox piel = text font piel renderer bbox
 position :: Maps -> Position -> V2 Int
 position m p =
   let V2 x y = (p.position ^. _xz + BB.center p.bbox - m.offset ^. _xz)
-   in V2 (floor $ clamp (x / (m.unit ^. _x)) 0 (fst size')) (floor $ clamp (y / (m.unit ^. _y)) 0 (snd size'))
+   in V2 (floor $ clamp (x / (m.unit ^. _x)) 0 (size' ^. _x)) (floor $ clamp (y / (m.unit ^. _y)) 0 (size' ^. _y))
   where
-    size' :: (Float, Float) = both (fromIntegral . (\a -> a - 1) . length) m.splines
+    size' = fromIntegral <$> m.size
 
 data Env os = Env
   { win :: Window os RGBAFloat DepthStencil,
@@ -338,9 +335,9 @@ game =
 
         let mapFile = "static/maps/group1/group.json"
         g <- liftIO $ loadMapFile mapFile
-        (m, objs, sps) <- liftIO $ parseMapFile (takeDirectory mapFile) offset unit g
+        (m, objs) <- liftIO $ parseMapFile (takeDirectory mapFile) offset unit g
 
-        maps <- liftIO $ newIORef (Maps unit m offset sps (takeDirectory mapFile))
+        maps <- liftIO $ newIORef (Maps unit m offset (uncurry V2 g.size) (takeDirectory mapFile))
         (unis, s) <- GameCtx $ buildRenderer win (player `V.cons` objs)
         let clear = do
               clearWindowColor win (V4 0 0.25 1 1)
@@ -375,9 +372,9 @@ game =
                   E.catch
                     ( do
                         let mapFile = "static/maps/group1/group.json"
-                        (f, (m, objs, sps)) <- liftIO $ loadMap mapFile unit
+                        (f, (m, objs)) <- liftIO $ loadMap mapFile unit
 
-                        writeIORef maps (Maps unit m offset sps (takeDirectory mapFile))
+                        writeIORef maps (Maps unit m offset (uncurry V2 f.size) (takeDirectory mapFile))
                         (unis, s) <- buildRenderer win (player `V.cons` objs)
 
                         gs <- gridShader win unis f unit offset
@@ -390,8 +387,7 @@ game =
 
                   r <- liftIO $ readIORef renderings
                   r g o
-                GameSave i -> do
-                  liftIO $ BS.writeFile ("map" ++ show i ++ ".json") $ encode mf
+                GameSave _ -> do
                   r <- liftIO $ readIORef renderings
                   r g o
                 GameContinue -> do
@@ -401,9 +397,9 @@ game =
                   E.catch
                     ( do
                         let dir = "static/maps/group" ++ show i
-                        (f, (m, objs, sps)) <- liftIO $ loadMap (dir ++ "/group.json") unit
+                        (f, (m, objs)) <- liftIO $ loadMap (dir ++ "/group.json") unit
 
-                        writeIORef maps (Maps unit m offset sps $ "static/maps/group" ++ show i)
+                        writeIORef maps (Maps unit m offset (uncurry V2 f.size) $ "static/maps/group" ++ show i)
                         (unis, s) <- buildRenderer win (player `V.cons` objs)
 
                         gs <- gridShader win unis f unit offset
@@ -567,7 +563,7 @@ updateFrame env update renderText camera target input = do
       )
       GlobalUniform {windowSize = sz, modelNorm = normMat, viewCamera = camera, viewTarget = target.position, viewUp = viewUpNorm, lightDirection = lightDir}
       ( M.fromAscList
-          $ (ObjectId 0, ObjectUniformB {position = splined3 m.splines target.position, proj = modelProj, visible = True})
+          $ (ObjectId 0, ObjectUniformB {position = target.position, proj = modelProj, visible = True})
           : V.toList
             ( V.map
                 ( \(_, _, id) ->

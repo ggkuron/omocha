@@ -1,7 +1,6 @@
 module Omocha.Spline where
 
 import Data.Ord (clamp)
-import Data.Tuple.Extra (both)
 import Data.Vector qualified as V
 import Data.Vector.Storable qualified as VS
 import Data.Vector.Storable.Mutable qualified as MVS
@@ -86,23 +85,20 @@ calcSplines splines t =
   let (seg, t') = findSegment splines t
    in calcSpline seg t'
 
-calcSplinePairs :: forall a. (HasCallStack) => (Num a, RealFrac a, Show a) => V.Vector (Spline a, Spline a) -> a -> (a, a)
-calcSplinePairs splines t =
-  let (seg, t') = findSegment splines t
-   in both (`calcSpline` t') seg
+-- calcSplinePairs :: forall a. (HasCallStack) => (Num a, RealFrac a, Show a) => V.Vector (Spline a, Spline a) -> a -> (a, a)
+-- calcSplinePairs splines t =
+--   let (seg, t') = findSegment splines t
+--    in both (`calcSpline` t') seg
 
-fromAxisValues :: (Num a, Fractional a, Real b) => Vector (Int, b) -> Vector a
+fromAxisValues :: (Num a, Fractional a, Real b, Num c) => Vector (c, b) -> Vector a
 fromAxisValues = V.map fromAxisValue
 
-fromAxisValue :: forall a b. (Fractional a, Real b) => (Int, b) -> a
+fromAxisValue :: forall a b c. (Fractional a, Real b, Num c) => (c, b) -> a
 fromAxisValue = snd . second realToFrac
 
---
 interpolate :: (Num a, RealFrac a, Show a) => V.Vector (Spline a) -> Int -> V.Vector a
 interpolate ps divs = V.generate ((length ps - 1) * divs + 1) $ \t -> calcSplines ps (fromIntegral t * (1 / fromIntegral divs))
 
 type Splines a = Vector (Spline a)
 
-type SplinePair a = Vector (Spline a, Spline a)
-
-type SplinePairs a = (SplinePair a, SplinePair a)
+type SplinePair a = (Splines a, Splines a)

@@ -8,7 +8,7 @@ import Data.Aeson hiding (json)
 import Data.BoundingBox qualified as BB
 import Data.BoundingBox.V2 qualified as BB
 import Data.Map.Strict qualified as M
-import Data.Tuple.Extra (both, snd3)
+import Data.Tuple.Extra (both)
 import Data.Vector qualified as V
 import Linear.V2
 import Linear.V3
@@ -17,7 +17,6 @@ import Omocha.Gltf
 import Omocha.MapFile
 import Omocha.Scene
 import Omocha.Shape
-import Omocha.Spline
 import Omocha.Uniform
 import RIO
 import RIO.FilePath
@@ -29,7 +28,7 @@ loadMapFile path = do
     Right m -> return m
     Left m -> E.throw ("invalid map file: " ++ path ++ "\n" ++ m :: String)
 
-loadMap :: (HasCallStack, Exception String) => FilePath -> V2 Float -> IO (MapFile, (Vector (BB.Box V2 Int, MapDef, ObjectId), Vector SceneObject, SplinePairs Float))
+loadMap :: (HasCallStack, Exception String) => FilePath -> V2 Float -> IO (MapFile, (Vector (BB.Box V2 Int, MapDef, ObjectId), Vector SceneObject))
 loadMap path unit = do
   f <- loadMapFile path
   r <- parseMapFile (takeDirectory path) 0 unit f
@@ -45,59 +44,60 @@ loadReferenceDef :: (Exception String) => FilePath -> MapReference -> IO MapFile
 loadReferenceDef _ (Embed m) = pure m
 loadReferenceDef dir (External path) = loadMapFile $ dir </> path -- TODO: check recursive recursion
 
-loadReference :: (Exception String) => V3 Float -> V3 Float -> Size Float -> FilePath -> MapReference -> IO (Vector (BB.Box V2 Int, MapDef, ObjectId), Vector SceneObject, SplinePairs Float)
+loadReference :: (Exception String) => V3 Float -> V3 Float -> Size Float -> FilePath -> MapReference -> IO (Vector (BB.Box V2 Int, MapDef, ObjectId), Vector SceneObject)
 loadReference offset unit (ix, iy) dir r = do
   m <- loadReferenceDef dir r
   let unit' = unit ^. _xz * referenceUnit m.size (ix, iy)
    in parseMapFile dir offset unit' m
 
-referenceOffset :: V3 Float -> SplinePairs Float -> Float -> V2 Float -> V3 Float
-referenceOffset offset sps yOffset start =
-  let offset' = splined sps start + offset ^. _xz
+referenceOffset :: V3 Float -> Float -> V2 Float -> V3 Float
+referenceOffset offset yOffset start =
+  let offset' = start + offset ^. _xz
    in V3 (offset' ^. _x) yOffset (offset' ^. _y)
 
-parseShape :: (HasCallStack, Exception String) => FilePath -> V3 Float -> V3 Float -> MapDef -> Size Float -> SplinePairs Float -> (V2 Int, ObjectId) -> IO (Vector Mesh)
-parseShape workingDir offset unit n isize sps (a, _id) =
+parseShape :: (HasCallStack, Exception String) => FilePath -> V3 Float -> V3 Float -> MapDef -> Size Float -> (V2 Int, ObjectId) -> IO (Vector Mesh)
+parseShape workingDir offset unit n isize (a, _id) =
   let a' = fromIntegral <$> a
-      pos' = ((a' ^. _x, a' ^. _x + fst isize), (a' ^. _y, a' ^. _y + snd isize))
+      isize' = uncurry V2 isize
+      size :: V2 Float = (unit ^. _xz) * isize'
+      start :: V3 Float = unit * V3 (a' ^. _x) 0 (a' ^. _y) + offset
       yScale = unit ^. _y
-      divs = uncurry V2 (both ((* 16) . floor) isize)
-      colorToV4 t = let (a, b, c, d) = rgba t in V4 a b c d
    in case n of
         Empty -> return V.empty
-        Cube {..} -> return $ cube pos' unit height (V3 (offset ^. _x) (offset ^. _y + yOffset * yScale) (offset ^. _z)) (colorToV4 color) sps divs
-        Plane {..} -> return $ plane pos' unit n.yOffset (V3 (offset ^. _x) (offset ^. _y + yOffset * yScale) (offset ^. _z)) (colorToV4 color) sps divs
-        Slope {..} -> return $ slope pos' unit highEdge (high, low) (V3 (offset ^. _x) (offset ^. _y + yOffset * yScale) (offset ^. _z)) (colorToV4 color) sps divs
-        Tetra {..} -> return $ tetra pos' unit edge (high, low) (V3 (offset ^. _x) (offset ^. _y + yOffset * yScale) (offset ^. _z)) (colorToV4 color) sps divs
-        Cylinder {..} -> return $ cylinder pos' unit center height (V3 (offset ^. _x) (offset ^. _y + yOffset * yScale) (offset ^. _z)) (colorToV4 color) sps divs
-        Cone {..} -> return $ cone pos' unit center height (V3 (offset ^. _x) (offset ^. _y + yOffset * yScale) (offset ^. _z)) (colorToV4 color) sps
-        Sphere {..} -> return $ sphere pos' unit height (V3 (offset ^. _x) (offset ^. _y + yOffset * yScale) (offset ^. _z)) (colorToV4 color) sps
+        Cube {..} -> return $ cube (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (colorToV4 color)
+        Plane {..} -> return $ plane (V3 (size ^. _x) (n.yOffset * yScale) (size ^. _y)) (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (colorToV4 color)
+        Slope {..} -> return $ slope highEdge (size ^. _x, (high * yScale, low * yScale), size ^. _y) (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (colorToV4 color)
+        Cylinder {..} -> return $ cylinder center (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (colorToV4 color)
+        Cone {..} -> return $ cone center (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (colorToV4 color)
+        Tetra {..} -> return $ tetra (size ^. _x, (high * yScale, low * yScale), size ^. _y) edge (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (colorToV4 color)
+        Sphere {..} -> return $ sphere (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (colorToV4 color)
         Reference r yOffset -> do
-          let offset' = unit * referenceOffset offset sps yOffset a'
+          let offset' = unit * referenceOffset offset yOffset a'
           r <- loadReference offset' unit isize workingDir r
-          return $ V.concatMap (.meshes) (snd3 r)
+          return $ V.concatMap (.meshes) (snd r)
         Glb path -> do
-          let offset' = unit * referenceOffset offset sps 0 (fromIntegral <$> a)
+          let offset' = unit * referenceOffset offset 0 (fromIntegral <$> a)
           V.map (\m -> (m {offset = offset'} :: Mesh)) <$> fromGlb path
         Gltf path -> do
-          let offset' = unit * referenceOffset offset sps 0 (fromIntegral <$> a)
+          let offset' = unit * referenceOffset offset 0 (fromIntegral <$> a)
           V.map (\m -> (m {offset = offset'} :: Mesh)) <$> fromGltf path
+  where
+    colorToV4 t = let (a, b, c, d) = rgba t in V4 a b c d
 
-toMesh :: (HasCallStack, Exception String) => FilePath -> V3 Float -> V2 Float -> (MapDef, Size Int, Vector (V2 Int, ObjectId)) -> SplinePairs Float -> IO (Vector Mesh)
-toMesh workingDir offset unit (n, size, pos) sps =
+toMesh :: (HasCallStack, Exception String) => FilePath -> V3 Float -> V2 Float -> (MapDef, Size Int, Vector (V2 Int, ObjectId)) -> IO (Vector Mesh)
+toMesh workingDir offset unit (n, size, pos) =
   let unit' = V3 (unit ^. _x) (mapY unit) (unit ^. _y)
-   in V.foldMap (parseShape workingDir offset unit' n (both fromIntegral size) sps) pos
+   in V.foldMap (parseShape workingDir offset unit' n (both fromIntegral size)) pos
 
-parseMapFile :: (HasCallStack, Exception String) => FilePath -> V3 Float -> V2 Float -> MapFile -> IO (Vector (BB.Box V2 Int, MapDef, ObjectId), Vector SceneObject, SplinePairs Float)
+parseMapFile :: (HasCallStack, Exception String) => FilePath -> V3 Float -> V2 Float -> MapFile -> IO (Vector (BB.Box V2 Int, MapDef, ObjectId), Vector SceneObject)
 parseMapFile workingDir offset unit m = do
   ds <- either E.throw return (V.mapM (parseMapDef m.size) m.mapData)
-  let sps = spline1 m.size m.splineX m.splineY
   r <-
     V.foldMap
       ( \(a, d) ->
           V.mapM
             ( \(box, _, oid) -> do
-                mesh <- toMesh workingDir offset unit (d.defs M.! oid) sps
+                mesh <- toMesh workingDir offset unit (d.defs M.! oid)
                 return
                   $ SceneObject
                     { id = oid,
@@ -108,7 +108,7 @@ parseMapFile workingDir offset unit m = do
             a
       )
       ds
-  return (V.concatMap fst ds, r, sps)
+  return (V.concatMap fst ds, r)
 
 lookupMapDef :: Maps -> BB.Box V2 Float -> Vector (MapDef, BB.Box V2 Float)
 lookupMapDef m t = select <$> V.filter (\(bb, _, _) -> any (\c -> BB.isInside c ((fromIntegral <$> bb) `BB.mult` m.unit)) corners) m.defs
@@ -154,12 +154,12 @@ mapHeight m t@(BB.Box start end) offset = do
           (Reference r y, BB.Box ts te) -> do
             let size = te - ts
                 (V2 sx sy) = size
-                offset' = referenceOffset offset m.splines y ts
+                offset' = referenceOffset offset y ts
             mdef <- loadReferenceDef m.dir r
             let u'' = referenceUnit mdef.size (sx, sy)
                 yScale' = mapY u''
-            (m', _, sps) <- loadReference offset' 1 (sx, sy) m.dir r
-            h <- mapHeight (Maps u'' m' offset' sps m.dir) t offset'
+            (m', _) <- loadReference offset' 1 (sx, sy) m.dir r
+            h <- mapHeight (Maps u'' m' offset' m.size m.dir) t offset'
             return $ yScale' * (h + y)
           (Empty, _) -> return 0
           (Gltf _, _) -> return 0

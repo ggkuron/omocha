@@ -8,7 +8,7 @@ import Data.Array (Ix)
 import Data.BoundingBox qualified as BB
 import Data.Either.Combinators (maybeToRight)
 import Data.Map.Strict qualified as M
-import Data.Tuple.Extra (both, third3)
+import Data.Tuple.Extra (third3)
 import Data.Vector qualified as V
 import Data.Vector.Algorithms.Intro qualified as VAI
 import Linear.V2
@@ -119,18 +119,15 @@ type Size a = (a, a)
 data Axis = X | Y
   deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
 
-data Spline
-
 data Splined = Splined
-  { start :: [(Int, Float)],
-    end :: Maybe [(Int, Float)]
+  { xy :: [(Int, Int)],
+    origin :: EdgePoint
   }
   deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
 
 data MapFile = MapFile
   { size :: Size Int,
-    splineX :: Maybe Splined,
-    splineY :: Maybe Splined,
+    spline :: Maybe Splined,
     mapData :: Vector MapData
   }
   deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
@@ -142,42 +139,6 @@ newtype DefId = DefId Int
 -- newtype InstanceId = InstanceId Int
 --   deriving (Generic)
 --   deriving (Eq, Show, Num, Ord, Ix, ToJSON, FromJSON, ToJSONKey, FromJSONKey) via Int
-
-mf :: MapFile
-mf =
-  MapFile
-    { size = (6, 5),
-      splineY =
-        Just
-          $ Splined
-            [(0, 0), (2, -3)]
-            (Just [(0, 0), (2, 3)]),
-      splineX = Nothing,
-      mapData =
-        V.fromList
-          [ Tips
-              { maps =
-                  V.singleton
-                    . V.fromList
-                    . fmap V.fromList
-                    $ [ [0, 0, 0, 0, 0, 0],
-                        [1, 1, 0, 0, 0, 0],
-                        [1, 1, 0, 3, 3, 3],
-                        [0, 2, 0, 5, 0, 0],
-                        [0, 8, 0, 0, 0, 0]
-                      ],
-                defs =
-                  M.fromList
-                    [ (1, Cube 1 (100, 30, 100, 255) 0),
-                      (2, Cube 2 (127, 127, 127, 255) 0),
-                      (3, Cube 2 (100, 200, 100, 255) 0),
-                      (8, Cube 8 (127, 127, 127, 255) 0),
-                      (5, Cylinder 0.01 (127, 127, 127, 255) 0 Nothing),
-                      (8, Reference (Embed (MapFile (2, 2) Nothing Nothing V.empty)) 0)
-                    ]
-              }
-          ]
-    }
 
 parseMap :: (HasCallStack) => (Int, Int) -> Vector (Vector DefId) -> Either String (Vector (BB.Box V2 Int, DefId))
 parseMap (sw, sh) mapData
@@ -214,7 +175,7 @@ data Maps = Maps
   { unit :: V2 Float,
     defs :: Vector (BB.Box V2 Int, MapDef, ObjectId),
     offset :: V3 Float,
-    splines :: SplinePairs Float,
+    size :: V2 Int,
     dir :: FilePath
   }
 
@@ -251,89 +212,28 @@ parseMapDef size md = do
         )
     )
 
-adjust :: Int -> Vector (Int, Float) -> V.Vector (Int, Float)
-adjust sz v =
+adjust :: Int -> Bool -> Float -> Vector (Int, Int) -> V.Vector (Int, Float)
+adjust sz asc crossSize v =
   if
-    | null s -> (0, 0) `V.cons` v `V.snoc` (sz, 0)
-    | (fst (V.head s) == 0) && (fst (V.last s) == sz) -> v
-    | (fst (V.head s) /= 0) && (fst (V.last s) == sz) -> (0, snd $ V.head s) `V.cons` s
-    | (fst (V.head s) == 0) && (fst (V.last s) /= sz) -> s `V.snoc` (sz, snd $ V.last s)
-    | otherwise -> (0, snd $ V.head s) `V.cons` s `V.snoc` (sz, snd $ V.last s)
+    | null s -> (0, e0) `V.cons` v' `V.snoc` (sz, en)
+    | (fst (V.head s) == 0) && (fst (V.last s) == sz) -> v'
+    | (fst (V.head s) /= 0) && (fst (V.last s) == sz) -> (0, e0) `V.cons` s'
+    | (fst (V.head s) == 0) && (fst (V.last s) /= sz) -> s' `V.snoc` (sz, en)
+    | otherwise -> (0, e0) `V.cons` s' `V.snoc` (sz, en)
   where
     s = V.modify (VAI.sortBy (compare `on` fst)) (V.filter ((\a -> a >= 0 && a <= sz) . fst) v)
+    e0 = if asc then 0 else crossSize
+    en = if asc then crossSize else 0
+    v' = V.map (second fromIntegral) v
+    s' = V.map (second fromIntegral) s
 
-pointSplines :: Int -> Vector (Int, Float) -> Splines Float
-pointSplines sz p =
-  spline (interpolate1 (adjust sz p))
-
-spline1 :: (HasCallStack) => Size Int -> Maybe Splined -> Maybe Splined -> SplinePairs Float
-spline1 (sx, sy) Nothing Nothing =
-  let xs = pointSplines sx V.empty
-      ws = xs
-      ys = pointSplines sy V.empty
-      hs = ys
-   in (V.zip xs ws, V.zip ys hs)
-spline1 (sx, sy) (Just (Splined v Nothing)) Nothing =
-  let xs = pointSplines sx (V.fromList v)
-      ws = xs
-      ys = pointSplines sy V.empty
-      hs = ys
-   in (V.zip xs ws, V.zip ys hs)
-spline1 (sx, sy) (Just (Splined v (Just w))) Nothing =
-  let xs = pointSplines sx (V.fromList v)
-      ws = pointSplines sx (V.fromList w)
-      ys = pointSplines sy V.empty
-      hs = ys
-   in (V.zip xs ws, V.zip ys hs)
-spline1 (sx, sy) Nothing (Just (Splined v (Just w))) =
-  let xs = pointSplines sx V.empty
-      ws = xs
-      ys = pointSplines sy (V.fromList v)
-      hs = pointSplines sy (V.fromList w)
-   in (V.zip xs ws, V.zip ys hs)
-spline1 (sx, sy) Nothing (Just (Splined v Nothing)) =
-  let xs = pointSplines sx V.empty
-      ws = xs
-      ys = pointSplines sy (V.fromList v)
-      hs = ys
-   in (V.zip xs ws, V.zip ys hs)
-spline1 (sx, sy) (Just (Splined v (Just w))) (Just (Splined s (Just t))) =
-  let xs = pointSplines sx (V.fromList v)
-      ws = pointSplines sx (V.fromList w)
-      ys = pointSplines sy (V.fromList s)
-      hs = pointSplines sy (V.fromList t)
-   in (V.zip xs ws, V.zip ys hs)
-spline1 (sx, sy) (Just (Splined v Nothing)) (Just (Splined s (Just t))) =
-  let xs = pointSplines sx (V.fromList v)
-      ws = pointSplines sx V.empty
-      ys = pointSplines sy (V.fromList s)
-      hs = pointSplines sy (V.fromList t)
-   in (V.zip xs ws, V.zip ys hs)
-spline1 (sx, sy) (Just (Splined v (Just w))) (Just (Splined s Nothing)) =
-  let xs = pointSplines sx (V.fromList v)
-      ws = pointSplines sx (V.fromList w)
-      ys = pointSplines sy (V.fromList s)
-      hs = pointSplines sy V.empty
-   in (V.zip xs ws, V.zip ys hs)
-spline1 (sx, sy) (Just (Splined v Nothing)) (Just (Splined s Nothing)) =
-  let xs = pointSplines sx (V.fromList v)
-      ws = pointSplines sx V.empty
-      ys = pointSplines sy (V.fromList s)
-      hs = pointSplines sy V.empty
-   in (V.zip xs ws, V.zip ys hs)
-
-splined :: (HasCallStack) => SplinePairs Float -> V2 Float -> V2 Float
+splined :: (HasCallStack) => SplinePair Float -> V2 Float -> V2 Float
 splined (xsp, ysp) (V2 x y) = V2 x rx + V2 ry y
   where
-    (sx, sy) = both (fromIntegral . length) (xsp, ysp)
-    perY = x / sx
-    perX = y / sy
-    (rx1, rx2) = calcSplinePairs xsp x
-    (ry1, ry2) = calcSplinePairs ysp y
-    rx = rx1 * (1 - perX) - rx2 * perX
-    ry = ry1 * (1 - perY) - ry2 * perY
+    rx = calcSplines xsp x
+    ry = calcSplines ysp y
 
-splined3 :: (HasCallStack) => SplinePairs Float -> V3 Float -> V3 Float
+splined3 :: (HasCallStack) => SplinePair Float -> V3 Float -> V3 Float
 splined3 sps (V3 x y z) =
   let V2 x' z' = splined sps (V2 x z)
    in V3 x' y z'
