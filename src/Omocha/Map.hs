@@ -71,6 +71,7 @@ parseShape workingDir offset unit n isize (a, _id) =
         Cone {..} -> return $ cone center (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (colorToV4 color)
         Tetra {..} -> return $ tetra (size ^. _x, (high * yScale, low * yScale), size ^. _y) edge (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (colorToV4 color)
         Sphere {..} -> return $ sphere (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (colorToV4 color)
+        Curve {..} -> return $ curve adjacent (V3 (size ^. _x) (height * yScale) (size ^. _y)) width (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (colorToV4 color)
         Reference r yOffset -> do
           let offset' = unit * referenceOffset offset yOffset a'
           r <- loadReference offset' unit isize workingDir r
@@ -128,7 +129,7 @@ mapHeight m t@(BB.Box start end) offset = do
     forM
       defs
       ( \d -> case d of
-          (Cube {..}, _) -> return $ yScale * yOffset + height
+          (Cube {..}, _) -> return $ yScale * (yOffset + height)
           (Plane {}, _) -> return 0
           (Slope {..}, BB.Box ts te) ->
             let width = te - ts
@@ -148,9 +149,10 @@ mapHeight m t@(BB.Box start end) offset = do
                       (True, False) -> let n = -(center ^. _x - (ts ^. _x) / width ^. _x) + (center ^. _y - (ts ^. _y)) / (width ^. _y) in if n > 0 then low else low + high * (1 - n)
                       (True, True) -> let n = (center ^. _x - (ts ^. _x)) / (width ^. _x) + (center ^. _y - (ts ^. _y)) / (width ^. _y) in if n < 1 then low else low + high * n
                   )
-          (Sphere {..}, _) -> return (yScale * height)
-          (Cylinder {..}, _) -> return (yScale * height)
-          (Cone {..}, _) -> return (yScale * height)
+          (Sphere {..}, _) -> return $ yScale * (yOffset + height)
+          (Cylinder {..}, _) -> return $ yScale * (yOffset + height)
+          (Cone {..}, _) -> return $ yScale * (yOffset + height)
+          (Curve {..}, _) -> return $ yScale * (yOffset + height)
           (Reference r y, BB.Box ts te) -> do
             let size = te - ts
                 (V2 sx sy) = size

@@ -73,6 +73,13 @@ data MapDef
         yOffset :: Float,
         highEdge :: Direction
       }
+  | Curve
+      { color :: RGBA,
+        adjacent :: EdgePoint,
+        height :: Float,
+        yOffset :: Float,
+        width :: Float
+      }
   | Tetra
       { high :: Float,
         low :: Float,
