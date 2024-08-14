@@ -27,6 +27,7 @@ import Omocha.Mesh
 import Omocha.Resource
 import Omocha.Scene
 import Omocha.Shader
+import Omocha.Shape (cylinder')
 import Omocha.Text (text)
 import Omocha.Uniform
 import Omocha.UserInput
@@ -319,17 +320,24 @@ game =
     { prepare = do
         win <- GameCtx $ newWindow (WindowFormatColorDepthStencilCombined RGBA8 Depth24Stencil8) (GLFW.defaultWindowConfig "omocha")
         font <- loadFont "VL-PGothic-Regular.ttf"
-        pmesh <- liftIO $ fromGlb "A.glb" --  "blockhuman.glb"
+        pmesh <- liftIO $ fromGlb "yuki.glb" --  "blockhuman.glb"
         textureStorage <- liftIO $ newIORef M.empty
         fpsSetting <- liftIO $ newIORef 60
         lastRenderTime <- liftIO $ newIORef 0
 
-        let player =
+        let player objs =
               SceneObject
                 { id = ObjectId 0,
                   meshes = pmesh,
                   bbox = BB.Box (V2 0 0) (V2 1 1)
                 }
+                `V.cons` objs
+                `V.snoc` SceneObject
+                  { id = ObjectId 0,
+                    meshes = cylinder' 24 Nothing (V3 0.5 0.001 0.5) (V3 0.75 0 (-0.20)) (V4 0.05 0.01 0.02 0.5),
+                    bbox = BB.Box (V2 0 0) (V2 1 1)
+                  }
+
             offset = V3 0 0 0
             unit = V2 20 20
 
@@ -338,7 +346,7 @@ game =
         (m, objs) <- liftIO $ parseMapFile (takeDirectory mapFile) offset unit g
 
         maps <- liftIO $ newIORef (Maps unit m offset (uncurry V2 g.size) (takeDirectory mapFile))
-        (unis, s) <- GameCtx $ buildRenderer win (player `V.cons` objs)
+        (unis, s) <- GameCtx $ buildRenderer win (player objs)
         let clear = do
               clearWindowColor win (V4 0 0.25 1 1)
               clearWindowDepthStencil win 1 0
@@ -375,7 +383,7 @@ game =
                         (f, (m, objs)) <- liftIO $ loadMap mapFile unit
 
                         writeIORef maps (Maps unit m offset (uncurry V2 f.size) (takeDirectory mapFile))
-                        (unis, s) <- buildRenderer win (player `V.cons` objs)
+                        (unis, s) <- buildRenderer win (player objs)
 
                         gs <- gridShader win unis f unit offset
                         let r = renderWith unis s $ \vpSize -> do
@@ -400,7 +408,7 @@ game =
                         (f, (m, objs)) <- liftIO $ loadMap (dir ++ "/group.json") unit
 
                         writeIORef maps (Maps unit m offset (uncurry V2 f.size) $ "static/maps/group" ++ show i)
-                        (unis, s) <- buildRenderer win (player `V.cons` objs)
+                        (unis, s) <- buildRenderer win (player objs)
 
                         gs <- gridShader win unis f unit offset
                         let r = renderWith unis s $ \vpSize -> do
@@ -535,7 +543,7 @@ updateFrame env update renderText camera target input = do
           !*! mkTransformation (axisAngle (V3 0 1 0) (unangle (target.direction ^. _zx))) (V3 1 0 (-0.25))
           !*! mkTransformation zero (V3 (-1) 0 0.25)
 
-      lightDir = V3 (-0.5) 0.5 0.5
+      lightDir = V3 0 0.5 0.5
 
   fpsSetting' <- liftIO $ readIORef env.fpsSetting
   let timePerFrame = 1 / fpsSetting'
@@ -549,8 +557,8 @@ updateFrame env update renderText camera target input = do
       fps = 1 / delta
       pos = position m target
   when (waitTime > 0) $ liftIO $ threadDelay $ floor $ waitTime * 1000000
-  let inp = "target: " ++ show target ++ "\ncamera: " ++ showV3F camera ++ "\nfps: " ++ showF fps ++ "\nmid:" ++ show input.n ++ "\np: " ++ show pos
-      visibleBox :: BB.Box V2 Int = BB.Box (V2 0 0) (V2 1 1) `BB.move` pos
+  let visibleBox :: BB.Box V2 Int = BB.Box (V2 0 0) (V2 1 1) `BB.move` pos
+      inp = "target: " ++ show target ++ "\ncamera: " ++ showV3F camera ++ "\nfps: " ++ showF fps ++ "\nmid:" ++ show input.n ++ "\np: " ++ show visibleBox
   _ <-
     update
       ( if

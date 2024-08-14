@@ -78,7 +78,8 @@ data MapDef
         adjacent :: EdgePoint,
         height :: Float,
         yOffset :: Float,
-        width :: Float
+        width :: Float,
+        r :: Float
       }
   | Tetra
       { high :: Float,

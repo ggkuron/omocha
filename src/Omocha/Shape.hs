@@ -3,6 +3,7 @@ module Omocha.Shape
     cube,
     divideN,
     cylinder,
+    cylinder',
     slope,
     cone,
     curve,
@@ -93,39 +94,39 @@ divideN from to divs =
   where
     step = (to - from) / fromIntegral (divs + 1)
 
-curveCross :: EdgePoint -> V2 Float -> Float -> Int -> Vector (V2 Float, V2 Float)
-curveCross (True, True) (V2 w h) width divs =
-  let sps = spline $ V.fromList [0, h / 5, 0]
-      t = divideN (V2 0 h) (V2 w 0) divs
-      b = divideN (V2 width h) (V2 w width) divs
-      t' x = x & _y -~ calcSplines sps (x ^. _x * 2 / w)
-      b' x = x & _y -~ calcSplines sps ((x ^. _x - width) * 2 / (w - width))
-   in V.map (bimap t' b') (V.zip t b)
-curveCross (False, False) (V2 w h) width divs =
-  let sps = spline $ V.fromList [0, h / 5, 0]
-      t = divideN (V2 0 (h - width)) (V2 (w - width) 0) divs
-      b = divideN (V2 0 h) (V2 w 0) divs
-      t' x = x & _y +~ calcSplines sps ((x ^. _x) * 2 / (w - width))
-      b' x = x & _y +~ calcSplines sps (x ^. _x * 2 / w)
-   in V.map (bimap t' b') (V.zip t b)
-curveCross (True, False) (V2 w h) width divs =
-  let sps = spline $ V.fromList [0, h / 5, 0]
-      t = divideN (V2 width 0) (V2 w (h - width)) divs
-      b = divideN (V2 0 0) (V2 w h) divs
-      t' x = x & _y +~ calcSplines sps ((x ^. _x - width) * 2 / (w - width))
-      b' x = x & _y +~ calcSplines sps (x ^. _x * 2 / w)
-   in V.map (bimap t' b') (V.zip t b)
-curveCross (False, True) (V2 w h) width divs =
-  let sps = spline $ V.fromList [0, h / 5, 0]
-      t = divideN (V2 0 0) (V2 w h) divs
-      b = divideN (V2 0 width) (V2 (w - width) h) divs
-      t' x = x & _y -~ calcSplines sps (x ^. _x * 2 / w)
-      b' x = x & _y -~ calcSplines sps ((x ^. _x) * 2 / (w - width))
-   in V.map (bimap t' b') (V.zip t b)
+curveCross :: EdgePoint -> V2 Float -> Float -> Float -> Int -> Vector (V2 Float, V2 Float)
+curveCross center (V2 w h) width r divs =
+  case center of
+    (True, True) ->
+      let t = divideN (V2 0 h) (V2 w 0) divs
+          b = divideN (V2 (min w width) h) (V2 w (min h width)) divs
+          t' x = x & _y -~ calcSplines sps (x ^. _x * 2 / w)
+          b' x = x & _y -~ calcSplines sps ((x ^. _x - width) * 2 / (w - width))
+       in V.map (bimap t' b') (V.zip t b)
+    (False, False) ->
+      let t = divideN (V2 0 (h - width)) (V2 (w - width) 0) divs
+          b = divideN (V2 0 h) (V2 w 0) divs
+          t' x = x & _y +~ calcSplines sps ((x ^. _x) * 2 / (w - width))
+          b' x = x & _y +~ calcSplines sps (x ^. _x * 2 / w)
+       in V.map (bimap t' b') (V.zip t b)
+    (True, False) ->
+      let t = divideN (V2 width 0) (V2 w (h - width)) divs
+          b = divideN (V2 0 0) (V2 w h) divs
+          t' x = x & _y +~ calcSplines sps ((x ^. _x - width) * 2 / (w - width))
+          b' x = x & _y +~ calcSplines sps (x ^. _x * 2 / w)
+       in V.map (bimap t' b') (V.zip t b)
+    (False, True) ->
+      let t = divideN (V2 0 0) (V2 w h) divs
+          b = divideN (V2 0 width) (V2 (w - width) h) divs
+          t' x = x & _y -~ calcSplines sps (x ^. _x * 2 / w)
+          b' x = x & _y -~ calcSplines sps ((x ^. _x) * 2 / (w - width))
+       in V.map (bimap t' b') (V.zip t b)
+  where
+    sps = spline $ V.fromList [0, r, 0]
 
-curve :: (HasCallStack) => EdgePoint -> V3 Float -> Float -> V3 Float -> V4 Float -> Vector Mesh
-curve center (V3 w d h) width offset color =
-  let cc = curveCross center (V2 w h) width 8
+curve :: (HasCallStack) => EdgePoint -> V3 Float -> Float -> Float -> V3 Float -> V4 Float -> Vector Mesh
+curve center (V3 w d h) width r offset color =
+  let cc = curveCross center (V2 w h) width r 16
       tops = V.concatMap (\(t, b) -> Vertex (v3 t d) (V3 0 1 0) (V2 0 0) `V.cons` V.singleton (Vertex (v3 b d) (V3 0 1 0) (V2 0 0))) cc
       bottoms = V.concatMap (\(t, b) -> Vertex (v3 t 0) (V3 0 1 0) (V2 0 0) `V.cons` V.singleton (Vertex (v3 b 0) (V3 0 1 0) (V2 0 0))) (V.reverse cc)
       facePoints =
@@ -160,13 +161,11 @@ curve center (V3 w d h) width offset color =
         `V.snoc` Mesh (V.toList bottoms) Nothing offset Nothing BoardShader (TopologyTriangles TriangleStrip) (Just color)
 
 cylinder :: Maybe EdgePoint -> V3 Float -> V3 Float -> V4 Float -> Vector Mesh
-cylinder center size@(V3 _ depth _) (V3 x z y) color =
-  -- cylinder :: (HasCallStack) => Point -> V3 Float -> Maybe EdgePoint -> Float -> V3 Float -> V4 Float -> Vector Mesh
-  -- cylinder ((x, w), (y, h)) unit center d offset color =
+cylinder = cylinder' 8
+
+cylinder' :: Int -> Maybe EdgePoint -> V3 Float -> V3 Float -> V4 Float -> Vector Mesh
+cylinder' divs center size@(V3 _ depth _) (V3 x z y) color =
   let halfSize = size / 2
-      -- (w', h') = (w - x, h - y)
-      -- size = V3 w' d h'
-      -- depth = d
       (r, offset) = case center of
         Nothing -> ((size ^. _xz) / 2, V3 ((halfSize ^. _x) + x) z ((halfSize ^. _z) + y))
         Just ep -> (size ^. _xz, (\(a, b) -> V3 a 0 b) (both fromBool ep) * size + V3 x z y)
@@ -176,7 +175,7 @@ cylinder center size@(V3 _ depth _) (V3 x z y) color =
         Just (False, True) -> (pi * 2, pi * 1.5)
         Just (True, False) -> (pi, pi * 0.5)
         Just (True, True) -> (pi * 1.5, pi)
-      topPoints = ellipticalCircle r depth (rstart, rend)
+      topPoints = ellipticalCircle' r depth (rstart, rend) divs
       bottomPoints = V.toList . V.map (\p -> p & _y .~ 0) $ V.reverse topPoints
       facePoints = V.toList $ V.zip topPoints (V.tail topPoints)
    in V.map

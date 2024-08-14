@@ -72,44 +72,6 @@ boardShader win unis = do
       stencilOptions = FrontBack (StencilOption Equal 0 OpKeep OpKeep (complement 0) (complement 0)) (StencilOption Equal 0 OpKeep OpKeep (complement 0) (complement 0))
   drawWindowColorDepthStencil (const (win, colorOption, DepthStencilOption stencilOptions depthOption (FrontBack OpKeep OpKeep))) fragsWithDepth
 
-lineShader ::
-  Window os RGBAFloat DepthStencil ->
-  ApplicationUniforms os ->
-  Shader os (LinesInput os) ()
-lineShader win unis =
-  do
-    uni <- readGlobalUniform unis
-    prims <- toPrimitiveStream $ \(LinesInput _ c st) -> (\v -> (v, c)) <$> st
-    let projected = (\((v, _), c) -> let (v', _) = proj uni (v, V3 0 1 0) in (v', c)) <$> prims
-    fragmentStream <- rasterize (\(LinesInput ri _ _) -> (FrontAndBack, ViewPort (V2 0 0) ri, DepthRange 0 1)) projected
-    let litFrags =
-          withRasterizedInfo
-            (\p x -> (p, rasterizedFragCoord x ^. _z))
-            fragmentStream
-    let colorOption = ContextColorOption (BlendRgbAlpha (FuncAdd, Min) (BlendingFactors SrcAlpha OneMinusSrcAlpha, BlendingFactors SrcAlpha DstAlpha) (V4 0 0 0 0)) (pure True)
-        depthOption = DepthOption Lequal True
-        stencilOptions = FrontBack (StencilOption Equal 0 OpKeep OpKeep (complement 0) (complement 0)) (StencilOption Equal 0 OpKeep OpKeep (complement 0) (complement 0))
-    drawWindowColorDepthStencil (const (win, colorOption, DepthStencilOption stencilOptions depthOption (FrontBack OpKeep OpKeep))) litFrags
-
-pointShader ::
-  Window os RGBAFloat DepthStencil ->
-  ApplicationUniforms os ->
-  Shader os (PointsInput os) ()
-pointShader win unis =
-  do
-    uni <- readGlobalUniform unis
-    prims <- toPrimitiveStream $ \(PointsInput _ c st) -> (\v -> (v, c)) <$> st
-    let projected = (\((v, _), c) -> let (v', _) = proj uni (v, V3 0 1 0) in (v', c :: V4 VFloat)) <$> prims
-    fragmentStream <- rasterize (\(PointsInput ri _ _) -> (FrontAndBack, ViewPort (V2 0 0) ri, DepthRange 0 1)) projected
-    let litFrags =
-          withRasterizedInfo
-            (\p x -> (p, rasterizedFragCoord x ^. _z))
-            fragmentStream
-    let colorOption = ContextColorOption (BlendRgbAlpha (FuncAdd, Min) (BlendingFactors SrcAlpha OneMinusSrcAlpha, BlendingFactors SrcAlpha DstAlpha) (V4 0 0 0 0)) (pure True)
-        depthOption = DepthOption Lequal True
-        stencilOptions = FrontBack (StencilOption Equal 0 OpKeep OpKeep (complement 0) (complement 0)) (StencilOption Equal 0 OpKeep OpKeep (complement 0) (complement 0))
-    drawWindowColorDepthStencil (const (win, colorOption, DepthStencilOption stencilOptions depthOption (FrontBack OpKeep OpKeep))) litFrags
-
 monoStencil ::
   Window os RGBAFloat DepthStencil ->
   ApplicationUniforms os ->
@@ -183,7 +145,7 @@ phongShader win unis = do
         withRasterizedInfo
           ( \(n, c) x ->
               let v = rasterizedFragCoord x
-                  diffuse = point . return $ clamp (lightDir `dot` n) 0.1 1.0
+                  diffuse = point . return $ clamp (lightDir `dot` n * 10) 0.1 1.0
                in -- halfLE :: V3 FFloat = normalizeS $ lightDir + eyeDir
                   -- specular :: FFloat = clamp (n `dot` halfLE) 0.0 1.0 ^* 50
                   (c * diffuse, v ^. _z)
