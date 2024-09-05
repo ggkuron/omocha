@@ -31,6 +31,31 @@ import Omocha.Shape (cylinder')
 import Omocha.Text (text)
 import Omocha.Uniform
 import Omocha.UserInput
+  ( Direction (..),
+    Input,
+    InputE,
+    InputG
+      ( cameraLock,
+        direction1,
+        direction2,
+        hardReset,
+        hover,
+        jump,
+        n,
+        reset,
+        rotation,
+        save,
+        speedUp,
+        stop
+      ),
+    diffInput,
+    edgeInput,
+    initialInput,
+    initialInputE,
+    justInput,
+    onlyInput,
+    readInput,
+  )
 import RIO hiding (trace, traceStack)
 import RIO.FilePath (takeDirectory)
 
@@ -198,72 +223,120 @@ buildRenderer ::
   (HasCallStack) =>
   forall ctx os m.
   (ContextHandler ctx, MonadIO m, E.MonadException m) =>
+  (Window os RGBAFloat DepthStencil -> ApplicationUniforms os -> ContextT ctx os m (CompiledShader os (V2 Int))) ->
   Window os RGBAFloat DepthStencil ->
   Vector SceneObject ->
-  ContextT ctx os m (ApplicationUniforms os, CompiledShader os (GlobalUniformB, M.Map ObjectId ObjectUniformB))
-buildRenderer win os = do
+  ContextT ctx os m (ApplicationUniforms os, Vector (CompiledShader os (GlobalUniformB, M.Map ObjectId ObjectUniformB)))
+buildRenderer init win os = do
   unis <- newUniforms . fromIntegral . length $ os
   ms <- compileShader $ monoShader win unis
   bs <- compileShader $ boardShader win unis
   ts <- compileShader $ boardShader win unis
+  init' <- init win unis
+  depthTex <- newTexture2D Depth16 (V2 1024 1024) 1
+  shadows' <- compileShader $ shadows unis
+
+  let clear (i, _) = do
+        dImage <- getTexture2DImage depthTex 0
+        clearImageDepth dImage 1
+        clearWindowColor win (V4 0 0.25 1 1)
+        clearWindowDepthStencil win 1 0
+        init' i.windowSize
 
   r <- forM os $ \obj -> do
-    rs <- forM obj.meshes $ \(Mesh {..}) -> do
+    forM obj.meshes $ \(Mesh {..}) -> do
       ibuf <- case indices of
         Just indices' -> do
           let l = length indices'
           ibuf :: Buffer os (B Word32) <- newBuffer l
           when (l > 0) $ writeBuffer ibuf 0 $ map fromIntegral indices'
-          return $ Just ibuf
-        _ -> return Nothing
+          pure $ Just ibuf
+        _ -> pure Nothing
 
       let l = length vertices
+      vbuf <- newBuffer l
+      nbuf <- newBuffer l
+      ubuf <- newBuffer l
+      when (l > 0) $ do
+        writeBuffer vbuf 0 [position + offset | Vertex {..} <- vertices]
+        writeBuffer nbuf 0 [normal | Vertex {..} <- vertices]
+        writeBuffer ubuf 0 [uv | Vertex {..} <- vertices]
+
       case texture of
         Just t -> do
           t' <- loadImage t
           let shader' = case shader of
                 BoardShader -> bs
                 TargetBoard -> ts
-          vbuf <- newBuffer l
-          when (l > 0) $ writeBuffer vbuf 0 [(position + offset, normal, uv) | Vertex {..} <- vertices]
-          return
+          pure
             $ V.singleton
-            $ \(i, m) ->
-              when
-                (maybe False (\o -> o.visible) $ M.lookup obj.id m)
-                $ case topology of
-                  TopologyTriangles p -> do
-                    prims <- newPrimitiveArray p vbuf ibuf
-                    shader' $ RenderInput i.windowSize prims t'
-                  p -> trace ("unsupported topology " ++ show p) $ return ()
+              ( \(i, m) ->
+                  when
+                    (maybe False (\o -> o.visible) $ M.lookup obj.id m)
+                    $ case topology of
+                      TopologyTriangles p -> do
+                        dImage <- getTexture2DImage depthTex 0
+                        prims <- newPrimitiveArray0 p vbuf ibuf
+                        shadows' $ ShadowEnvironment i.windowSize obj prims dImage
+                      p -> trace ("unsupported topology " ++ show p) $ pure ()
+              )
+            `V.snoc` ( \(i, m) ->
+                         when
+                           (maybe False (\o -> o.visible) $ M.lookup obj.id m)
+                           $ case topology of
+                             TopologyTriangles p -> do
+                               prims <- newPrimitiveArray1 p vbuf ibuf nbuf ubuf
+                               shader' $ ShaderEnvironment i.windowSize prims t' depthTex
+                             p -> trace ("unsupported topology " ++ show p) $ pure ()
+                     )
         Nothing -> do
-          vbuf <- newBuffer l
-          when (l > 0) $ writeBuffer vbuf 0 [(position + offset, normal) | Vertex {..} <- vertices]
-
-          return
+          pure
             $ V.singleton
-            $ \(i, m) ->
-              when
-                (maybe False (\o -> o.visible) $ M.lookup obj.id m)
-                $ case topology of
-                  TopologyTriangles p -> do
-                    prims <- newPrimitiveArray p vbuf ibuf
-                    clearWindowStencil win 0
-                    let input = PlainInput i.windowSize (fromMaybe (V4 0 0 0 0.75) color) obj prims
-                    ms input
-                  p -> trace ("unsupported topology " ++ show p) $ return ()
-    rankBundle rs
-  return
-    (unis, bundle r)
+              ( \(i, m) ->
+                  when
+                    (maybe False (\o -> o.visible) $ M.lookup obj.id m)
+                    $ case topology of
+                      TopologyTriangles p -> do
+                        dImage <- getTexture2DImage depthTex 0
+                        prims <- newPrimitiveArray0 p vbuf ibuf
+                        shadows' $ ShadowEnvironment i.windowSize obj prims dImage
+                      p -> trace ("unsupported topology " ++ show p) $ pure ()
+              )
+            `V.snoc` ( \(i, m) ->
+                         when
+                           (maybe False (\o -> o.visible) $ M.lookup obj.id m)
+                           $ case topology of
+                             TopologyTriangles p -> do
+                               prims <- newPrimitiveArray2 p vbuf ibuf nbuf
+                               ms $ PlainEnvironment i.windowSize (fromMaybe (V4 0 0 0 0.75) color) obj prims depthTex
+                             p -> trace ("unsupported topology " ++ show p) $ pure ()
+                     )
+  pure
+    (unis, clear `V.cons` rankBundle' (V.concatMap id r))
 
-newPrimitiveArray :: forall os b i a t. (BufferFormat b, Integral i, IndexFormat b ~ i) => PrimitiveTopology t -> Buffer os a -> Maybe (Buffer os b) -> Render os (PrimitiveArray t a)
-newPrimitiveArray t p Nothing = do
-  pArr <- newVertexArray p
-  return $ toPrimitiveArray t pArr
-newPrimitiveArray t p (Just i) = do
-  pArr <- newVertexArray p
+newPrimitiveArray :: forall os b i a t. (BufferFormat b, Integral i, IndexFormat b ~ i) => PrimitiveTopology t -> VertexArray () a -> Maybe (Buffer os b) -> Render os (PrimitiveArray t a)
+newPrimitiveArray t pArr Nothing = pure $ toPrimitiveArray t pArr
+newPrimitiveArray t pArr (Just i) = do
   iArr <- newIndexArray i Nothing
   return $ toPrimitiveArrayIndexed t iArr pArr
+
+newPrimitiveArray0 :: forall os b i t. (BufferFormat b, Integral i, IndexFormat b ~ i) => PrimitiveTopology t -> Buffer os BPosition -> Maybe (Buffer os b) -> Render os (PrimitiveArray t BPosition)
+newPrimitiveArray0 t p i = do
+  pArr <- newVertexArray p
+  newPrimitiveArray t pArr i
+
+newPrimitiveArray1 :: forall os b i t. (BufferFormat b, Integral i, IndexFormat b ~ i) => PrimitiveTopology t -> Buffer os BPosition -> Maybe (Buffer os b) -> Buffer os BNormal -> Buffer os BUV -> Render os (PrimitiveArray t (BPosition, BNormal, BUV))
+newPrimitiveArray1 t p i n u = do
+  pArr :: VertexArray () BPosition <- newVertexArray p
+  nArr :: VertexArray () BNormal <- newVertexArray n
+  uArr :: VertexArray () BUV <- newVertexArray u
+  newPrimitiveArray t (zipVertices (\(a, b) c -> (a, b, c)) (zipVertices (,) pArr nArr) uArr) i
+
+newPrimitiveArray2 :: forall os b i t. (BufferFormat b, Integral i, IndexFormat b ~ i) => PrimitiveTopology t -> Buffer os BPosition -> Maybe (Buffer os b) -> Buffer os BNormal -> Render os (PrimitiveArray t (BPosition, BNormal))
+newPrimitiveArray2 t p i n = do
+  pArr :: VertexArray () BPosition <- newVertexArray p
+  nArr :: VertexArray () BNormal <- newVertexArray n
+  newPrimitiveArray t (zipVertices (,) pArr nArr) i
 
 execGame ::
   (HasCallStack) =>
@@ -320,18 +393,18 @@ game =
     { prepare = do
         win <- GameCtx $ newWindow (WindowFormatColorDepthStencilCombined RGBA8 Depth24Stencil8) (GLFW.defaultWindowConfig "omocha")
         font <- loadFont "VL-PGothic-Regular.ttf"
-        pmesh <- liftIO $ fromGlb "yuki.glb" --  "blockhuman.glb"
+        pmesh <- liftIO $ fromGlb "yuki.glb"
         textureStorage <- liftIO $ newIORef M.empty
         fpsSetting <- liftIO $ newIORef 60
         lastRenderTime <- liftIO $ newIORef 0
 
         let player objs =
-              SceneObject
-                { id = ObjectId 0,
-                  meshes = pmesh,
-                  bbox = BB.Box (V2 0 0) (V2 1 1)
-                }
-                `V.cons` objs
+              objs
+                `V.snoc` SceneObject
+                  { id = ObjectId 0,
+                    meshes = pmesh,
+                    bbox = BB.Box (V2 0 0) (V2 1 1)
+                  }
                 `V.snoc` SceneObject
                   { id = ObjectId 0,
                     meshes = cylinder' 24 Nothing (V3 0.5 0.001 0.5) (V3 0.75 0 (-0.20)) (V4 0.05 0.01 0.02 0.5),
@@ -346,15 +419,10 @@ game =
         (m, objs) <- liftIO $ parseMapFile (takeDirectory mapFile) offset unit g
 
         maps <- liftIO $ newIORef (Maps unit m offset (uncurry V2 g.size) (takeDirectory mapFile))
-        (unis, s) <- GameCtx $ buildRenderer win (player objs)
-        let clear = do
-              clearWindowColor win (V4 0 0.25 1 1)
-              clearWindowDepthStencil win 1 0
+        let gs = gridShader g unit offset
+        (unis, s) <- GameCtx $ buildRenderer gs win (player objs)
         ts <- GameCtx $ compileShader $ textShader win unis
-        gs <- GameCtx $ gridShader win unis g unit offset
-        renderings <- liftIO $ newIORef $ renderWith unis s $ \vpSize -> do
-          clear
-          gs vpSize
+        renderings <- liftIO $ newIORef $ renderWith unis s
 
         let renderText bbox (ws, inp) = do
               vs <- charMeshes font bbox 24 inp
@@ -372,7 +440,7 @@ game =
                   return $ \vpSize -> do
                     pArr <- newVertexArray vbuf
                     let pa = toPrimitiveArray TriangleStrip pArr
-                    ts $ TextInput vpSize pa t
+                    ts $ TextEnvironment vpSize pa t
                 render $ bundle t ws
         let update c g o = GameCtx
               $ case c of
@@ -383,12 +451,9 @@ game =
                         (f, (m, objs)) <- liftIO $ loadMap mapFile unit
 
                         writeIORef maps (Maps unit m offset (uncurry V2 f.size) (takeDirectory mapFile))
-                        (unis, s) <- buildRenderer win (player objs)
+                        (unis, s) <- buildRenderer gs win (player objs)
 
-                        gs <- gridShader win unis f unit offset
-                        let r = renderWith unis s $ \vpSize -> do
-                              clear
-                              gs vpSize
+                        let r = renderWith unis s
                         liftIO $ writeIORef renderings r
                     )
                     (\e -> trace (show (e :: SomeException)) $ return ())
@@ -408,12 +473,9 @@ game =
                         (f, (m, objs)) <- liftIO $ loadMap (dir ++ "/group.json") unit
 
                         writeIORef maps (Maps unit m offset (uncurry V2 f.size) $ "static/maps/group" ++ show i)
-                        (unis, s) <- buildRenderer win (player objs)
+                        (unis, s) <- buildRenderer gs win (player objs)
 
-                        gs <- gridShader win unis f unit offset
-                        let r = renderWith unis s $ \vpSize -> do
-                              clear
-                              gs vpSize
+                        let r = renderWith unis s
                         liftIO $ writeIORef renderings r
                     )
                     (\e -> trace (show (e :: SomeException)) $ return ())
@@ -544,6 +606,7 @@ updateFrame env update renderText camera target input = do
           !*! mkTransformation zero (V3 (-1) 0 0.25)
 
       lightDir = V3 0 0.5 0.5
+      light = V3 60 10 60
 
   fpsSetting' <- liftIO $ readIORef env.fpsSetting
   let timePerFrame = 1 / fpsSetting'
@@ -569,7 +632,7 @@ updateFrame env update renderText camera target input = do
           | input.n == Just 4 -> GameLoad 4
           | otherwise -> GameContinue
       )
-      GlobalUniform {windowSize = sz, modelNorm = normMat, viewCamera = camera, viewTarget = target.position, viewUp = viewUpNorm, lightDirection = lightDir}
+      GlobalUniform {windowSize = sz, modelNorm = normMat, viewCamera = camera, viewTarget = target.position, viewUp = viewUpNorm, light = light, lightDirection = lightDir}
       ( M.fromAscList
           $ (ObjectId 0, ObjectUniformB {position = target.position, proj = modelProj, visible = True})
           : V.toList
