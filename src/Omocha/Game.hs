@@ -27,7 +27,6 @@ import Omocha.Mesh
 import Omocha.Resource
 import Omocha.Scene
 import Omocha.Shader
-import Omocha.Shape (cylinder')
 import Omocha.Text (text)
 import Omocha.Uniform
 import Omocha.UserInput
@@ -101,7 +100,7 @@ position m p =
     size' = fromIntegral <$> m.size
 
 data Env os = Env
-  { win :: Window os RGBAFloat DepthStencil,
+  { win :: Window os RGBAFloat Depth,
     textureStorage :: IORef (M.Map (Double, Char) (Texture2D os (Format RGBAFloat))),
     fpsSetting :: IORef Double,
     lastRenderedTime :: IORef Double,
@@ -223,8 +222,8 @@ buildRenderer ::
   (HasCallStack) =>
   forall ctx os m.
   (ContextHandler ctx, MonadIO m, E.MonadException m) =>
-  (Window os RGBAFloat DepthStencil -> ApplicationUniforms os -> ContextT ctx os m (CompiledShader os (V2 Int))) ->
-  Window os RGBAFloat DepthStencil ->
+  (Window os RGBAFloat Depth -> ApplicationUniforms os -> ContextT ctx os m (CompiledShader os (V2 Int))) ->
+  Window os RGBAFloat Depth ->
   Vector SceneObject ->
   ContextT ctx os m (ApplicationUniforms os, Vector (CompiledShader os (GlobalUniformB, M.Map ObjectId ObjectUniformB)))
 buildRenderer init win os = do
@@ -233,14 +232,14 @@ buildRenderer init win os = do
   bs <- compileShader $ boardShader win unis
   ts <- compileShader $ boardShader win unis
   init' <- init win unis
-  depthTex <- newTexture2D Depth16 (V2 1024 1024) 1
+  depthTex <- newTexture2D Depth24 (V2 8192 8192) 1
   shadows' <- compileShader $ shadows unis
 
   let clear (i, _) = do
         dImage <- getTexture2DImage depthTex 0
         clearImageDepth dImage 1
         clearWindowColor win (V4 0 0.25 1 1)
-        clearWindowDepthStencil win 1 0
+        clearWindowDepth win 1
         init' i.windowSize
 
   r <- forM os $ \obj -> do
@@ -391,7 +390,7 @@ game :: (HasCallStack) => Game
 game =
   Game
     { prepare = do
-        win <- GameCtx $ newWindow (WindowFormatColorDepthStencilCombined RGBA8 Depth24Stencil8) (GLFW.defaultWindowConfig "omocha")
+        win <- GameCtx $ newWindow (WindowFormatColorDepth RGBA8 Depth16) (GLFW.defaultWindowConfig "omocha")
         font <- loadFont "VL-PGothic-Regular.ttf"
         pmesh <- liftIO $ fromGlb "yuki.glb"
         textureStorage <- liftIO $ newIORef M.empty
@@ -405,12 +404,6 @@ game =
                     meshes = pmesh,
                     bbox = BB.Box (V2 0 0) (V2 1 1)
                   }
-                `V.snoc` SceneObject
-                  { id = ObjectId 0,
-                    meshes = cylinder' 24 Nothing (V3 0.5 0.001 0.5) (V3 0.75 0 (-0.20)) (V4 0.05 0.01 0.02 0.5),
-                    bbox = BB.Box (V2 0 0) (V2 1 1)
-                  }
-
             offset = V3 0 0 0
             unit = V2 20 20
 

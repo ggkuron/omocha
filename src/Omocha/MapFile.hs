@@ -229,7 +229,7 @@ adjust sz asc crossSize v =
     | (fst (V.head s) == 0) && (fst (V.last s) /= sz) -> s' `V.snoc` (sz, en)
     | otherwise -> (0, e0) `V.cons` s' `V.snoc` (sz, en)
   where
-    s = V.modify (VAI.sortBy (compare `on` fst)) (V.filter ((\a -> a >= 0 && a <= sz) . fst) v)
+    s = V.modify (VAI.sortBy (comparing fst)) (V.filter ((\a -> a >= 0 && a <= sz) . fst) v)
     e0 = if asc then 0 else crossSize
     en = if asc then crossSize else 0
     v' = V.map (second fromIntegral) v

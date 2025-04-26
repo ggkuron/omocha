@@ -7,7 +7,6 @@
 module Omocha.Shader where
 
 import Control.Monad.Exception (MonadException)
-import Data.Bits (complement)
 import Data.Tuple.Extra (both)
 import Data.Vector qualified as V
 import Graphics.GPipe hiding (trace, transpose)
@@ -54,7 +53,7 @@ data TextEnvironment os = TextEnvironment
   }
 
 boardShader ::
-  Window os RGBAFloat DepthStencil ->
+  Window os RGBAFloat Depth ->
   ApplicationUniforms os ->
   Shader os (ShaderEnvironment os) ()
 boardShader win unis = do
@@ -70,7 +69,7 @@ boardShader win unis = do
 
   fragmentStream <- rasterize (\env -> (Front, ViewPort (V2 0 0) env.size, DepthRange 0 1)) projected
   let litFrags =
-        ( \(c, u, s) ->
+        ( \(_c, u, s) ->
             let d = light samp u
                 z = sample2DShadow ssamp (SampleLod 0) Nothing Nothing 1 (s ^. _xy)
                 visibility = ifB (z <* (s ^. _z)) (point . pure $ 0.5) 1
@@ -84,8 +83,8 @@ boardShader win unis = do
           frags
   let colorOption = ContextColorOption (BlendRgbAlpha (FuncAdd, Min) (BlendingFactors SrcAlpha OneMinusSrcAlpha, BlendingFactors SrcAlpha DstAlpha) (V4 0 0 0 0)) (pure True)
       depthOption = DepthOption Lequal True
-      stencilOptions = FrontBack (StencilOption Equal 0 OpKeep OpKeep (complement 0) (complement 0)) (StencilOption Equal 0 OpKeep OpKeep (complement 0) (complement 0))
-  drawWindowColorDepthStencil (const (win, colorOption, DepthStencilOption stencilOptions depthOption (FrontBack OpKeep OpKeep))) fragsWithDepth
+  -- stencilOptions = FrontBack (StencilOption Equal 0 OpKeep OpKeep (complement 0) (complement 0)) (StencilOption Equal 0 OpKeep OpKeep (complement 0) (complement 0))
+  drawWindowColorDepth (const (win, colorOption, depthOption)) fragsWithDepth
 
 biasMat :: (Fractional a) => M44 a
 biasMat =
@@ -110,7 +109,7 @@ shadows unis = do
         )
           <$> boards
 
-  frags <- rasterize (const (Front, ViewPort (V2 0 0) (V2 1024 1024), DepthRange 0 1)) projected
+  frags <- rasterize (const (Back, ViewPort (V2 0 0) (V2 8192 8192), DepthRange 0 1)) projected
   let fragsWithDepth =
         withRasterizedInfo
           (\p x -> (p, rasterizedFragCoord x ^. _z))
@@ -135,14 +134,14 @@ readObjectUniform'' unis = do
   return $ ObjectUniform position modelProj
 
 phongShader ::
-  Window os RGBAFloat DepthStencil ->
+  Window os RGBAFloat Depth ->
   ApplicationUniforms os ->
   Shader os (PlainEnvironment os) ()
 phongShader win unis = do
   g <- readGlobalUniform unis
   o <- readObjectUniform' unis
   boards <- toPrimitiveStream $ \env -> (\v -> (v, env.color)) <$> env.primitives
-  let projected = (\((v, n), c) -> let v' = normalizePoint (o.proj !* point v) + o.position in (proj g v', (g.modelNorm !* n, c, biasMat !* lightProj g v'))) <$> boards
+  let projected = (\((v, n), c) -> let v' = normalizePoint (o.proj !* point v) + o.position in (proj g v', (g.modelNorm !* n, c, biasMat !* (point . normalizePoint $ lightProj g v')))) <$> boards
   fragmentStream <- rasterize (\env -> (Front, ViewPort (V2 0 0) env.size, DepthRange 0 1)) projected
   ssamp <- newSampler2DShadow $ \env -> (env.depthImage, SamplerNearest, (pure ClampToEdge, 0 :: BorderColor Depth), Lequal)
   unif <- readGlobalUniform unis
@@ -153,8 +152,8 @@ phongShader win unis = do
           ( \(n, c, s) x ->
               let v = rasterizedFragCoord x
                   diffuse = point . pure $ clamp (lightDir `dot` n * 10) 0.1 1.0
-                  z = sample2DShadow ssamp (SampleLod 0) Nothing Nothing 1 (s ^. _xy)
-                  visibility = ifB (z <* (s ^. _z)) (V4 0.5 0.5 0.5 1) 1
+                  z = sample2DShadow ssamp (SampleLod 0) Nothing Nothing (s ^. _z) (s ^. _xy)
+                  visibility = ifB (z {- 0 to 1 -} <* 1) (V4 0.5 0.5 0.5 1) 1
                in -- halfLE :: V3 FFloat = normalizeS $ lightDir + eyeDir
                   -- specular :: FFloat = clamp (n `dot` halfLE) 0.0 1.0 ^* 50
                   (visibility * c * diffuse, v ^. _z)
@@ -162,10 +161,10 @@ phongShader win unis = do
           fragmentStream
   let colorOption = ContextColorOption (BlendRgbAlpha (FuncAdd, Min) (BlendingFactors SrcAlpha OneMinusSrcAlpha, BlendingFactors SrcAlpha DstAlpha) (V4 0 0 0 0)) (pure True)
       depthOption = DepthOption Less True
-      stencilOptions = FrontBack (StencilOption Equal 0 OpKeep OpKeep (complement 0) (complement 0)) (StencilOption Equal 0 OpKeep OpKeep (complement 0) (complement 0))
-  drawWindowColorDepthStencil (const (win, colorOption, DepthStencilOption stencilOptions depthOption (FrontBack OpKeep OpKeep))) litFrags
+  -- stencilOptions = FrontBack (StencilOption Equal 0 OpKeep OpKeep (complement 0) (complement 0)) (StencilOption Equal 0 OpKeep OpKeep (complement 0) (complement 0))
+  drawWindowColorDepth (const (win, colorOption, depthOption)) litFrags
 
-monoShader :: Window os RGBAFloat DepthStencil -> ApplicationUniforms os -> Shader os (PlainEnvironment os) ()
+monoShader :: Window os RGBAFloat Depth -> ApplicationUniforms os -> Shader os (PlainEnvironment os) ()
 monoShader = phongShader
 
 light :: (ColorSampleable c) => Sampler2D (Format c) -> V2 FFloat -> ColorSample F c
@@ -177,7 +176,9 @@ proj g v = viewProjection g !* point v
 -- proj = lightProj
 
 lightProj :: (Floating (ConvertFloat a), Convert a) => GlobalUniform a (ConvertFloat a) -> V3 (ConvertFloat a) -> V4 (ConvertFloat a)
-lightProj g v = point . normalizePoint $ infinitePerspective (pi / 3) 1 0.01 !*! lookAt' (V3 60 50 80) (V3 60 0 0) (V3 0 1 0) !* point v
+lightProj g v = infinitePerspective (pi / 3) 1 0.01 !*! lookAt' (V3 60 40 80) (V3 60 0 0) (V3 0 1 0) !* point v
+  where
+    n = V3 60 0 0 - V3 60 40 80
 
 unproj :: (Floating (ConvertFloat a), Convert a) => GlobalUniform a (ConvertFloat a) -> V3 (ConvertFloat a) -> V4 (ConvertFloat a)
 unproj uni v = inv44 (viewProjection uni) !* point v
@@ -212,7 +213,7 @@ invertModelViewProjection :: (Floating (ConvertFloat a), Convert a) => GlobalUni
 invertModelViewProjection uni = inv44 $ viewProjection uni
 
 textShader ::
-  Window os RGBAFloat DepthStencil ->
+  Window os RGBAFloat Depth ->
   ApplicationUniforms os ->
   Shader os (TextEnvironment os) ()
 textShader win unis = do
@@ -235,7 +236,7 @@ gridShader ::
   MapFile ->
   V2 Float ->
   V3 Float ->
-  Window os RGBAFloat DepthStencil ->
+  Window os RGBAFloat Depth ->
   ApplicationUniforms os ->
   ContextT ctx os m (CompiledShader os (V2 Int))
 gridShader m unit offset win unis =
