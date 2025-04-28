@@ -4,16 +4,16 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Omocha.Shader where
+module Astrata.Shader where
 
 import Control.Monad.Exception (MonadException)
 import Data.Tuple.Extra (both)
 import Data.Vector qualified as V
 import Graphics.GPipe hiding (trace, transpose)
-import Omocha.MapFile
-import Omocha.Scene (SceneObject (..))
-import Omocha.Shape
-import Omocha.Uniform
+import Astrata.MapFile
+import Astrata.Scene (SceneObject (..))
+import Astrata.Shape
+import Astrata.Uniform
 import RIO hiding (trace, (<*))
 
 type BPosition = B3 Float

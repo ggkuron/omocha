@@ -1,4 +1,4 @@
-module Omocha.Spline where
+module Astrata.Spline where
 
 import Data.Ord (clamp)
 import Data.Vector qualified as V

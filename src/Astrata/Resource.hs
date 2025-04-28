@@ -4,7 +4,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 
-module Omocha.Resource where
+module Astrata.Resource where
 
 import Control.Monad.Exception qualified as E (MonadAsyncException (..), MonadException (throw), catch, fromException, throw)
 import Control.Monad.Trans.Resource (MonadResource (..), ResourceT, resourceMask, runResourceT)

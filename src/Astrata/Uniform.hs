@@ -1,4 +1,4 @@
-module Omocha.Uniform
+module Astrata.Uniform
   ( ApplicationUniforms (..),
     readGlobalUniform,
     GlobalUniform (..),

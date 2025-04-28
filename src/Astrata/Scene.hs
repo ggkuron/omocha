@@ -1,4 +1,4 @@
-module Omocha.Scene
+module Astrata.Scene
   ( Vertex (..),
     Scene (..),
     Mesh (..),
@@ -9,8 +9,8 @@ where
 
 import Data.BoundingBox qualified as BB
 import Graphics.GPipe
-import Omocha.Mesh
-import Omocha.Uniform
+import Astrata.Mesh
+import Astrata.Uniform
 import RIO
 
 data SceneObject = SceneObject

@@ -1,7 +1,7 @@
-module Omocha.Mesh where
+module Astrata.Mesh where
 
 import Graphics.GPipe
-import Omocha.Bitmap
+import Astrata.Bitmap
 import RIO
 
 data Vertex = Vertex
@@ -11,7 +11,7 @@ data Vertex = Vertex
   }
   deriving (Show)
 
-data OmochaShaderType = BoardShader | TargetBoard
+data AstrataShaderType = BoardShader | TargetBoard
   deriving (Eq, Ord, Show)
 
 data Mesh = Mesh
@@ -19,7 +19,7 @@ data Mesh = Mesh
     indices :: Maybe [Int],
     offset :: V3 Float,
     texture :: Maybe Bitmap,
-    shader :: OmochaShaderType,
+    shader :: AstrataShaderType,
     topology :: Topology,
     color :: Maybe (V4 Float)
   }

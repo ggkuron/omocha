@@ -1,6 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 
-module Omocha.Text (TextF (..), TextT, runTextT, text) where
+module Astrata.Text (TextF (..), TextT, runTextT, text) where
 
 import Codec.Picture qualified as P
 import Control.Lens ((+=), (.=))
@@ -10,8 +10,8 @@ import Control.Monad.Trans.Resource
 import Data.BoundingBox
 import Data.String
 import Linear hiding (trace)
-import Omocha.Bitmap (Bitmap (bitmapImage))
-import Omocha.Font
+import Astrata.Bitmap (Bitmap (bitmapImage))
+import Astrata.Font
 import RIO
 
 data TextF a = TypeChar Char a deriving (Functor)

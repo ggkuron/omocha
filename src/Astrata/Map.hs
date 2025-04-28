@@ -1,7 +1,7 @@
 {-# HLINT ignore "Use lambda-case" #-}
 {-# OPTIONS_GHC -Wno-ambiguous-fields #-}
 
-module Omocha.Map where
+module Astrata.Map where
 
 import Control.Monad.Exception qualified as E (MonadException (throw), throw)
 import Data.Aeson hiding (json)
@@ -13,11 +13,11 @@ import Data.Vector qualified as V
 import Linear.V2
 import Linear.V3
 import Linear.V4
-import Omocha.Gltf
-import Omocha.MapFile
-import Omocha.Scene
-import Omocha.Shape
-import Omocha.Uniform
+import Astrata.Gltf
+import Astrata.MapFile
+import Astrata.Scene
+import Astrata.Shape
+import Astrata.Uniform
 import RIO
 import RIO.FilePath
 

@@ -1,12 +1,12 @@
 {-# LANGUAGE DerivingVia #-}
 
-module Omocha.Context where
+module Astrata.Context where
 
 import Control.Monad.Exception qualified as E (MonadAsyncException (..), MonadException ())
 import Control.Monad.Trans.Resource (MonadResource (..))
 import Graphics.GPipe
 import Graphics.GPipe.Context.GLFW qualified as GLFW
-import Omocha.Resource
+import Astrata.Resource
 import RIO
 
 newtype GameCtx os a = GameCtx (ContextT GLFW.Handle os (GameResource IO) a)

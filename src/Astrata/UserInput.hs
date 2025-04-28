@@ -1,4 +1,4 @@
-module Omocha.UserInput where
+module Astrata.UserInput where
 
 import Graphics.GPipe
 import Graphics.GPipe.Context.GLFW qualified as GLFW

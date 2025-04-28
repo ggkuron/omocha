@@ -1,4 +1,4 @@
-import Omocha.Game
+import Astrata.Game
 
 main :: IO ()
 main = run

@@ -1,5 +1,5 @@
 cabal-version: 3.0
-name:          omocha
+name:          astrata
 version:       0.0.0.0
 synopsis:      Initial project template from stack
 description:   Please see README.md
@@ -65,57 +65,57 @@ library
   import:          shared-properties
   exposed-modules:
     Data.BoundingBox.V2
-    Omocha.Game
-    Omocha.MapFile
-    Omocha.Map
-    Omocha.Shape
-    Omocha.Spline
+    Astrata.Game
+    Astrata.MapFile
+    Astrata.Map
+    Astrata.Shape
+    Astrata.Spline
 
   other-modules:
-    Omocha.Bitmap
-    Omocha.Context
-    Omocha.Control
-    Omocha.Font
-    Omocha.Mesh
-    Omocha.Resource
-    Omocha.Gltf
-    Omocha.Scene
-    Omocha.Shader
-    Omocha.Text
-    Omocha.Uniform
-    Omocha.UserInput
-    Paths_omocha
+    Astrata.Bitmap
+    Astrata.Context
+    Astrata.Control
+    Astrata.Font
+    Astrata.Mesh
+    Astrata.Resource
+    Astrata.Gltf
+    Astrata.Scene
+    Astrata.Shader
+    Astrata.Text
+    Astrata.Uniform
+    Astrata.UserInput
+    Paths_astrata
 
   hs-source-dirs:  src
 
-executable omocha
+executable astrata
   main-is:          Main.hs
-  other-modules:    Paths_omocha
+  other-modules:    Paths_astrata
   hs-source-dirs:   ./
   build-depends:
     , base
     , freetype2         ^>=0.1
-    , omocha
+    , astrata
     , template-haskell
 
   default-language: GHC2021
 
-test-suite omocha-test
+test-suite astrata-test
   import:           shared-properties
   type:             exitcode-stdio-1.0
   main-is:          Spec.hs
   other-modules:
     Data.BoundingBox.V2Spec
-    Omocha.GameSpec
-    Omocha.MapFileSpec
-    Omocha.ShapeSpec
-    Omocha.SplineSpec
-    Paths_omocha
+    Astrata.GameSpec
+    Astrata.MapFileSpec
+    Astrata.ShapeSpec
+    Astrata.SplineSpec
+    Paths_astrata
 
   hs-source-dirs:   test
   build-depends:
     , hspec
-    , omocha
+    , astrata
     , QuickCheck
     , raw-strings-qq
 

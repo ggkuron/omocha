@@ -1,4 +1,4 @@
-module Omocha.Font
+module Astrata.Font
   ( Font (..),
     loadFont,
     charToBitmap,
@@ -33,7 +33,7 @@ import Graphics.Rendering.FreeType.Internal.Library as L
 import Graphics.Rendering.FreeType.Internal.PrimitiveTypes as PT
 import Graphics.Rendering.FreeType.Internal.Vector qualified as V
 import Linear hiding (trace)
-import Omocha.Bitmap
+import Astrata.Bitmap
 import RIO
 import System.IO.Unsafe (unsafePerformIO)
 

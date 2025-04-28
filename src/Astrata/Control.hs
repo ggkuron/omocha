@@ -1,4 +1,4 @@
-module Omocha.Control where
+module Astrata.Control where
 
 import RIO
 

@@ -1,10 +1,10 @@
-module Omocha.Gltf where
+module Astrata.Gltf where
 
 import Control.Monad
 import Control.Monad.Exception qualified as E (MonadException (throw), throw)
 import Data.Vector qualified as V
 import Graphics.GPipe
-import Omocha.Mesh
+import Astrata.Mesh
 import RIO hiding (trace, traceStack)
 import Text.GLTF.Loader (Gltf (gltfMeshes))
 import Text.GLTF.Loader qualified as GLTF

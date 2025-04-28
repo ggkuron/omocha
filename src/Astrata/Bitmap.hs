@@ -1,7 +1,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskellQuotes #-}
 
-module Omocha.Bitmap
+module Astrata.Bitmap
   ( Bitmap (..),
     liftBitmapIO,
     loadBitmapsWith,

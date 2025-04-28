@@ -2,7 +2,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RecursiveDo #-}
 
-module Omocha.Game (run, transpose, bundle) where
+module Astrata.Game (run, transpose, bundle) where
 
 import Control.Lens ((+~))
 import Control.Monad
@@ -17,19 +17,19 @@ import FRP.Elerea.Param qualified as E
 import Graphics.GPipe hiding (trace, transpose)
 import Graphics.GPipe.Context.GLFW qualified as GLFW
 import Numeric (showFFloat)
-import Omocha.Bitmap
-import Omocha.Context
-import Omocha.Font
-import Omocha.Gltf
-import Omocha.Map
-import Omocha.MapFile
-import Omocha.Mesh
-import Omocha.Resource
-import Omocha.Scene
-import Omocha.Shader
-import Omocha.Text (text)
-import Omocha.Uniform
-import Omocha.UserInput
+import Astrata.Bitmap
+import Astrata.Context
+import Astrata.Font
+import Astrata.Gltf
+import Astrata.Map
+import Astrata.MapFile
+import Astrata.Mesh
+import Astrata.Resource
+import Astrata.Scene
+import Astrata.Shader
+import Astrata.Text (text)
+import Astrata.Uniform
+import Astrata.UserInput
   ( Direction (..),
     Input,
     InputE,
@@ -113,7 +113,7 @@ data Position = Position
   { position :: V3 Float,
     direction :: V3 Float,
     bbox :: BB.Box V2 Float,
-    inputDirection :: Maybe Omocha.UserInput.Direction,
+    inputDirection :: Maybe Astrata.UserInput.Direction,
     a :: V3 Float,
     v :: V3 Float,
     state :: PositionState

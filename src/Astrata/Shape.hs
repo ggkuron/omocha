@@ -1,4 +1,4 @@
-module Omocha.Shape
+module Astrata.Shape
   ( plane,
     cube,
     divideN,
@@ -20,9 +20,9 @@ import Data.Tuple.Extra (both)
 import Data.Vector qualified as V
 import Foreign (fromBool)
 import Graphics.GPipe hiding (trace)
-import Omocha.MapFile
-import Omocha.Mesh
-import Omocha.Spline
+import Astrata.MapFile
+import Astrata.Mesh
+import Astrata.Spline
 import RIO hiding (trace, traceStack)
 import Prelude (tail)
 

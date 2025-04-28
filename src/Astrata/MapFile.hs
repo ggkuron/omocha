@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingVia #-}
 
-module Omocha.MapFile where
+module Astrata.MapFile where
 
 import Data.Aeson
 import Data.Array (Ix)
@@ -13,8 +13,8 @@ import Data.Vector qualified as V
 import Data.Vector.Algorithms.Intro qualified as VAI
 import Linear.V2
 import Linear.V3
-import Omocha.Spline
-import Omocha.Uniform
+import Astrata.Spline
+import Astrata.Uniform
 import RIO
 
 type EdgePoint = (Bool, Bool)
