@@ -3,6 +3,8 @@
 
 module Astrata.MapFile where
 
+import Astrata.Spline
+import Astrata.Uniform
 import Data.Aeson
 import Data.Array (Ix)
 import Data.BoundingBox qualified as BB
@@ -13,8 +15,6 @@ import Data.Vector qualified as V
 import Data.Vector.Algorithms.Intro qualified as VAI
 import Linear.V2
 import Linear.V3
-import Astrata.Spline
-import Astrata.Uniform
 import RIO
 
 type EdgePoint = (Bool, Bool)
@@ -55,8 +55,27 @@ data Meta
       }
   deriving (Eq, Show, Ord, Generic, ToJSON, FromJSON)
 
+data CardType
+  = Origin0
+  | Origin1
+  | Origin2
+  | Origin3
+  | S1
+  | S2
+  | S3
+  | S4
+  | S5
+  | S6
+  | S7
+  deriving (Show, Generic, Eq, Ord, ToJSON, FromJSON)
+
 data MapDef
   = Empty
+  | Card
+      { height :: Float,
+        yOffset :: Float,
+        t :: Maybe CardType
+      }
   | Cube
       { height :: Float,
         color :: RGBA,
@@ -66,41 +85,7 @@ data MapDef
       { color :: RGBA,
         yOffset :: Float
       }
-  | Slope
-      { high :: Float,
-        low :: Float,
-        color :: RGBA,
-        yOffset :: Float,
-        highEdge :: Direction
-      }
-  | Curve
-      { color :: RGBA,
-        adjacent :: EdgePoint,
-        height :: Float,
-        yOffset :: Float,
-        width :: Float,
-        r :: Float
-      }
-  | Tetra
-      { high :: Float,
-        low :: Float,
-        color :: RGBA,
-        yOffset :: Float,
-        edge :: EdgePoint
-      }
   | Reference MapReference Float
-  | Cylinder
-      { height :: Float,
-        color :: RGBA,
-        yOffset :: Float,
-        center :: Maybe EdgePoint
-      }
-  | Cone
-      { height :: Float,
-        color :: RGBA,
-        yOffset :: Float,
-        center :: Maybe EdgePoint
-      }
   | Sphere
       { height :: Float,
         color :: RGBA,
@@ -193,13 +178,13 @@ instance Semigroup (MapDefs (Vector a)) where
       leftMaxId = M.foldlWithKey' (\a i _ -> max a i) 1 im
 
 parse :: (HasCallStack) => (Int, Int) -> MapData -> Either String (Vector (BB.Box V2 Int, MapDef, ObjectId))
-parse (x, y) (Fill def) = Right $ V.singleton (BB.Box (V2 0 0) (V2 x y), def, ObjectId 1)
+parse (x, y) (Fill def) = Right $ V.singleton (BB.Box (V2 0 0) (V2 x y), def, ObjectId 0)
 parse size (Tips {..}) = do
   b <- foldMapM (parseMap size) maps
   V.imapM
     ( \i (bb, k) -> do
         def <- maybeToRight ("key: " ++ show k ++ " not found") (defs M.!? k)
-        return (bb, def, ObjectId i + 1)
+        return (bb, def, ObjectId i)
     )
     b
 

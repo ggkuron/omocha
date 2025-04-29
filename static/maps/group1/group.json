@@ -1,24 +1,39 @@
 {
-    "size":[6,5],
+    "size":[7,11],
     "mapData":
     [
         {
+                          "tag": "Fill",
+                          "contents":{
+                              "color":[20,20,20,128],
+                              "height":0.05,
+                              "tag":"Cube",
+                              "yOffset": -0.15
+                          }
+        },
+        {
             "tag": "Tips",
             "defs":{
-                "1": { "tag": "Reference", "contents": [{ "tag": "External", "contents": "map3.json"} , 0]},
-                "2": { "tag": "Reference", "contents": [{ "tag": "External", "contents": "map.json"}, 0]},
-                "3": { "tag": "Reference", "contents": [{ "tag": "External", "contents": "map0.json"}, 0]}
-
+                "1":{"color":[255,127,127,255],"height":0.01, "tag":"Cube",  "yOffset": 0},
+                "3":{"color":[255,127,127,255],"height":0.1, "tag":"Card",  "yOffset": 0.25, "t": "Origin0"},
+                "2":{"color":[255,127,127,255],"height":0.5, "tag":"Cube",  "yOffset": 0}
             },
             "maps":[
                 [
-                      [3, 2, 2, 1, 1, 0],
-                      [0, 2, 2, 0, 0, 0],
-                      [0, 0, 0, 0, 0, 0],
-                      [0, 0, 0, 0, 0, 0],
-                      [0, 0, 0, 0, 0, 0]
+                      [0, 0, 0, 0, 0, 0, 0],
+                      [0, 0, 0, 0, 0, 0, 0],
+                      [2, 0, 1, 0, 1, 0, 0],
+                      [0, 0, 0, 3, 0, 0, 0],
+                      [0, 0, 1, 0, 1, 0, 0],
+                      [0, 0, 0, 0, 0, 0, 0],
+                      [0, 0, 1, 0, 1, 0, 0],
+                      [0, 0, 0, 3, 0, 0, 0],
+                      [0, 0, 1, 0, 1, 0, 2],
+                      [0, 0, 0, 0, 0, 0, 0],
+                      [0, 0, 0, 0, 0, 0, 0]
                 ]
             ]
         }
+        
     ]
 }

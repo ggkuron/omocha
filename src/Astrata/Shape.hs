@@ -1,3 +1,5 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Astrata.Shape
   ( plane,
     cube,
@@ -9,22 +11,26 @@ module Astrata.Shape
     curve,
     curveCross,
     rect,
-    tetra,
     sphere,
     interval,
+    card,
   )
 where
 
+import Astrata.Bitmap
+import Astrata.MapFile
+import Astrata.Mesh
+import Astrata.Spline
 import Control.Lens ((+~), (-~))
 import Data.Tuple.Extra (both)
 import Data.Vector qualified as V
 import Foreign (fromBool)
 import Graphics.GPipe hiding (trace)
-import Astrata.MapFile
-import Astrata.Mesh
-import Astrata.Spline
+import Paths_astrata
 import RIO hiding (trace, traceStack)
 import Prelude (tail)
+
+loadBitmapsWith [|getDataFileName|] "../../static/images"
 
 plane :: V3 Float -> V3 Float -> V4 Float -> Vector Mesh
 plane (V3 w d h) offset color =
@@ -39,13 +45,44 @@ plane (V3 w d h) offset color =
         (Just color)
     )
 
+card :: V3 Float -> V3 Float -> Maybe CardType -> Vector Mesh
+card (V3 w d h) offset t =
+  V.imap
+    ( \i v ->
+        let (tex, c) =
+              if i == 0
+                then case t of
+                  Just Origin0 -> (Just _O0_png, Nothing)
+                  Just Origin1 -> (Just _O1_jpg, Nothing)
+                  Just Origin2 -> (Just _O2_jpg, Nothing)
+                  Just Origin3 -> (Just _O3_jpg, Nothing)
+                  Just S1 -> (Just _S1_jpg, Nothing)
+                  Just S2 -> (Just _S2_jpg, Nothing)
+                  Just S3 -> (Just _S3_jpg, Nothing)
+                  Just S4 -> (Just _S4_jpg, Nothing)
+                  Just S5 -> (Just _S5_jpg, Nothing)
+                  Just S6 -> (Just _S6_jpg, Nothing)
+                  Just S7 -> (Just _S7_jpg, Nothing)
+                  _ -> (Nothing, Just $ V4 1 1 1 1)
+                else (Nothing, Just $ V4 0 1 1 1)
+         in Mesh v Nothing offset tex BoardShader (TopologyTriangles TriangleStrip) c
+    )
+    $ V.fromList
+      [ boardP (V3 0 d 0) (V3 0 d h) (V3 w d 0) (V3 w d h), -- top
+        boardP (V3 w 0 0) (V3 w 0 h) (V3 0 0 0) (V3 0 0 h), -- bottom
+        boardP (V3 w d h) (V3 w 0 h) (V3 w d 0) (V3 w 0 0),
+        boardP (V3 0 d h) (V3 0 d 0) (V3 0 0 h) (V3 0 0 0),
+        boardP (V3 0 d h) (V3 0 0 h) (V3 w d h) (V3 w 0 h),
+        boardP (V3 w d 0) (V3 w 0 0) (V3 0 d 0) (V3 0 0 0)
+      ]
+
 cube :: V3 Float -> V3 Float -> V4 Float -> Vector Mesh
 cube (V3 w d h) offset color =
   V.map
     (\v -> Mesh v Nothing offset Nothing BoardShader (TopologyTriangles TriangleStrip) (Just color))
     $ V.fromList
-      [ boardP (V3 0 d 0) (V3 0 d h) (V3 w d 0) (V3 w d h),
-        boardP (V3 w 0 0) (V3 w 0 h) (V3 0 0 0) (V3 0 0 h),
+      [ boardP (V3 0 d 0) (V3 0 d h) (V3 w d 0) (V3 w d h), -- top
+        boardP (V3 w 0 0) (V3 w 0 h) (V3 0 0 0) (V3 0 0 h), -- bottom
         boardP (V3 w d h) (V3 w 0 h) (V3 w d 0) (V3 w 0 0),
         boardP (V3 0 d h) (V3 0 d 0) (V3 0 0 h) (V3 0 0 0),
         boardP (V3 0 d h) (V3 0 0 h) (V3 w d h) (V3 w 0 h),
@@ -59,24 +96,6 @@ slope edge (w, (high, low), h) offset color =
         (Y, True) -> (low, high, low, high)
         (X, False) -> (high, high, low, low)
         (X, True) -> (low, low, high, high)
-   in V.map
-        (\v -> Mesh v Nothing offset Nothing BoardShader (TopologyTriangles TriangleStrip) (Just color))
-        $ V.fromList
-          [ boardP (V3 0 a 0) (V3 0 b h) (V3 w c 0) (V3 w d h),
-            boardP (V3 w 0 0) (V3 w 0 h) (V3 0 0 0) (V3 0 0 h),
-            boardP (V3 w d h) (V3 w 0 h) (V3 w c 0) (V3 w 0 0),
-            boardP (V3 0 a 0) (V3 0 0 0) (V3 0 b h) (V3 0 0 h),
-            boardP (V3 0 b h) (V3 0 0 h) (V3 w d h) (V3 w 0 h),
-            boardP (V3 w c 0) (V3 w 0 0) (V3 0 a 0) (V3 0 0 0)
-          ]
-
-tetra :: (Float, (Float, Float), Float) -> EdgePoint -> V3 Float -> V4 Float -> Vector Mesh
-tetra (w, (high, low), h) edge offset color =
-  let (a, b, c, d) = case edge of
-        (False, False) -> (high, low, low, low)
-        (False, True) -> (low, high, low, low)
-        (True, False) -> (low, low, high, low)
-        (True, True) -> (low, low, low, high)
    in V.map
         (\v -> Mesh v Nothing offset Nothing BoardShader (TopologyTriangles TriangleStrip) (Just color))
         $ V.fromList
@@ -336,10 +355,10 @@ sphere size@(V3 w d _) offset color =
 boardP' :: V3 Float -> V3 Float -> V3 Float -> V3 Float -> [Vertex]
 boardP' a b c d =
   let n = normalize $ cross (b - a) (c - a)
-   in [ Vertex a n (V2 0 1),
-        Vertex b n (V2 0 0),
-        Vertex c n (V2 1 1),
-        Vertex d n (V2 1 0)
+   in [ Vertex a n (V2 0 0),
+        Vertex b n (V2 0 1),
+        Vertex c n (V2 1 0),
+        Vertex d n (V2 1 1)
       ]
 
 -- 同一頂点を含む場合は向きを保持した三角形を返す

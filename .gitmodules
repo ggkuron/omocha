@@ -1,6 +1,3 @@
 [submodule "JuicyPixels-util"]
 	path = JuicyPixels-util
 	url = git@github.com:fumieval/JuicyPixels-util.git
-[submodule "GPipe-Core"]
-	path = GPipe-Core
-	url = https://github.com/tobbebex/GPipe-Core.git

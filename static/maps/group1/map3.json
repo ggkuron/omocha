@@ -7,13 +7,9 @@
             "defs":{
                 "1":{"color":[127,127,127,255],"height":0.0,"tag":"Cube", "yOffset": 0},
                 "2":{"color":[127,127,127,255],"height":0.1,"tag":"Cube", "yOffset": -2.6},
-                "3":{"color":[127,127,127,255],"high":2.0, "low": 0, "tag":"Slope", "highEdge": ["Y", false], "yOffset": -2.0},
-                "4":{"color":[127,127,127,255],"high":2.0, "low": 0, "tag":"Slope", "highEdge": ["X", false], "yOffset": 0},
                 "5":{"color":[127,127,127,255],"height":2.0,"tag":"Cube", "yOffset": 0},
                 "6":{"color":[ 30,100, 30,255],"height":0.1,"tag":"Cube", "yOffset": 0},
-                "7":{"color":[ 20,140, 70,255],"height":10.0,"tag":"Cube", "yOffset": 0},
-                "8":{"color":[127,127,127,255],"high":1, "low": 0, "tag":"Slope", "highEdge": ["X", true], "yOffset": 0},
-                "9":{"color":[127,127,127,255],"high":0.55, "low": 0, "tag":"Tetra", "edge": [false, false], "yOffset": 0}
+                "7":{"color":[ 20,140, 70,255],"height":10.0,"tag":"Cube", "yOffset": 0}
            },
             "maps":[
                 [

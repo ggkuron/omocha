@@ -1,26 +1,13 @@
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecursiveDo #-}
 
 module Astrata.Game (run, transpose, bundle) where
 
-import Control.Lens ((+~))
-import Control.Monad
-import Control.Monad.Exception qualified as E (MonadException (catch))
-import Data.Bits (xor)
-import Data.BoundingBox qualified as BB
-import Data.BoundingBox.V2 qualified as BB
-import Data.Map.Strict qualified as M
-import Data.Vector qualified as V
-import Debug.Trace (trace)
-import FRP.Elerea.Param qualified as E
-import Graphics.GPipe hiding (trace, transpose)
-import Graphics.GPipe.Context.GLFW qualified as GLFW
-import Numeric (showFFloat)
 import Astrata.Bitmap
 import Astrata.Context
 import Astrata.Font
-import Astrata.Gltf
 import Astrata.Map
 import Astrata.MapFile
 import Astrata.Mesh
@@ -35,11 +22,8 @@ import Astrata.UserInput
     InputE,
     InputG
       ( cameraLock,
-        direction1,
-        direction2,
+        direction,
         hardReset,
-        hover,
-        jump,
         n,
         reset,
         rotation,
@@ -48,14 +32,74 @@ import Astrata.UserInput
         stop
       ),
     diffInput,
-    edgeInput,
     initialInput,
     initialInputE,
     justInput,
     onlyInput,
     readInput,
   )
-import RIO hiding (trace, traceStack)
+import Control.Lens ((+~))
+import Control.Monad
+import Control.Monad.Exception qualified as E (MonadException (catch))
+import Data.Bits (xor)
+import Data.BoundingBox qualified as BB
+import Data.BoundingBox.V2 qualified as BB
+import Data.Map.Strict qualified as M
+import Data.Vector qualified as V
+import Debug.Trace (trace)
+import FRP.Elerea.Param qualified as E
+import Graphics.GPipe hiding (trace, transpose)
+import Graphics.GPipe.Context.GLFW qualified as GLFW
+import Numeric (showFFloat)
+import RIO
+  ( Applicative (pure, (<*>)),
+    Bool (False, True),
+    Bounded (maxBound),
+    Char,
+    Double,
+    Eq ((/=), (==)),
+    Float,
+    Floating (pi),
+    Foldable (length),
+    Fractional ((/)),
+    HasCallStack,
+    IO,
+    IORef,
+    Int,
+    Integral,
+    Maybe (..),
+    MonadIO (..),
+    Num ((*), (+), (-)),
+    Ord (min, (>)),
+    RealFloat,
+    RealFrac (floor),
+    Show (..),
+    SomeException,
+    String,
+    Vector,
+    Word32,
+    concatMap,
+    fromIntegral,
+    fromMaybe,
+    fst,
+    id,
+    isJust,
+    map,
+    maybe,
+    newIORef,
+    otherwise,
+    readIORef,
+    realToFrac,
+    threadDelay,
+    uncurry,
+    writeIORef,
+    ($),
+    (&),
+    (++),
+    (.),
+    (<$>),
+    (^.),
+  )
 import RIO.FilePath (takeDirectory)
 
 loadImage ::
@@ -92,13 +136,6 @@ charMeshes font bbox piel = text font piel renderer bbox
         (V2 x' y', V2 0 0)
       ]
 
-position :: Maps -> Position -> V2 Int
-position m p =
-  let V2 x y = (p.position ^. _xz + BB.center p.bbox - m.offset ^. _xz)
-   in V2 (floor $ clamp (x / (m.unit ^. _x)) 0 (size' ^. _x)) (floor $ clamp (y / (m.unit ^. _y)) 0 (size' ^. _y))
-  where
-    size' = fromIntegral <$> m.size
-
 data Env os = Env
   { win :: Window os RGBAFloat Depth,
     textureStorage :: IORef (M.Map (Double, Char) (Texture2D os (Format RGBAFloat))),
@@ -113,14 +150,8 @@ data Position = Position
   { position :: V3 Float,
     direction :: V3 Float,
     bbox :: BB.Box V2 Float,
-    inputDirection :: Maybe Astrata.UserInput.Direction,
-    a :: V3 Float,
-    v :: V3 Float,
-    state :: PositionState
+    inputDirection :: Maybe Astrata.UserInput.Direction
   }
-
-data PositionState = Hovering | Jumping | Grounded
-  deriving (Show, Eq)
 
 showF :: (RealFloat a) => a -> String
 showF a = showFFloat (Just 2) a " "
@@ -129,13 +160,13 @@ showV3F :: V3 Float -> String
 showV3F = concatMap showF
 
 instance Show Position where
-  show Position {..} = "pos: " ++ showV3F position ++ "\n\tdir: " ++ showV3F direction ++ "\n\ta: " ++ showV3F a ++ "\n\tv: " ++ showV3F v ++ "\n\tstate: " ++ show state
+  show Position {..} = "pos: " ++ showV3F position ++ "\n\tdir: " ++ showV3F direction
 
 playerBox :: BB.Box V2 Float
 playerBox = BB.Box (V2 0.8 (-0.55)) (V2 1 0.15)
 
-updatePosition :: Position -> InputE -> Maps -> IO Position
-updatePosition p input m =
+updatePosition :: Position -> InputE -> IO Position
+updatePosition p input =
   if
     | fst input.reset ->
         return
@@ -143,13 +174,10 @@ updatePosition p input m =
             { position = V3 0 0 0,
               direction = p.direction,
               bbox = playerBox,
-              inputDirection = fst input.direction1,
-              state = Grounded,
-              a = V3 0 0 0,
-              v = V3 0 0 0
+              inputDirection = fst input.direction
             }
     | otherwise -> do
-        let (d', keepMoving) = case justInput input.direction1 of
+        let (d', keepMoving) = case justInput input.direction of
               Just n -> case p.inputDirection of
                 Just current' | n == current' -> (p.direction, True)
                 _ -> case n of
@@ -159,63 +187,20 @@ updatePosition p input m =
                   DirLeft -> (fromQuaternion (axisAngle (V3 0 1 0) (pi / 2)) !* p.direction, False)
               Nothing -> (p.direction, False)
             perFrameTime = 1 / 5
-            hovering = p.state == Hovering
-            grounded = p.state == Grounded
-            a' =
-              if
-                | hovering && isJust (justInput input.direction1) && not keepMoving -> d' * if justInput input.speedUp then 1.5 else 0.5
-                | hovering && justInput input.stop -> -p.v
-                | justInput input.stop -> V3 0 0 0
-                | not hovering && edgeInput input.jump && p.state == Grounded -> (p.a + V3 0 60 0) / 2
-                | not hovering && p.state == Jumping -> V3 0 (-9.81) 0
-                | otherwise -> V3 0 0 0
-            hovering' = hovering `xor` edgeInput input.hover
             v' =
               min
                 (pure 3)
                 if
-                  | grounded && justInput input.stop -> V3 0 0 0
-                  | grounded && a' ^. _y == 0 && isJust (justInput input.direction1) -> d' * if justInput input.speedUp then 3 else 1
-                  | grounded && a' ^. _y == 0 -> V3 0 (a' ^. _y * perFrameTime) 0 -- 加速度による滑りを消しているが、加速度計算で考慮する方がおそらく良い
-                  | otherwise -> p.v + a' * pure perFrameTime
-        (t', grounded') <- do
-          let t = p.position + v' * pure perFrameTime
-          h <- mapHeight m (p.bbox `BB.move` (t ^. _xz)) 0
-
-          let mountable = h < (p.position ^. _y) + 0.5 && h > (p.position ^. _y) - 0.5
-              t' =
-                ( if
-                    | mountable -> t
-                    | hovering -> t
-                    | otherwise -> t & _xz .~ (p.position ^. _xz)
-                )
-                  & _y
-                  .~ ( if
-                         | hovering ->
-                             if
-                               | mountable -> min h (t ^. _y)
-                               | h > t ^. _y - 0.5 -> (t ^. _y) + 0.5
-                               | otherwise -> t ^. _y
-                         | grounded ->
-                             if
-                               | mountable -> max (t ^. _y) h
-                               | otherwise -> p.position ^. _y
-                         | otherwise -> max h (t ^. _y)
-                     )
-          return (t', if not mountable && not hovering then p.state == Grounded else t' ^. _y <= h)
+                  | justInput input.stop -> V3 0 0 0
+                  | isJust (justInput input.direction) -> d' * if justInput input.speedUp then 3 else 1
+                  | otherwise -> 0
+            t' = p.position + v' * pure perFrameTime
         return
           $ Position
             { position = t',
               direction = d',
               bbox = BB.Box (V2 0.8 (-0.55)) (V2 1 0.15),
-              inputDirection = fst input.direction1,
-              a = if grounded' then a' & _y .~ 0 else a',
-              v = if grounded' then v' & _y .~ 0 else v',
-              state =
-                if
-                  | hovering' -> Hovering
-                  | grounded' -> Grounded
-                  | otherwise -> Jumping
+              inputDirection = fst input.direction
             }
 
 buildRenderer ::
@@ -227,17 +212,12 @@ buildRenderer ::
   Vector SceneObject ->
   ContextT ctx os m (ApplicationUniforms os, Vector (CompiledShader os (GlobalUniformB, M.Map ObjectId ObjectUniformB)))
 buildRenderer init win os = do
-  unis <- newUniforms . fromIntegral . length $ os
+  unis <- newUniforms (fromIntegral . length $ os)
   ms <- compileShader $ monoShader win unis
   bs <- compileShader $ boardShader win unis
-  ts <- compileShader $ boardShader win unis
   init' <- init win unis
-  depthTex <- newTexture2D Depth24 (V2 8192 8192) 1
-  shadows' <- compileShader $ shadows unis
 
   let clear (i, _) = do
-        dImage <- getTexture2DImage depthTex 0
-        clearImageDepth dImage 1
         clearWindowColor win (V4 0 0.25 1 1)
         clearWindowDepth win 1
         init' i.windowSize
@@ -264,9 +244,7 @@ buildRenderer init win os = do
       case texture of
         Just t -> do
           t' <- loadImage t
-          let shader' = case shader of
-                BoardShader -> bs
-                TargetBoard -> ts
+          let shader' = bs
           pure
             $ V.singleton
               ( \(i, m) ->
@@ -274,20 +252,10 @@ buildRenderer init win os = do
                     (maybe False (\o -> o.visible) $ M.lookup obj.id m)
                     $ case topology of
                       TopologyTriangles p -> do
-                        dImage <- getTexture2DImage depthTex 0
-                        prims <- newPrimitiveArray0 p vbuf ibuf
-                        shadows' $ ShadowEnvironment i.windowSize obj prims dImage
+                        prims <- newPrimitiveArray1 p vbuf ibuf nbuf ubuf
+                        shader' $ ShaderEnvironment i.windowSize prims t'
                       p -> trace ("unsupported topology " ++ show p) $ pure ()
               )
-            `V.snoc` ( \(i, m) ->
-                         when
-                           (maybe False (\o -> o.visible) $ M.lookup obj.id m)
-                           $ case topology of
-                             TopologyTriangles p -> do
-                               prims <- newPrimitiveArray1 p vbuf ibuf nbuf ubuf
-                               shader' $ ShaderEnvironment i.windowSize prims t' depthTex
-                             p -> trace ("unsupported topology " ++ show p) $ pure ()
-                     )
         Nothing -> do
           pure
             $ V.singleton
@@ -296,20 +264,10 @@ buildRenderer init win os = do
                     (maybe False (\o -> o.visible) $ M.lookup obj.id m)
                     $ case topology of
                       TopologyTriangles p -> do
-                        dImage <- getTexture2DImage depthTex 0
-                        prims <- newPrimitiveArray0 p vbuf ibuf
-                        shadows' $ ShadowEnvironment i.windowSize obj prims dImage
+                        prims <- newPrimitiveArray2 p vbuf ibuf nbuf
+                        ms $ PlainEnvironment i.windowSize (fromMaybe (V4 0 0 0 0.75) color) obj prims
                       p -> trace ("unsupported topology " ++ show p) $ pure ()
               )
-            `V.snoc` ( \(i, m) ->
-                         when
-                           (maybe False (\o -> o.visible) $ M.lookup obj.id m)
-                           $ case topology of
-                             TopologyTriangles p -> do
-                               prims <- newPrimitiveArray2 p vbuf ibuf nbuf
-                               ms $ PlainEnvironment i.windowSize (fromMaybe (V4 0 0 0 0.75) color) obj prims depthTex
-                             p -> trace ("unsupported topology " ++ show p) $ pure ()
-                     )
   pure
     (unis, clear `V.cons` rankBundle' (V.concatMap id r))
 
@@ -390,30 +348,23 @@ game :: (HasCallStack) => Game
 game =
   Game
     { prepare = do
-        win <- GameCtx $ newWindow (WindowFormatColorDepth RGBA8 Depth16) (GLFW.defaultWindowConfig "omocha")
+        win <- GameCtx $ newWindow (WindowFormatColorDepth RGBA8 Depth16) (GLFW.defaultWindowConfig "astrata")
         font <- loadFont "VL-PGothic-Regular.ttf"
-        pmesh <- liftIO $ fromGlb "yuki.glb"
         textureStorage <- liftIO $ newIORef M.empty
         fpsSetting <- liftIO $ newIORef 60
         lastRenderTime <- liftIO $ newIORef 0
 
-        let player objs =
-              objs
-                `V.snoc` SceneObject
-                  { id = ObjectId 0,
-                    meshes = pmesh,
-                    bbox = BB.Box (V2 0 0) (V2 1 1)
-                  }
-            offset = V3 0 0 0
-            unit = V2 20 20
+        let offset = V3 (-5) 0 (-5)
+            unit = V2 1 1.25
 
         let mapFile = "static/maps/group1/group.json"
         g <- liftIO $ loadMapFile mapFile
         (m, objs) <- liftIO $ parseMapFile (takeDirectory mapFile) offset unit g
 
         maps <- liftIO $ newIORef (Maps unit m offset (uncurry V2 g.size) (takeDirectory mapFile))
-        let gs = gridShader g unit offset
-        (unis, s) <- GameCtx $ buildRenderer gs win (player objs)
+
+        let gs = gridShader (7, 11) unit offset
+        (unis, s) <- GameCtx $ buildRenderer gs win objs
         ts <- GameCtx $ compileShader $ textShader win unis
         renderings <- liftIO $ newIORef $ renderWith unis s
 
@@ -441,10 +392,11 @@ game =
                   E.catch
                     ( do
                         let mapFile = "static/maps/group1/group.json"
-                        (f, (m, objs)) <- liftIO $ loadMap mapFile unit
+                        g <- liftIO $ loadMapFile mapFile
+                        (m, objs) <- liftIO $ parseMapFile (takeDirectory mapFile) offset unit g
+                        writeIORef maps (Maps unit m offset (uncurry V2 g.size) (takeDirectory mapFile))
 
-                        writeIORef maps (Maps unit m offset (uncurry V2 f.size) (takeDirectory mapFile))
-                        (unis, s) <- buildRenderer gs win (player objs)
+                        (unis, s) <- buildRenderer gs win objs
 
                         let r = renderWith unis s
                         liftIO $ writeIORef renderings r
@@ -463,10 +415,9 @@ game =
                   E.catch
                     ( do
                         let dir = "static/maps/group" ++ show i
-                        (f, (m, objs)) <- liftIO $ loadMap (dir ++ "/group.json") unit
+                        (m, objs) <- liftIO $ loadMap (dir ++ "/group.json") unit
 
-                        writeIORef maps (Maps unit m offset (uncurry V2 f.size) $ "static/maps/group" ++ show i)
-                        (unis, s) <- buildRenderer gs win (player objs)
+                        (unis, s) <- buildRenderer gs win objs
 
                         let r = renderWith unis s
                         liftIO $ writeIORef renderings r
@@ -498,27 +449,21 @@ game =
               (\_ i p -> diffInput i $ onlyInput p)
               ki
 
-          maps <- E.effectful $ readIORef env.maps
-
           p <-
             E.delay
               ( Position
                   { position = V3 0 0 0,
                     direction = V3 0 0 1,
                     bbox = BB.Box (V2 0.8 (-0.55)) (V2 1 0.15),
-                    inputDirection = Nothing,
-                    a = V3 0 0 0,
-                    v = V3 0 0 0,
-                    state = Grounded
+                    inputDirection = Nothing
                   }
               )
               target
           target <-
-            E.effectful4
-              (\input _ maps p -> updatePosition p input maps)
+            E.effectful3
+              (\input _ p -> updatePosition p input)
               ki'
               moveUnit
-              maps
               p
 
           theta <-
@@ -540,7 +485,7 @@ game =
               ( \_ theta (t :: Position) input mu p ->
                   if
                     | input.reset -> V3 0 2 2.5
-                    | input.n == Just 0 -> V3 0 30 0
+                    | input.n == Just 0 -> V3 5 15 0
                     | input.cameraLock -> p
                     | otherwise ->
                         if isJust t.inputDirection
@@ -548,18 +493,18 @@ game =
                           else
                             let t' =
                                   p
-                                    & _y
-                                    +~ ( case input.direction2 of
-                                           Just DirRight -> mu
-                                           Just DirLeft -> -mu
-                                           _ -> 0
-                                       )
-                                      & _z
-                                    +~ ( case input.direction2 of
-                                           Just DirUp -> mu
-                                           Just DirDown -> -mu
-                                           _ -> 0
-                                       )
+                                -- & _y
+                                -- +~ ( case input.direction2 of
+                                --        Just DirRight -> mu
+                                --        Just DirLeft -> -mu
+                                --        _ -> 0
+                                --    )
+                                --   & _z
+                                -- +~ ( case input.direction2 of
+                                --        Just DirUp -> mu
+                                --        Just DirDown -> -mu
+                                --        _ -> 0
+                                --    )
 
                                 traslated = t' - t.position
                                 rotated = fromQuaternion (axisAngle (V3 0 1 0) theta) !* traslated
@@ -594,7 +539,7 @@ updateFrame env update renderText camera target input = do
   let viewUpNorm = V3 0 1 0
       normMat = identity
       modelProj =
-        (if target.state == Hovering then mkTransformation (axisAngle target.direction (pi / 2)) zero else identity)
+        identity
           !*! mkTransformation (axisAngle (V3 0 1 0) (unangle (target.direction ^. _zx))) (V3 1 0 (-0.25))
           !*! mkTransformation zero (V3 (-1) 0 0.25)
 
@@ -611,10 +556,8 @@ updateFrame env update renderText camera target input = do
   let delta = current' - lastRenderTime'
       waitTime = timePerFrame - delta
       fps = 1 / delta
-      pos = position m target
   when (waitTime > 0) $ liftIO $ threadDelay $ floor $ waitTime * 1000000
-  let visibleBox :: BB.Box V2 Int = BB.Box (V2 0 0) (V2 1 1) `BB.move` pos
-      inp = "target: " ++ show target ++ "\ncamera: " ++ showV3F camera ++ "\nfps: " ++ showF fps ++ "\nmid:" ++ show input.n ++ "\np: " ++ show visibleBox
+  let inp = "target: " ++ show target ++ "\ncamera: " ++ showV3F camera ++ "\nfps: " ++ showF fps ++ "\nmid:" ++ show input.n
   _ <-
     update
       ( if
@@ -627,8 +570,7 @@ updateFrame env update renderText camera target input = do
       )
       GlobalUniform {windowSize = sz, modelNorm = normMat, viewCamera = camera, viewTarget = target.position, viewUp = viewUpNorm, light = light, lightDirection = lightDir}
       ( M.fromAscList
-          $ (ObjectId 0, ObjectUniformB {position = target.position, proj = modelProj, visible = True})
-          : V.toList
+          $ V.toList
             ( V.map
                 ( \(_, _, id) ->
                     ( id,
@@ -639,8 +581,7 @@ updateFrame env update renderText camera target input = do
                         }
                     )
                 )
-                . V.filter (\(box, _, _) -> BB.aabb box visibleBox)
-                $ m.defs
+                m.defs
             )
       )
   renderText Nothing (sz, inp)

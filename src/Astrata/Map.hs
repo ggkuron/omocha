@@ -3,6 +3,11 @@
 
 module Astrata.Map where
 
+import Astrata.Gltf
+import Astrata.MapFile
+import Astrata.Scene
+import Astrata.Shape
+import Astrata.Uniform
 import Control.Monad.Exception qualified as E (MonadException (throw), throw)
 import Data.Aeson hiding (json)
 import Data.BoundingBox qualified as BB
@@ -13,11 +18,6 @@ import Data.Vector qualified as V
 import Linear.V2
 import Linear.V3
 import Linear.V4
-import Astrata.Gltf
-import Astrata.MapFile
-import Astrata.Scene
-import Astrata.Shape
-import Astrata.Uniform
 import RIO
 import RIO.FilePath
 
@@ -28,11 +28,10 @@ loadMapFile path = do
     Right m -> return m
     Left m -> E.throw ("invalid map file: " ++ path ++ "\n" ++ m :: String)
 
-loadMap :: (HasCallStack, Exception String) => FilePath -> V2 Float -> IO (MapFile, (Vector (BB.Box V2 Int, MapDef, ObjectId), Vector SceneObject))
+loadMap :: (HasCallStack, Exception String) => FilePath -> V2 Float -> IO (Vector (BB.Box V2 Int, MapDef, ObjectId), Vector SceneObject)
 loadMap path unit = do
   f <- loadMapFile path
-  r <- parseMapFile (takeDirectory path) 0 unit f
-  return (f, r)
+  parseMapFile (takeDirectory path) 0 unit f
 
 referenceUnit :: Size Int -> Size Float -> V2 Float
 referenceUnit msize isize =
@@ -64,14 +63,10 @@ parseShape workingDir offset unit n isize (a, _id) =
       yScale = unit ^. _y
    in case n of
         Empty -> return V.empty
+        Card {..} -> return $ card (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) t
         Cube {..} -> return $ cube (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (colorToV4 color)
         Plane {..} -> return $ plane (V3 (size ^. _x) (n.yOffset * yScale) (size ^. _y)) (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (colorToV4 color)
-        Slope {..} -> return $ slope highEdge (size ^. _x, (high * yScale, low * yScale), size ^. _y) (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (colorToV4 color)
-        Cylinder {..} -> return $ cylinder center (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (colorToV4 color)
-        Cone {..} -> return $ cone center (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (colorToV4 color)
-        Tetra {..} -> return $ tetra (size ^. _x, (high * yScale, low * yScale), size ^. _y) edge (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (colorToV4 color)
         Sphere {..} -> return $ sphere (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (colorToV4 color)
-        Curve {..} -> return $ curve adjacent (V3 (size ^. _x) (height * yScale) (size ^. _y)) width r (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (colorToV4 color)
         Reference r yOffset -> do
           let offset' = unit * referenceOffset offset yOffset a'
           r <- loadReference offset' unit isize workingDir r
@@ -131,28 +126,7 @@ mapHeight m t@(BB.Box start end) offset = do
       ( \d -> case d of
           (Cube {..}, _) -> return (yOffset + height)
           (Plane {}, _) -> return 0
-          (Slope {..}, BB.Box ts te) ->
-            let width = te - ts
-             in return
-                  ( yOffset + case highEdge of
-                      (X, False) -> low + (high - low) * (1 - (center ^. _x - (ts ^. _x)) / (width ^. _x))
-                      (X, True) -> low + (high - low) * ((center ^. _x - (ts ^. _x)) / (width ^. _x))
-                      (Y, False) -> low + (high - low) * (1 - (center ^. _y - (ts ^. _y)) / (width ^. _y))
-                      (Y, True) -> low + (high - low) * ((center ^. _y - (ts ^. _y)) / (width ^. _y))
-                  )
-          (Tetra {..}, BB.Box ts te) ->
-            let width = te - ts
-             in return
-                  ( yOffset + case edge of
-                      (False, False) -> let n = (center ^. _x - (ts ^. _x)) / (width ^. _x) + (center ^. _y - (ts ^. _y)) / (width ^. _y) in if n > 1 then low else low + high * n
-                      (False, True) -> let n = -(center ^. _x - (ts ^. _x) / width ^. _x) + (center ^. _y - (ts ^. _y)) / (width ^. _y) in if n < 0 then low else low + high * n
-                      (True, False) -> let n = -(center ^. _x - (ts ^. _x) / width ^. _x) + (center ^. _y - (ts ^. _y)) / (width ^. _y) in if n > 0 then low else low + high * (1 - n)
-                      (True, True) -> let n = (center ^. _x - (ts ^. _x)) / (width ^. _x) + (center ^. _y - (ts ^. _y)) / (width ^. _y) in if n < 1 then low else low + high * n
-                  )
           (Sphere {..}, _) -> return (yScale * (yOffset + height))
-          (Cylinder {..}, _) -> return (yScale * (yOffset + height))
-          (Cone {..}, _) -> return (yScale * (yOffset + height))
-          (Curve {..}, _) -> return (yScale * (yOffset + height))
           (Reference r y, BB.Box ts te) -> do
             let size = te - ts
                 (V2 sx sy) = size
@@ -168,5 +142,3 @@ mapHeight m t@(BB.Box start end) offset = do
           (Glb _, _) -> return 0
       )
   return $ if null hs then 0 else V.maximum hs
-  where
-    center :: V2 Float = start + (end - start) / 2 - m.offset ^. _xz

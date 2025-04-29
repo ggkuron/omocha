@@ -10,8 +10,7 @@ data Direction = DirUp | DirDown | DirLeft | DirRight
 type Input = InputG (Maybe Direction) Bool (Maybe Bool) (Maybe Int)
 
 data InputG d b r select = Input
-  { direction1 :: d,
-    direction2 :: d,
+  { direction :: d,
     reset :: b,
     save :: b,
     stop :: b,
@@ -30,8 +29,7 @@ type InputE = InputG (Maybe Direction, Bool) (Bool, Bool) (Maybe Bool, Bool) (Ma
 initialInput :: Input
 initialInput =
   Input
-    { direction1 = Nothing,
-      direction2 = Nothing,
+    { direction = Nothing,
       stop = False,
       reset = False,
       enter = False,
@@ -48,8 +46,7 @@ initialInput =
 initialInputE :: InputE
 initialInputE =
   Input
-    { direction1 = (Nothing, False),
-      direction2 = (Nothing, False),
+    { direction = (Nothing, False),
       stop = (False, False),
       reset = (False, False),
       enter = (False, False),
@@ -66,8 +63,7 @@ initialInputE =
 onlyInput :: InputE -> Input
 onlyInput i =
   Input
-    { direction1 = fst i.direction1,
-      direction2 = fst i.direction2,
+    { direction = fst i.direction,
       stop = fst i.stop,
       reset = fst i.reset,
       enter = fst i.enter,
@@ -84,8 +80,7 @@ onlyInput i =
 diffInput :: Input -> Input -> InputE
 diffInput a b =
   Input
-    { direction1 = (a.direction1, a.direction1 /= b.direction1),
-      direction2 = (a.direction2, a.direction2 /= b.direction2),
+    { direction = (a.direction, a.direction /= b.direction),
       stop = (a.stop, a.stop /= b.stop),
       reset = (a.reset, a.reset /= b.reset),
       enter = (a.enter, a.enter /= b.enter),
@@ -143,7 +138,7 @@ readInput win keyInputSink = do
 
   let keyInput =
         Input
-          { direction1 =
+          { direction =
               if
                 | ctl -> Nothing
                 | h -> Just DirLeft
@@ -152,14 +147,6 @@ readInput win keyInputSink = do
                 | l -> Just DirRight
                 | otherwise -> Nothing,
             cameraLock = z,
-            direction2 =
-              if
-                | ctl -> Nothing
-                | s -> Just DirLeft
-                | d -> Just DirDown
-                | e -> Just DirUp
-                | g -> Just DirRight
-                | otherwise -> Nothing,
             reset = not shift && space,
             hardReset = shift && space,
             enter = f,

@@ -89,5 +89,6 @@ renderWith ::
   ContextT ctx os m ()
 renderWith uni rs g os = do
   writeGlobal uni g
-  writeBuffer uni.objects 0 [maybe (V3 0 0 0, identity) (\a -> (a.position, a.proj)) (M.lookup (ObjectId i) os) | i <- [0 .. fromIntegral uni.sizeOfObjects]]
+  let objs = [maybe (V3 0 0 0, identity) (\a -> (a.position, a.proj)) (M.lookup (ObjectId i) os) | i <- [0 .. fromIntegral uni.sizeOfObjects - 1]]
+  writeBuffer uni.objects 0 objs
   forM_ rs $ \r -> render (r (g, os))

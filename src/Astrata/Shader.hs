@@ -6,14 +6,13 @@
 
 module Astrata.Shader where
 
+import Astrata.Scene (SceneObject (..))
+import Astrata.Shape
+import Astrata.Uniform
 import Control.Monad.Exception (MonadException)
 import Data.Tuple.Extra (both)
 import Data.Vector qualified as V
 import Graphics.GPipe hiding (trace, transpose)
-import Astrata.MapFile
-import Astrata.Scene (SceneObject (..))
-import Astrata.Shape
-import Astrata.Uniform
 import RIO hiding (trace, (<*))
 
 type BPosition = B3 Float
@@ -27,23 +26,20 @@ type BUV = B2 Float
 data ShaderEnvironment os = ShaderEnvironment
   { size :: V2 Int,
     primitives :: PrimitiveArray Triangles (BPosition, BNormal, BUV),
-    colorImage :: Texture2D os (Format RGBAFloat),
-    depthImage :: Texture2D os (Format Depth)
+    colorImage :: Texture2D os (Format RGBAFloat)
   }
 
 data ShadowEnvironment os = ShadowEnvironment
   { size :: V2 Int,
     obj :: SceneObject,
-    primitives :: PrimitiveArray Triangles BPosition,
-    depthImage :: Image (Format Depth)
+    primitives :: PrimitiveArray Triangles BPosition
   }
 
 data PlainEnvironment os = PlainEnvironment
   { size :: V2 Int,
     color :: V4 Float,
     obj :: SceneObject,
-    primitives :: PrimitiveArray Triangles (BPosition, BNormal),
-    depthImage :: Texture2D os (Format Depth)
+    primitives :: PrimitiveArray Triangles (BPosition, BNormal)
   }
 
 data TextEnvironment os = TextEnvironment
@@ -65,15 +61,13 @@ boardShader win unis = do
       filterMode = SamplerFilter Linear Linear Linear (Just 16)
       edge = (pure ClampToEdge, 1.0)
   samp <- newSampler2D $ \env -> (env.colorImage, filterMode, edge)
-  ssamp <- newSampler2DShadow $ \env -> (env.depthImage, SamplerNearest, (pure ClampToEdge, 1 :: BorderColor Depth), Lequal)
+  -- ssamp <- newSampler2DShadow $ \env -> (env.depthImage, SamplerNearest, (pure ClampToEdge, 1 :: BorderColor Depth), Lequal)
 
   fragmentStream <- rasterize (\env -> (Front, ViewPort (V2 0 0) env.size, DepthRange 0 1)) projected
   let litFrags =
-        ( \(_c, u, s) ->
-            let d = light samp u
-                z = sample2DShadow ssamp (SampleLod 0) Nothing Nothing 1 (s ^. _xy)
-                visibility = ifB (z <* (s ^. _z)) (point . pure $ 0.5) 1
-             in visibility * d
+        ( \(_c, u, s) -> light samp u
+        -- z = sample2DShadow ssamp (SampleLod 0) Nothing Nothing 1 (s ^. _xy)
+        -- visibility = ifB (z <* (s ^. _z)) (point . pure $ 0.5) 1
         )
           <$> fragmentStream
       frags = filterFragments (\f -> f ^. _w /=* 0) litFrags
@@ -93,28 +87,6 @@ biasMat =
     (V4 0 0.5 0 0.5)
     (V4 0 0 0.5 0.5)
     (V4 0 0 0 1)
-
-shadows ::
-  ApplicationUniforms os ->
-  Shader os (ShadowEnvironment os) ()
-shadows unis = do
-  g <- readGlobalUniform unis
-  o <- readObjectUniform'' unis
-  boards <- toPrimitiveStream (\env -> env.primitives)
-  let projected :: PrimitiveStream Triangles (VPos, ()) =
-        ( \v ->
-            ( let v' = normalizePoint (o.proj !* point v) + o.position in lightProj g v',
-              ()
-            )
-        )
-          <$> boards
-
-  frags <- rasterize (const (Back, ViewPort (V2 0 0) (V2 8192 8192), DepthRange 0 1)) projected
-  let fragsWithDepth =
-        withRasterizedInfo
-          (\p x -> (p, rasterizedFragCoord x ^. _z))
-          frags
-  drawDepth (\s -> (NoBlending, s.depthImage, DepthOption Less True)) fragsWithDepth $ const $ pure ()
 
 normalizeS :: (BooleanOf (f a) ~ BooleanOf a, Metric f, IfB (f a), EqB a, Floating a) => f a -> f a
 normalizeS v = ifB (l ==* 1 ||* l ==* 0) v (fmap (/ sqrt l) v)
@@ -142,8 +114,11 @@ phongShader win unis = do
   o <- readObjectUniform' unis
   boards <- toPrimitiveStream $ \env -> (\v -> (v, env.color)) <$> env.primitives
   let projected = (\((v, n), c) -> let v' = normalizePoint (o.proj !* point v) + o.position in (proj g v', (g.modelNorm !* n, c, biasMat !* (point . normalizePoint $ lightProj g v')))) <$> boards
+  -- filterMode = SamplerFilter Linear Linear Linear (Just 16)
+  -- edge = (pure ClampToEdge, 1.0)
   fragmentStream <- rasterize (\env -> (Front, ViewPort (V2 0 0) env.size, DepthRange 0 1)) projected
-  ssamp <- newSampler2DShadow $ \env -> (env.depthImage, SamplerNearest, (pure ClampToEdge, 0 :: BorderColor Depth), Lequal)
+  -- samp <- newSampler2D $ \env -> (env.color, filterMode, edge)
+  -- ssamp <- newSampler2DShadow $ \env -> (env.depthImage, SamplerNearest, (pure ClampToEdge, 0 :: BorderColor Depth), Lequal)
   unif <- readGlobalUniform unis
   -- eyeDir = normalizeS $ unif.viewCamera
   let lightDir :: V3 FFloat = normalizeS unif.lightDirection
@@ -152,11 +127,11 @@ phongShader win unis = do
           ( \(n, c, s) x ->
               let v = rasterizedFragCoord x
                   diffuse = point . pure $ clamp (lightDir `dot` n * 10) 0.1 1.0
-                  z = sample2DShadow ssamp (SampleLod 0) Nothing Nothing (s ^. _z) (s ^. _xy)
-                  visibility = ifB (z {- 0 to 1 -} <* 1) (V4 0.5 0.5 0.5 1) 1
-               in -- halfLE :: V3 FFloat = normalizeS $ lightDir + eyeDir
+               in -- z = sample2DShadow ssamp (SampleLod 0) Nothing Nothing (s ^. _z) (s ^. _xy)
+                  -- visibility = ifB (z {- 0 to 1 -} <* 1) (V4 0.5 0.5 0.5 1) 1
+                  -- halfLE :: V3 FFloat = normalizeS $ lightDir + eyeDir
                   -- specular :: FFloat = clamp (n `dot` halfLE) 0.0 1.0 ^* 50
-                  (visibility * c * diffuse, v ^. _z)
+                  (c * diffuse, v ^. _z)
           )
           fragmentStream
   let colorOption = ContextColorOption (BlendRgbAlpha (FuncAdd, Min) (BlendingFactors SrcAlpha OneMinusSrcAlpha, BlendingFactors SrcAlpha DstAlpha) (V4 0 0 0 0)) (pure True)
@@ -168,7 +143,7 @@ monoShader :: Window os RGBAFloat Depth -> ApplicationUniforms os -> Shader os (
 monoShader = phongShader
 
 light :: (ColorSampleable c) => Sampler2D (Format c) -> V2 FFloat -> ColorSample F c
-light samp = sample2D samp SampleAuto (Just 1) Nothing
+light samp = sample2D samp (SampleLod 0) (Just 1) Nothing
 
 proj :: (Floating (ConvertFloat a), Convert a) => GlobalUniform a (ConvertFloat a) -> V3 (ConvertFloat a) -> V4 (ConvertFloat a)
 proj g v = viewProjection g !* point v
@@ -233,16 +208,16 @@ data GridInput = GridInput (V2 Int) (PrimitiveArray Lines (B3 Float))
 
 gridShader ::
   (HasCallStack, ContextHandler ctx, MonadIO m, Control.Monad.Exception.MonadException m) =>
-  MapFile ->
+  (Int, Int) ->
   V2 Float ->
   V3 Float ->
   Window os RGBAFloat Depth ->
   ApplicationUniforms os ->
   ContextT ctx os m (CompiledShader os (V2 Int))
-gridShader m unit offset win unis =
+gridShader size unit offset win unis =
   do
     let gridColor :: V4 Float = V4 0.75 0.75 0.75 1
-        (sx, sy) = m.size
+        (sx, sy) = size
         dts = interval 4 0 1
         xss = V.generate (sy + 1) $ \y -> do
           x :: Float <- V.enumFromN 0 sx
