@@ -1,6 +1,5 @@
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecursiveDo #-}
 
 module Astrata.Game (run, transpose, bundle) where
@@ -41,9 +40,7 @@ import Astrata.UserInput
 import Control.Lens ((+~))
 import Control.Monad
 import Control.Monad.Exception qualified as E (MonadException (catch))
-import Data.Bits (xor)
 import Data.BoundingBox qualified as BB
-import Data.BoundingBox.V2 qualified as BB
 import Data.Map.Strict qualified as M
 import Data.Vector qualified as V
 import Debug.Trace (trace)
@@ -276,11 +273,6 @@ newPrimitiveArray t pArr Nothing = pure $ toPrimitiveArray t pArr
 newPrimitiveArray t pArr (Just i) = do
   iArr <- newIndexArray i Nothing
   return $ toPrimitiveArrayIndexed t iArr pArr
-
-newPrimitiveArray0 :: forall os b i t. (BufferFormat b, Integral i, IndexFormat b ~ i) => PrimitiveTopology t -> Buffer os BPosition -> Maybe (Buffer os b) -> Render os (PrimitiveArray t BPosition)
-newPrimitiveArray0 t p i = do
-  pArr <- newVertexArray p
-  newPrimitiveArray t pArr i
 
 newPrimitiveArray1 :: forall os b i t. (BufferFormat b, Integral i, IndexFormat b ~ i) => PrimitiveTopology t -> Buffer os BPosition -> Maybe (Buffer os b) -> Buffer os BNormal -> Buffer os BUV -> Render os (PrimitiveArray t (BPosition, BNormal, BUV))
 newPrimitiveArray1 t p i n u = do

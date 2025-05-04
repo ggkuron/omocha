@@ -19,14 +19,6 @@ import RIO
 
 type EdgePoint = (Bool, Bool)
 
-type Direction = (Axis, Bool)
-
-adjacentEdges :: EdgePoint -> Vector Direction
-adjacentEdges (True, True) = V.fromList [(Y, True), (X, True)]
-adjacentEdges (True, False) = V.fromList [(Y, False), (X, True)]
-adjacentEdges (False, True) = V.fromList [(Y, True), (X, False)]
-adjacentEdges (False, False) = V.fromList [(Y, False), (X, False)]
-
 data MapReference = Embed MapFile | External FilePath
   deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
 
@@ -37,25 +29,7 @@ type RGBA = (Int, Int, Int, Int)
 rgba :: RGBA -> Color
 rgba (r, g, b, a) = (fromIntegral r / 255, fromIntegral g / 255, fromIntegral b / 255, fromIntegral a / 255)
 
-data Meta
-  = SplineStart
-      { direction :: Direction,
-        search :: Direction,
-        tip :: DefId,
-        cross :: Int
-      }
-  | SplinePoint
-      { search :: Direction,
-        tip :: DefId,
-        cross :: Int
-      }
-  | SplineEnd
-      { direction :: Direction,
-        tip :: DefId
-      }
-  deriving (Eq, Show, Ord, Generic, ToJSON, FromJSON)
-
-data CardType
+data CardId
   = Origin0
   | Origin1
   | Origin2
@@ -69,12 +43,54 @@ data CardType
   | S7
   deriving (Show, Generic, Eq, Ord, ToJSON, FromJSON)
 
+data CardAction
+  = Draw Int
+  | Discard Int
+
+data OriginLevel = L0 | L1 | L2 | L3
+
+type Optionality = Bool
+
+data BattlerStatus
+  = Normal
+  | Tired
+
+data Phase
+  = StartPhase
+  | ActionPhase
+  | AttackPhase
+  | EndPhase
+
+data Battler = Battler
+  { atk :: Int,
+    def :: Int,
+    status :: BattlerStatus,
+    effects :: [(Phase, CardAction, Optionality)],
+    id :: CardId
+  }
+
+data OriginSlot = OriginSlot
+  { level :: OriginLevel,
+    hp :: Int
+  }
+
+data SatelliteSlot = EmptySlot | SealedSlot | Assigned Battler
+
+data Field = Field
+  { origin :: OriginSlot,
+    frontL :: SatelliteSlot,
+    frontR :: SatelliteSlot,
+    backL :: SatelliteSlot,
+    backR :: SatelliteSlot,
+    cemetry :: V.Vector Battler
+  }
+
 data MapDef
   = Empty
   | Card
       { height :: Float,
         yOffset :: Float,
-        t :: Maybe CardType
+        t :: Maybe CardId
       }
   | Cube
       { height :: Float,
@@ -112,15 +128,8 @@ type Size a = (a, a)
 data Axis = X | Y
   deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
 
-data Splined = Splined
-  { xy :: [(Int, Int)],
-    origin :: EdgePoint
-  }
-  deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
-
 data MapFile = MapFile
   { size :: Size Int,
-    spline :: Maybe Splined,
     mapData :: Vector MapData
   }
   deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
@@ -128,10 +137,6 @@ data MapFile = MapFile
 newtype DefId = DefId Int
   deriving (Generic)
   deriving (Eq, Show, Num, Ord, Ix, ToJSON, FromJSON, ToJSONKey, FromJSONKey) via Int
-
--- newtype InstanceId = InstanceId Int
---   deriving (Generic)
---   deriving (Eq, Show, Num, Ord, Ix, ToJSON, FromJSON, ToJSONKey, FromJSONKey) via Int
 
 parseMap :: (HasCallStack) => (Int, Int) -> Vector (Vector DefId) -> Either String (Vector (BB.Box V2 Int, DefId))
 parseMap (sw, sh) mapData

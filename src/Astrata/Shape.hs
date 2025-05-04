@@ -6,7 +6,6 @@ module Astrata.Shape
     divideN,
     cylinder,
     cylinder',
-    slope,
     cone,
     curve,
     curveCross,
@@ -45,7 +44,7 @@ plane (V3 w d h) offset color =
         (Just color)
     )
 
-card :: V3 Float -> V3 Float -> Maybe CardType -> Vector Mesh
+card :: V3 Float -> V3 Float -> Maybe CardId -> Vector Mesh
 card (V3 w d h) offset t =
   V.imap
     ( \i v ->
@@ -88,24 +87,6 @@ cube (V3 w d h) offset color =
         boardP (V3 0 d h) (V3 0 0 h) (V3 w d h) (V3 w 0 h),
         boardP (V3 w d 0) (V3 w 0 0) (V3 0 d 0) (V3 0 0 0)
       ]
-
-slope :: Direction -> (Float, (Float, Float), Float) -> V3 Float -> V4 Float -> Vector Mesh
-slope edge (w, (high, low), h) offset color =
-  let (a, b, c, d) = case edge of
-        (Y, False) -> (high, low, high, low)
-        (Y, True) -> (low, high, low, high)
-        (X, False) -> (high, high, low, low)
-        (X, True) -> (low, low, high, high)
-   in V.map
-        (\v -> Mesh v Nothing offset Nothing BoardShader (TopologyTriangles TriangleStrip) (Just color))
-        $ V.fromList
-          [ boardP (V3 0 a 0) (V3 0 b h) (V3 w c 0) (V3 w d h),
-            boardP (V3 w 0 0) (V3 w 0 h) (V3 0 0 0) (V3 0 0 h),
-            boardP (V3 w d h) (V3 w 0 h) (V3 w c 0) (V3 w 0 0),
-            boardP (V3 0 a 0) (V3 0 0 0) (V3 0 b h) (V3 0 0 h),
-            boardP (V3 0 b h) (V3 0 0 h) (V3 w d h) (V3 w 0 h),
-            boardP (V3 w c 0) (V3 w 0 0) (V3 0 a 0) (V3 0 0 0)
-          ]
 
 divideN :: (Fractional a) => a -> a -> Int -> Vector a
 divideN from to divs =
