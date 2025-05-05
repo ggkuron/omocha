@@ -82,13 +82,11 @@ import RIO
     id,
     isJust,
     map,
-    maybe,
     newIORef,
     otherwise,
     readIORef,
     realToFrac,
     threadDelay,
-    uncurry,
     writeIORef,
     ($),
     (&),
@@ -97,7 +95,6 @@ import RIO
     (<$>),
     (^.),
   )
-import RIO.FilePath (takeDirectory)
 
 loadImage ::
   (MonadIO m, ContextHandler ctx) =>
@@ -138,7 +135,7 @@ data Env os = Env
     textureStorage :: IORef (M.Map (Double, Char) (Texture2D os (Format RGBAFloat))),
     fpsSetting :: IORef Double,
     lastRenderedTime :: IORef Double,
-    maps :: IORef Maps
+    maps :: IORef BattleField
   }
 
 type ShaderInput = (V2 Int, String)
@@ -245,25 +242,21 @@ buildRenderer init win os = do
           pure
             $ V.singleton
               ( \(i, m) ->
-                  when
-                    (maybe False (\o -> o.visible) $ M.lookup obj.id m)
-                    $ case topology of
-                      TopologyTriangles p -> do
-                        prims <- newPrimitiveArray1 p vbuf ibuf nbuf ubuf
-                        shader' $ ShaderEnvironment i.windowSize prims t'
-                      p -> trace ("unsupported topology " ++ show p) $ pure ()
+                  case topology of
+                    TopologyTriangles p -> do
+                      prims <- newPrimitiveArray1 p vbuf ibuf nbuf ubuf
+                      shader' $ ShaderEnvironment i.windowSize prims t' obj.id
+                    p -> trace ("unsupported topology " ++ show p) $ pure ()
               )
         Nothing -> do
           pure
             $ V.singleton
               ( \(i, m) ->
-                  when
-                    (maybe False (\o -> o.visible) $ M.lookup obj.id m)
-                    $ case topology of
-                      TopologyTriangles p -> do
-                        prims <- newPrimitiveArray2 p vbuf ibuf nbuf
-                        ms $ PlainEnvironment i.windowSize (fromMaybe (V4 0 0 0 0.75) color) obj prims
-                      p -> trace ("unsupported topology " ++ show p) $ pure ()
+                  case topology of
+                    TopologyTriangles p -> do
+                      prims <- newPrimitiveArray2 p vbuf ibuf nbuf
+                      ms $ PlainEnvironment i.windowSize (fromMaybe (V4 0 0 0 0.75) color) obj.id prims
+                    p -> trace ("unsupported topology " ++ show p) $ pure ()
               )
   pure
     (unis, clear `V.cons` rankBundle' (V.concatMap id r))
@@ -340,22 +333,21 @@ game :: (HasCallStack) => Game
 game =
   Game
     { prepare = do
-        win <- GameCtx $ newWindow (WindowFormatColorDepth RGBA8 Depth16) (GLFW.defaultWindowConfig "astrata")
+        win <- GameCtx $ newWindow (WindowFormatColorDepth RGBA8 Depth16) (GLFW.defaultWindowConfig "ASTRATA")
         font <- loadFont "VL-PGothic-Regular.ttf"
         textureStorage <- liftIO $ newIORef M.empty
         fpsSetting <- liftIO $ newIORef 60
         lastRenderTime <- liftIO $ newIORef 0
 
-        let offset = V3 (-5) 0 (-5)
-            unit = V2 1 1.25
+        -- let offset = V3 (-5) 0 (-5)
 
         let mapFile = "static/maps/group1/group.json"
         g <- liftIO $ loadMapFile mapFile
-        (m, objs) <- liftIO $ parseMapFile (takeDirectory mapFile) offset unit g
+        objs <- liftIO $ parseMapFile g
 
-        maps <- liftIO $ newIORef (Maps unit m offset (uncurry V2 g.size) (takeDirectory mapFile))
+        maps <- liftIO $ newIORef g
 
-        let gs = gridShader (7, 11) unit offset
+        let gs = gridShader (7, 11) (V2 1 1.25) (V3 (-0.5) 0 (-1.25 / 2))
         (unis, s) <- GameCtx $ buildRenderer gs win objs
         ts <- GameCtx $ compileShader $ textShader win unis
         renderings <- liftIO $ newIORef $ renderWith unis s
@@ -385,8 +377,8 @@ game =
                     ( do
                         let mapFile = "static/maps/group1/group.json"
                         g <- liftIO $ loadMapFile mapFile
-                        (m, objs) <- liftIO $ parseMapFile (takeDirectory mapFile) offset unit g
-                        writeIORef maps (Maps unit m offset (uncurry V2 g.size) (takeDirectory mapFile))
+                        objs <- liftIO $ parseMapFile g
+                        writeIORef maps g
 
                         (unis, s) <- buildRenderer gs win objs
 
@@ -407,7 +399,7 @@ game =
                   E.catch
                     ( do
                         let dir = "static/maps/group" ++ show i
-                        (m, objs) <- liftIO $ loadMap (dir ++ "/group.json") unit
+                        objs <- liftIO $ loadMap (dir ++ "/group.json")
 
                         (unis, s) <- buildRenderer gs win objs
 
@@ -530,11 +522,6 @@ updateFrame env update renderText camera target input = do
   sz <- GameCtx $ getFrameBufferSize env.win
   let viewUpNorm = V3 0 1 0
       normMat = identity
-      modelProj =
-        identity
-          !*! mkTransformation (axisAngle (V3 0 1 0) (unangle (target.direction ^. _zx))) (V3 1 0 (-0.25))
-          !*! mkTransformation zero (V3 (-1) 0 0.25)
-
       lightDir = V3 0 0.5 0.5
       light = V3 60 10 60
 
@@ -562,19 +549,13 @@ updateFrame env update renderText camera target input = do
       )
       GlobalUniform {windowSize = sz, modelNorm = normMat, viewCamera = camera, viewTarget = target.position, viewUp = viewUpNorm, light = light, lightDirection = lightDir}
       ( M.fromAscList
-          $ V.toList
-            ( V.map
-                ( \(_, _, id) ->
-                    ( id,
-                      ObjectUniformB
-                        { position = V3 0 0 0,
-                          proj = identity,
-                          visible = True
-                        }
-                    )
-                )
-                m.defs
+          [ ( ObjectId 0,
+              ObjectUniformB
+                { position = V3 1 0 (-1.25),
+                  proj = mkTransformation (axisAngle (V3 0 1 0) (pi)) (V3 0.5 0 0.625)
+                }
             )
+          ]
       )
   renderText Nothing (sz, inp)
   GameCtx $ swapWindowBuffers env.win

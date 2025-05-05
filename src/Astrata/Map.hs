@@ -12,6 +12,7 @@ import Control.Monad.Exception qualified as E (MonadException (throw), throw)
 import Data.Aeson hiding (json)
 import Data.BoundingBox qualified as BB
 import Data.BoundingBox.V2 qualified as BB
+import Data.Either.Combinators (maybeToLeft)
 import Data.Map.Strict qualified as M
 import Data.Tuple.Extra (both)
 import Data.Vector qualified as V
@@ -21,17 +22,17 @@ import Linear.V4
 import RIO
 import RIO.FilePath
 
-loadMapFile :: (HasCallStack, Exception String) => FilePath -> IO MapFile
+loadMapFile :: (HasCallStack, Exception String) => FilePath -> IO BattleField
 loadMapFile path = do
   f <- eitherDecodeFileStrict path
   case f of
     Right m -> return m
     Left m -> E.throw ("invalid map file: " ++ path ++ "\n" ++ m :: String)
 
-loadMap :: (HasCallStack, Exception String) => FilePath -> V2 Float -> IO (Vector (BB.Box V2 Int, MapDef, ObjectId), Vector SceneObject)
-loadMap path unit = do
+loadMap :: (HasCallStack, Exception String) => FilePath -> IO (Vector SceneObject)
+loadMap path = do
   f <- loadMapFile path
-  parseMapFile (takeDirectory path) 0 unit f
+  parseMapFile f
 
 referenceUnit :: Size Int -> Size Float -> V2 Float
 referenceUnit msize isize =
@@ -39,106 +40,120 @@ referenceUnit msize isize =
       size' = uncurry V2 isize
    in liftA2 (/) size' msize'
 
-loadReferenceDef :: (Exception String) => FilePath -> MapReference -> IO MapFile
-loadReferenceDef _ (Embed m) = pure m
-loadReferenceDef dir (External path) = loadMapFile $ dir </> path -- TODO: check recursive recursion
+-- loadReferenceDef :: (Exception String) => FilePath -> MapReference -> IO MapFile
+-- loadReferenceDef _ (Embed m) = pure m
+-- loadReferenceDef dir (External path) = loadMapFile $ dir </> path -- TODO: check recursive recursion
 
-loadReference :: (Exception String) => V3 Float -> V3 Float -> Size Float -> FilePath -> MapReference -> IO (Vector (BB.Box V2 Int, MapDef, ObjectId), Vector SceneObject)
-loadReference offset unit (ix, iy) dir r = do
-  m <- loadReferenceDef dir r
-  let unit' = unit ^. _xz * referenceUnit m.size (ix, iy)
-   in parseMapFile dir offset unit' m
+-- loadReference :: (Exception String) => V3 Float -> V3 Float -> Size Float -> FilePath -> MapReference -> IO (Vector (BB.Box V2 Int, MapDef, ObjectId), Vector SceneObject)
+-- loadReference offset unit (ix, iy) dir r = do
+--   m <- loadReferenceDef dir r
+--   let unit' = unit ^. _xz * referenceUnit m.size (ix, iy)
+--    in parseMapFile dir offset unit' m
 
-referenceOffset :: V3 Float -> Float -> V2 Float -> V3 Float
-referenceOffset offset yOffset start =
-  let offset' = start + offset ^. _xz
+referenceOffset :: Float -> V2 Float -> V3 Float
+referenceOffset yOffset start =
+  let offset' = start
    in V3 (offset' ^. _x) yOffset (offset' ^. _y)
 
-parseShape :: (HasCallStack, Exception String) => FilePath -> V3 Float -> V3 Float -> MapDef -> Size Float -> (V2 Int, ObjectId) -> IO (Vector Mesh)
-parseShape workingDir offset unit n isize (a, _id) =
+parseShape :: (HasCallStack, Exception String) => V3 Float -> ShapeDef -> Size Float -> V2 Int -> IO (Vector Mesh)
+parseShape unit n isize a =
   let a' = fromIntegral <$> a
       isize' = uncurry V2 isize
       size :: V2 Float = (unit ^. _xz) * isize'
-      start :: V3 Float = unit * V3 (a' ^. _x) 0 (a' ^. _y) + offset
+      start :: V3 Float = unit * V3 (a' ^. _x) 0 (a' ^. _y)
       yScale = unit ^. _y
    in case n of
         Empty -> return V.empty
-        Card {..} -> return $ card (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) t
+        Card {..} -> return $ card (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (maybeToLeft (V4 0 1 1 1) id)
         Cube {..} -> return $ cube (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (colorToV4 color)
         Plane {..} -> return $ plane (V3 (size ^. _x) (n.yOffset * yScale) (size ^. _y)) (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (colorToV4 color)
         Sphere {..} -> return $ sphere (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (colorToV4 color)
-        Reference r yOffset -> do
-          let offset' = unit * referenceOffset offset yOffset a'
-          r <- loadReference offset' unit isize workingDir r
-          return $ V.concatMap (.meshes) (snd r)
         Glb path -> do
-          let offset' = unit * referenceOffset offset 0 (fromIntegral <$> a)
+          let offset' = unit * referenceOffset 0 (fromIntegral <$> a)
           V.map (\m -> (m {offset = offset'} :: Mesh)) <$> fromGlb path
         Gltf path -> do
-          let offset' = unit * referenceOffset offset 0 (fromIntegral <$> a)
+          let offset' = unit * referenceOffset 0 (fromIntegral <$> a)
           V.map (\m -> (m {offset = offset'} :: Mesh)) <$> fromGltf path
   where
     colorToV4 t = let (a, b, c, d) = rgba t in V4 a b c d
 
-toMesh :: (HasCallStack, Exception String) => FilePath -> V3 Float -> V2 Float -> (MapDef, Size Int, Vector (V2 Int, ObjectId)) -> IO (Vector Mesh)
-toMesh workingDir offset unit (n, size, pos) =
+toMesh :: (HasCallStack, Exception String) => V2 Float -> (ShapeDef, Size Int, Vector (V2 Int)) -> IO (Vector Mesh)
+toMesh unit (shape, size, pos) =
   let unit' = V3 (unit ^. _x) (mapY unit) (unit ^. _y)
-   in V.foldMap (parseShape workingDir offset unit' n (both fromIntegral size)) pos
+   in V.foldMap (parseShape unit' shape (both fromIntegral size)) pos
 
-parseMapFile :: (HasCallStack, Exception String) => FilePath -> V3 Float -> V2 Float -> MapFile -> IO (Vector (BB.Box V2 Int, MapDef, ObjectId), Vector SceneObject)
-parseMapFile workingDir offset unit m = do
-  ds <- either E.throw return (V.mapM (parseMapDef m.size) m.mapData)
-  r <-
-    V.foldMap
-      ( \(a, d) ->
-          V.mapM
-            ( \(box, _, oid) -> do
-                mesh <- toMesh workingDir offset unit (d.defs M.! oid)
-                return
-                  $ SceneObject
-                    { id = oid,
-                      meshes = mesh,
-                      bbox = box
-                    }
-            )
-            a
-      )
-      ds
-  return (V.concatMap fst ds, r)
+sateliteMesh :: (HasCallStack, Exception String) => V2 Float -> SatelliteSlot -> V2 Int -> IO (Vector Mesh)
+sateliteMesh unit EmptySlot pos = toMesh unit (Card {height = 0.01, id = Nothing, yOffset = 0}, (1, 1), V.singleton pos)
+sateliteMesh unit SealedSlot pos = toMesh unit (Card {height = 0.01, id = Nothing, yOffset = 0}, (1, 1), V.singleton pos)
+sateliteMesh unit (Assigned Battler {..}) pos = toMesh unit (Card {height = 0.01, id = Just id, yOffset = 0}, (1, 1), V.singleton pos)
 
-lookupMapDef :: Maps -> BB.Box V2 Float -> Vector (MapDef, BB.Box V2 Float)
-lookupMapDef m t = select <$> V.filter (\(bb, _, _) -> any (\c -> BB.isInside c ((fromIntegral <$> bb) `BB.mult` m.unit)) corners) m.defs
-  where
-    corners = (\t' -> t' - m.offset ^. _xz) <$> BB.corners t
-    select :: (BB.Box V2 Int, MapDef, a) -> (MapDef, BB.Box V2 Float)
-    select (a, b, _) = (b, (fromIntegral <$> a) `BB.mult` m.unit)
+parseMapFile :: (HasCallStack, Exception String) => BattleField -> IO (Vector SceneObject)
+parseMapFile f = do
+  let unit = V2 1 1.25
+  -- ds <- either E.throw return (V.mapM (parseMapDef m.size) m.mapData)
+  o0 <- toMesh unit (Card {height = 0.1, id = Just (origin f.own.origin).id, yOffset = 0}, (1, 1), V.singleton (V2 0 0))
+  fl <- sateliteMesh unit f.own.frontL (V2 4 4)
+  fr <- sateliteMesh unit f.own.frontR (V2 2 2)
+  bl <- sateliteMesh unit f.own.backL (V2 4 2)
+  br <- sateliteMesh unit f.own.backR (V2 2 4)
+  return
+    $ V.fromList
+      [ SceneObject
+          { meshes = o0,
+            id = ObjectId 0
+          },
+        SceneObject
+          { meshes = fl,
+            id = ObjectId 1
+          },
+        SceneObject
+          { meshes = fr,
+            id = ObjectId 2
+          },
+        SceneObject
+          { meshes = bl,
+            id = ObjectId 3
+          },
+        SceneObject
+          { meshes = br,
+            id = ObjectId 4
+          }
+      ]
 
+-- lookupMapDef :: Maps -> BB.Box V2 Float -> Vector (MapDef, BB.Box V2 Float)
+-- lookupMapDef m t = select <$> V.filter (\(bb, _, _) -> any (\c -> BB.isInside c ((fromIntegral <$> bb) `BB.mult` m.unit)) corners) m.defs
+--   where
+--     corners = (\t' -> t' - m.offset ^. _xz) <$> BB.corners t
+--     select :: (BB.Box V2 Int, MapDef, a) -> (MapDef, BB.Box V2 Float)
+--     select (a, b, _) = (b, (fromIntegral <$> a) `BB.mult` m.unit)
+--
 mapY :: (Fractional a, R2 t) => t a -> a
 mapY unit = (unit ^. _x + unit ^. _y) / 2
 
-mapHeight :: (Exception String) => Maps -> BB.Box V2 Float -> V3 Float -> IO Float
-mapHeight m t@(BB.Box start end) offset = do
-  let yScale = mapY m.unit
-      defs = lookupMapDef m t
-  hs <-
-    forM
-      defs
-      ( \d -> case d of
-          (Cube {..}, _) -> return (yOffset + height)
-          (Plane {}, _) -> return 0
-          (Sphere {..}, _) -> return (yScale * (yOffset + height))
-          (Reference r y, BB.Box ts te) -> do
-            let size = te - ts
-                (V2 sx sy) = size
-                offset' = referenceOffset offset y ts
-            mdef <- loadReferenceDef m.dir r
-            let u'' = referenceUnit mdef.size (sx, sy)
-                yScale' = mapY u''
-            (m', _) <- loadReference offset' 1 (sx, sy) m.dir r
-            h <- mapHeight (Maps u'' m' offset' m.size m.dir) t offset'
-            return (yScale' * (h + y))
-          (Empty, _) -> return 0
-          (Gltf _, _) -> return 0
-          (Glb _, _) -> return 0
-      )
-  return $ if null hs then 0 else V.maximum hs
+--
+-- mapHeight :: (Exception String) => Maps -> BB.Box V2 Float -> V3 Float -> IO Float
+-- mapHeight m t@(BB.Box start end) offset = do
+--   let yScale = mapY m.unit
+--       defs = lookupMapDef m t
+--   hs <-
+--     forM
+--       defs
+--       ( \d -> case d of
+--           (Cube {..}, _) -> return (yOffset + height)
+--           (Plane {}, _) -> return 0
+--           (Sphere {..}, _) -> return (yScale * (yOffset + height))
+--           (Reference r y, BB.Box ts te) -> do
+--             let size = te - ts
+--                 (V2 sx sy) = size
+--                 offset' = referenceOffset offset y ts
+--             mdef <- loadReferenceDef m.dir r
+--             let u'' = referenceUnit mdef.size (sx, sy)
+--                 yScale' = mapY u''
+--             (m', _) <- loadReference offset' 1 (sx, sy) m.dir r
+--             h <- mapHeight (Maps u'' m' offset' m.size m.dir) t offset'
+--             return (yScale' * (h + y))
+--           (Empty, _) -> return 0
+--           (Gltf _, _) -> return 0
+--           (Glb _, _) -> return 0
+--       )
+--   return $ if null hs then 0 else V.maximum hs

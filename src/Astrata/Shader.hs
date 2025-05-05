@@ -26,19 +26,14 @@ type BUV = B2 Float
 data ShaderEnvironment os = ShaderEnvironment
   { size :: V2 Int,
     primitives :: PrimitiveArray Triangles (BPosition, BNormal, BUV),
-    colorImage :: Texture2D os (Format RGBAFloat)
-  }
-
-data ShadowEnvironment os = ShadowEnvironment
-  { size :: V2 Int,
-    obj :: SceneObject,
-    primitives :: PrimitiveArray Triangles BPosition
+    colorImage :: Texture2D os (Format RGBAFloat),
+    obj :: ObjectId
   }
 
 data PlainEnvironment os = PlainEnvironment
   { size :: V2 Int,
     color :: V4 Float,
-    obj :: SceneObject,
+    obj :: ObjectId,
     primitives :: PrimitiveArray Triangles (BPosition, BNormal)
   }
 
@@ -54,8 +49,9 @@ boardShader ::
   Shader os (ShaderEnvironment os) ()
 boardShader win unis = do
   g <- readGlobalUniform unis
+  o <- readObjectUniform'' unis
   boards <- toPrimitiveStream (.primitives)
-  let projected = (\(v, n, uv) -> (proj g v, (g.modelNorm !* n, uv, biasMat !* lightProj g v))) <$> boards
+  let projected = (\(v, n, uv) -> (proj g (normalizePoint (o.proj !* point v) + o.position), (g.modelNorm !* n, uv, biasMat !* lightProj g v))) <$> boards
       -- let ssampler :: S V Float = sample2DShadow ssamp (SampleLod 0) Nothing (Just 1) 1 (V2 0 0) in ssampler
       -- let projected :: PrimitiveStream Triangles (VPos, (V3 VFloat, V2 VFloat))= (\(v, n, uv) -> (proj g v, (g.modelNorm !* n, uv))) <$> boards
       filterMode = SamplerFilter Linear Linear Linear (Just 16)
@@ -93,15 +89,15 @@ normalizeS v = ifB (l ==* 1 ||* l ==* 0) v (fmap (/ sqrt l) v)
   where
     l = quadrance v
 
-readObjectUniform' :: ApplicationUniforms os -> Shader os (PlainEnvironment os) (ObjectUniformS a)
-readObjectUniform' unis = do
-  uni <- getUniform (\env -> let (ObjectId id) = env.obj.id in (unis.objects, id))
+readObjectUniform'' :: ApplicationUniforms os -> Shader os (ShaderEnvironment os) (ObjectUniformS a)
+readObjectUniform'' unis = do
+  uni <- getUniform (\env -> let (ObjectId id) = env.obj in (unis.objects, id))
   let (position, modelProj) = uni
   return $ ObjectUniform position modelProj
 
-readObjectUniform'' :: ApplicationUniforms os -> Shader os (ShadowEnvironment os) (ObjectUniformS a)
-readObjectUniform'' unis = do
-  uni <- getUniform (\env -> let (ObjectId id) = env.obj.id in (unis.objects, id))
+readObjectUniform' :: ApplicationUniforms os -> Shader os (PlainEnvironment os) (ObjectUniformS a)
+readObjectUniform' unis = do
+  uni <- getUniform (\env -> let (ObjectId id) = env.obj in (unis.objects, id))
   let (position, modelProj) = uni
   return $ ObjectUniform position modelProj
 

@@ -44,25 +44,25 @@ plane (V3 w d h) offset color =
         (Just color)
     )
 
-card :: V3 Float -> V3 Float -> Maybe CardId -> Vector Mesh
+card :: V3 Float -> V3 Float -> Either CardId (V4 Float) -> Vector Mesh
 card (V3 w d h) offset t =
   V.imap
     ( \i v ->
         let (tex, c) =
               if i == 0
                 then case t of
-                  Just Origin0 -> (Just _O0_png, Nothing)
-                  Just Origin1 -> (Just _O1_jpg, Nothing)
-                  Just Origin2 -> (Just _O2_jpg, Nothing)
-                  Just Origin3 -> (Just _O3_jpg, Nothing)
-                  Just S1 -> (Just _S1_jpg, Nothing)
-                  Just S2 -> (Just _S2_jpg, Nothing)
-                  Just S3 -> (Just _S3_jpg, Nothing)
-                  Just S4 -> (Just _S4_jpg, Nothing)
-                  Just S5 -> (Just _S5_jpg, Nothing)
-                  Just S6 -> (Just _S6_jpg, Nothing)
-                  Just S7 -> (Just _S7_jpg, Nothing)
-                  _ -> (Nothing, Just $ V4 1 1 1 1)
+                  Left Origin0 -> (Just _O0_png, Nothing)
+                  Left Origin1 -> (Just _O1_jpg, Nothing)
+                  Left Origin2 -> (Just _O2_jpg, Nothing)
+                  Left Origin3 -> (Just _O3_jpg, Nothing)
+                  Left S1 -> (Just _S1_jpg, Nothing)
+                  Left S2 -> (Just _S2_jpg, Nothing)
+                  Left S3 -> (Just _S3_jpg, Nothing)
+                  Left S4 -> (Just _S4_jpg, Nothing)
+                  Left S5 -> (Just _S5_jpg, Nothing)
+                  Left S6 -> (Just _S6_jpg, Nothing)
+                  Left S7 -> (Just _S7_png, Nothing)
+                  Right c -> (Nothing, Just c)
                 else (Nothing, Just $ V4 0 1 1 1)
          in Mesh v Nothing offset tex BoardShader (TopologyTriangles TriangleStrip) c
     )

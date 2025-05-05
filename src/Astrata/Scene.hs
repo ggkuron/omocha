@@ -7,16 +7,14 @@ module Astrata.Scene
   )
 where
 
-import Data.BoundingBox qualified as BB
-import Graphics.GPipe
 import Astrata.Mesh
 import Astrata.Uniform
+import Graphics.GPipe
 import RIO
 
 data SceneObject = SceneObject
   { meshes :: Vector Mesh,
-    id :: ObjectId,
-    bbox :: BB.Box V2 Int
+    id :: ObjectId
   }
   deriving (Show)
 

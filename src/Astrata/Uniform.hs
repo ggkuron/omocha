@@ -54,8 +54,7 @@ type ObjectUniformS a = ObjectUniform (S a Float) (S a Int)
 
 data ObjectUniformB = ObjectUniformB
   { position :: V3 Float,
-    proj :: M44 Float,
-    visible :: Bool
+    proj :: M44 Float
   }
 
 readGlobalUniform :: ApplicationUniforms os -> Shader os s (GlobalUniformS a)

@@ -1,39 +1,39 @@
-{
-    "size":[7,11],
-    "mapData":
-    [
-        {
-                          "tag": "Fill",
-                          "contents":{
-                              "color":[20,20,20,128],
-                              "height":0.05,
-                              "tag":"Cube",
-                              "yOffset": -0.15
-                          }
+{ "own" : 
+  { "origin": 
+      {
+        "level" : "L0",
+      "hp" : 6,
+      "status": "Normal",
+      "planet" : []
+    },
+    "frontL": { "tag": "Assigned",
+                "contents": {
+                "atk" :1,
+                   "def" : 1,
+                   "status" : "Normal",
+                   "effects" : [],
+                   "id" : "S7"
+                }
+    },
+    "frontR": { "tag": "EmptySlot"},
+    "backL": { "tag": "EmptySlot"},
+    "backR": { "tag": "EmptySlot"},
+    "cemetry" : []
+  },
+  "rival" :
+    { "origin": 
+          {
+            "level" : "L0",
+          "hp" : 6,
+          "status": "Normal",
+          "planet" : []
         },
-        {
-            "tag": "Tips",
-            "defs":{
-                "1":{"color":[255,127,127,255],"height":0.01, "tag":"Cube",  "yOffset": 0},
-                "3":{"color":[255,127,127,255],"height":0.1, "tag":"Card",  "yOffset": 0.25, "t": "Origin0"},
-                "2":{"color":[255,127,127,255],"height":0.5, "tag":"Cube",  "yOffset": 0}
-            },
-            "maps":[
-                [
-                      [0, 0, 0, 0, 0, 0, 0],
-                      [0, 0, 0, 0, 0, 0, 0],
-                      [2, 0, 1, 0, 1, 0, 0],
-                      [0, 0, 0, 3, 0, 0, 0],
-                      [0, 0, 1, 0, 1, 0, 0],
-                      [0, 0, 0, 0, 0, 0, 0],
-                      [0, 0, 1, 0, 1, 0, 0],
-                      [0, 0, 0, 3, 0, 0, 0],
-                      [0, 0, 1, 0, 1, 0, 2],
-                      [0, 0, 0, 0, 0, 0, 0],
-                      [0, 0, 0, 0, 0, 0, 0]
-                ]
-            ]
-        }
-        
-    ]
+        "frontL": { "tag": "EmptySlot"},
+        "frontR": { "tag": "EmptySlot"},
+        "backL": { "tag": "EmptySlot"},
+        "backR": { "tag": "EmptySlot"},
+        "cemetry" : []
+      },
+  "ownHands" : [],
+  "rivalHands" :[]
 }

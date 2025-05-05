@@ -19,8 +19,8 @@ import RIO
 
 type EdgePoint = (Bool, Bool)
 
-data MapReference = Embed MapFile | External FilePath
-  deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
+-- data MapReference = Embed MapFile | External FilePath
+--   deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
 
 type Color = (Float, Float, Float, Float)
 
@@ -46,35 +46,53 @@ data CardId
 data CardAction
   = Draw Int
   | Discard Int
+  deriving (Show, Eq, ToJSON, FromJSON, Generic)
 
 data OriginLevel = L0 | L1 | L2 | L3
+  deriving (Show, Eq, ToJSON, FromJSON, Generic)
 
 type Optionality = Bool
 
 data BattlerStatus
   = Normal
   | Tired
+  deriving (Show, Eq, ToJSON, FromJSON, Generic)
 
 data Phase
   = StartPhase
   | ActionPhase
   | AttackPhase
   | EndPhase
+  deriving (Show, ToJSON, FromJSON, Generic)
 
 data Battler = Battler
   { atk :: Int,
     def :: Int,
     status :: BattlerStatus,
-    effects :: [(Phase, CardAction, Optionality)],
+    effects :: [(Phase, [CardAction], Optionality)],
     id :: CardId
   }
+  deriving (Show, ToJSON, FromJSON, Generic)
 
 data OriginSlot = OriginSlot
   { level :: OriginLevel,
-    hp :: Int
+    hp :: Int,
+    status :: BattlerStatus,
+    planet :: Planet
   }
+  deriving (Show, ToJSON, FromJSON, Generic)
 
 data SatelliteSlot = EmptySlot | SealedSlot | Assigned Battler
+  deriving (Show, ToJSON, FromJSON, Generic)
+
+data Planet = Mercury
+  deriving (Show, Eq, ToJSON, FromJSON, Generic)
+
+origin :: OriginSlot -> Battler
+origin (OriginSlot {planet = Mercury, level = L0, status}) = Battler {atk = 1, def = 1, id = Origin0, status = status, effects = [(StartPhase, [], True)]}
+origin (OriginSlot {planet = Mercury, level = L1, status}) = Battler {atk = 1, def = 1, id = Origin1, status = status, effects = [(StartPhase, [], True)]}
+origin (OriginSlot {planet = Mercury, level = L2, status}) = Battler {atk = 1, def = 1, id = Origin2, status = status, effects = [(StartPhase, [], True)]}
+origin (OriginSlot {planet = Mercury, level = L3, status}) = Battler {atk = 1, def = 1, id = Origin3, status = status, effects = [(StartPhase, [], True)]}
 
 data Field = Field
   { origin :: OriginSlot,
@@ -84,13 +102,22 @@ data Field = Field
     backR :: SatelliteSlot,
     cemetry :: V.Vector Battler
   }
+  deriving (Show, ToJSON, FromJSON, Generic)
 
-data MapDef
+data BattleField = BattleField
+  { own :: Field,
+    rival :: Field,
+    ownHands :: V.Vector CardId,
+    rivalHands :: V.Vector CardId
+  }
+  deriving (Show, ToJSON, FromJSON, Generic)
+
+data ShapeDef
   = Empty
   | Card
       { height :: Float,
         yOffset :: Float,
-        t :: Maybe CardId
+        id :: Maybe CardId
       }
   | Cube
       { height :: Float,
@@ -101,8 +128,8 @@ data MapDef
       { color :: RGBA,
         yOffset :: Float
       }
-  | Reference MapReference Float
-  | Sphere
+  | -- | Reference MapReference Float
+    Sphere
       { height :: Float,
         color :: RGBA,
         yOffset :: Float
@@ -111,13 +138,13 @@ data MapDef
   | Glb FilePath
   deriving (Show, Generic, Eq, Ord, ToJSON, FromJSON)
 
-data MapData
-  = Fill MapDef
-  | Tips
-      { maps :: Vector (Vector (Vector DefId)),
-        defs :: M.Map DefId MapDef
-      }
-  deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
+-- data MapData
+--   = Fill MapDef
+--   | Tips
+--       { maps :: Vector (Vector (Vector DefId)),
+--         defs :: M.Map DefId MapDef
+--       }
+--   deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
 
 vectorToMaybe :: Vector a -> Maybe a
 vectorToMaybe = V.foldr (const . Just) Nothing
@@ -128,87 +155,87 @@ type Size a = (a, a)
 data Axis = X | Y
   deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
 
-data MapFile = MapFile
-  { size :: Size Int,
-    mapData :: Vector MapData
-  }
-  deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
+-- data MapFile = MapFile
+--   { size :: Size Int,
+--     mapData :: Vector MapData
+--   }
+--   deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
 
-newtype DefId = DefId Int
-  deriving (Generic)
-  deriving (Eq, Show, Num, Ord, Ix, ToJSON, FromJSON, ToJSONKey, FromJSONKey) via Int
+-- newtype DefId = DefId Int
+--   deriving (Generic)
+--   deriving (Eq, Show, Num, Ord, Ix, ToJSON, FromJSON, ToJSONKey, FromJSONKey) via Int
 
-parseMap :: (HasCallStack) => (Int, Int) -> Vector (Vector DefId) -> Either String (Vector (BB.Box V2 Int, DefId))
-parseMap (sw, sh) mapData
-  | length mapData /= sh = Left "row mismatch"
-  | any (\row -> length row /= sw) mapData = Left "column mismatch"
-  | otherwise =
-      Right
-        $ foldl'
-          ( \a (V2 x y) ->
-              let k@(DefId ik) = l x y
-                  w = ew k x y a
-                  h = eh k w x y a
-               in (if (ik == 0) || (w == 0) then a else (BB.Box (V2 x y) (V2 (x + w) (y + h + 1)), k) `V.cons` a)
-          )
-          V.empty
-          ([V2 x y | y <- [0 .. sh - 1], x <- [0 .. sw - 1]])
-  where
-    l x y = mapData V.! y V.! x
-    ew v x y bbs = length (takeWhile id [v == l x' y && all (\(b, _) -> not $ isInside b x' y) bbs | x' <- [x .. sw - 1]])
-    eh v w x y bbs = length (takeWhile id [ew v x y' bbs == w | w > 0, y' <- [y + 1 .. sh - 1]])
+-- parseMap :: (HasCallStack) => (Int, Int) -> Vector (Vector DefId) -> Either String (Vector (BB.Box V2 Int, DefId))
+-- parseMap (sw, sh) mapData
+--   | length mapData /= sh = Left "row mismatch"
+--   | any (\row -> length row /= sw) mapData = Left "column mismatch"
+--   | otherwise =
+--       Right
+--         $ foldl'
+--           ( \a (V2 x y) ->
+--               let k@(DefId ik) = l x y
+--                   w = ew k x y a
+--                   h = eh k w x y a
+--                in (if (ik == 0) || (w == 0) then a else (BB.Box (V2 x y) (V2 (x + w) (y + h + 1)), k) `V.cons` a)
+--           )
+--           V.empty
+--           ([V2 x y | y <- [0 .. sh - 1], x <- [0 .. sw - 1]])
+--   where
+--     l x y = mapData V.! y V.! x
+--     ew v x y bbs = length (takeWhile id [v == l x' y && all (\(b, _) -> not $ isInside b x' y) bbs | x' <- [x .. sw - 1]])
+--     eh v w x y bbs = length (takeWhile id [ew v x y' bbs == w | w > 0, y' <- [y + 1 .. sh - 1]])
+--
+-- isInside :: BB.Box V2 Int -> Int -> Int -> Bool
+-- isInside bb x y = BB.isInside (fmap fromIntegral (V2 x y) + (V2 0.5 0.5 :: V2 Float)) (fmap fromIntegral bb)
 
-isInside :: BB.Box V2 Int -> Int -> Int -> Bool
-isInside bb x y = BB.isInside (fmap fromIntegral (V2 x y) + (V2 0.5 0.5 :: V2 Float)) (fmap fromIntegral bb)
+-- newtype MapDefs b = MapDefs
+--   { defs :: M.Map ObjectId (ShapeDef, Size Int, b)
+--   }
+--   deriving (Show)
+--
+-- instance Monoid (MapDefs (Vector a)) where
+--   mempty = MapDefs M.empty
 
-newtype MapDefs b = MapDefs
-  { defs :: M.Map ObjectId (MapDef, Size Int, b)
-  }
-  deriving (Show)
+-- data Maps = Maps
+--   { unit :: V2 Float,
+--     defs :: Vector (BB.Box V2 Int, ShapeDef, ObjectId),
+--     offset :: V3 Float,
+--     size :: V2 Int,
+--     dir :: FilePath
+--   }
 
-instance Monoid (MapDefs (Vector a)) where
-  mempty = MapDefs M.empty
+-- instance Semigroup (MapDefs (Vector a)) where
+--   (MapDefs im) <> (MapDefs im') = MapDefs (im `M.union` M.mapKeys (+ leftMaxId) im')
+--     where
+--       leftMaxId = M.foldlWithKey' (\a i _ -> max a i) 1 im
 
-data Maps = Maps
-  { unit :: V2 Float,
-    defs :: Vector (BB.Box V2 Int, MapDef, ObjectId),
-    offset :: V3 Float,
-    size :: V2 Int,
-    dir :: FilePath
-  }
+-- parse :: (HasCallStack) => (Int, Int) -> MapData -> Either String (Vector (BB.Box V2 Int, MapDef, ObjectId))
+-- parse (x, y) (Fill def) = Right $ V.singleton (BB.Box (V2 0 0) (V2 x y), def, ObjectId 0)
+-- parse size (Tips {..}) = do
+--   b <- foldMapM (parseMap size) maps
+--   V.imapM
+--     ( \i (bb, k) -> do
+--         def <- maybeToRight ("key: " ++ show k ++ " not found") (defs M.!? k)
+--         return (bb, def, ObjectId i)
+--     )
+--     b
 
-instance Semigroup (MapDefs (Vector a)) where
-  (MapDefs im) <> (MapDefs im') = MapDefs (im `M.union` M.mapKeys (+ leftMaxId) im')
-    where
-      leftMaxId = M.foldlWithKey' (\a i _ -> max a i) 1 im
-
-parse :: (HasCallStack) => (Int, Int) -> MapData -> Either String (Vector (BB.Box V2 Int, MapDef, ObjectId))
-parse (x, y) (Fill def) = Right $ V.singleton (BB.Box (V2 0 0) (V2 x y), def, ObjectId 0)
-parse size (Tips {..}) = do
-  b <- foldMapM (parseMap size) maps
-  V.imapM
-    ( \i (bb, k) -> do
-        def <- maybeToRight ("key: " ++ show k ++ " not found") (defs M.!? k)
-        return (bb, def, ObjectId i)
-    )
-    b
-
-parseMapDef :: (HasCallStack) => (Int, Int) -> MapData -> Either String (Vector (BB.Box V2 Int, MapDef, ObjectId), MapDefs (Vector (V2 Int, ObjectId)))
-parseMapDef size md = do
-  ls <- parse size md
-  return
-    ( ls,
-      MapDefs
-        ( V.foldl'
-            ( \im (BB.Box start end, def, objId) ->
-                let V2 w h = end - start
-                    size = (w, h)
-                 in M.alter (Just . maybe (def, size, V.singleton (start, objId)) (third3 (`V.snoc` (start, objId)))) objId im
-            )
-            M.empty
-            ls
-        )
-    )
+-- parseMapDef :: (HasCallStack) => (Int, Int) -> MapData -> Either String (Vector (BB.Box V2 Int, MapDef, ObjectId), MapDefs (Vector (V2 Int, ObjectId)))
+-- parseMapDef size md = do
+--   ls <- parse size md
+--   return
+--     ( ls,
+--       MapDefs
+--         ( V.foldl'
+--             ( \im (BB.Box start end, def, objId) ->
+--                 let V2 w h = end - start
+--                     size = (w, h)
+--                  in M.alter (Just . maybe (def, size, V.singleton (start, objId)) (third3 (`V.snoc` (start, objId)))) objId im
+--             )
+--             M.empty
+--             ls
+--         )
+--     )
 
 adjust :: Int -> Bool -> Float -> Vector (Int, Int) -> V.Vector (Int, Float)
 adjust sz asc crossSize v =
