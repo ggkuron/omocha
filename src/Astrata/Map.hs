@@ -10,8 +10,6 @@ import Astrata.Shape
 import Astrata.Uniform
 import Control.Monad.Exception qualified as E (MonadException (throw), throw)
 import Data.Aeson hiding (json)
-import Data.BoundingBox qualified as BB
-import Data.BoundingBox.V2 qualified as BB
 import Data.Either.Combinators (maybeToLeft)
 import Data.Map.Strict qualified as M
 import Data.Tuple.Extra (both)
@@ -20,7 +18,6 @@ import Linear.V2
 import Linear.V3
 import Linear.V4
 import RIO
-import RIO.FilePath
 
 loadMapFile :: (HasCallStack, Exception String) => FilePath -> IO BattleField
 loadMapFile path = do
@@ -29,7 +26,7 @@ loadMapFile path = do
     Right m -> return m
     Left m -> E.throw ("invalid map file: " ++ path ++ "\n" ++ m :: String)
 
-loadMap :: (HasCallStack, Exception String) => FilePath -> IO (Vector SceneObject)
+loadMap :: (HasCallStack, Exception String) => FilePath -> IO (M.Map (CardId, Int) SceneObject)
 loadMap path = do
   f <- loadMapFile path
   parseMapFile f
@@ -82,43 +79,57 @@ toMesh unit (shape, size, pos) =
   let unit' = V3 (unit ^. _x) (mapY unit) (unit ^. _y)
    in V.foldMap (parseShape unit' shape (both fromIntegral size)) pos
 
-sateliteMesh :: (HasCallStack, Exception String) => V2 Float -> SatelliteSlot -> V2 Int -> IO (Vector Mesh)
-sateliteMesh unit EmptySlot pos = toMesh unit (Card {height = 0.01, id = Nothing, yOffset = 0}, (1, 1), V.singleton pos)
-sateliteMesh unit SealedSlot pos = toMesh unit (Card {height = 0.01, id = Nothing, yOffset = 0}, (1, 1), V.singleton pos)
-sateliteMesh unit (Assigned Battler {..}) pos = toMesh unit (Card {height = 0.01, id = Just id, yOffset = 0}, (1, 1), V.singleton pos)
+sateliteMesh :: (HasCallStack, Exception String) => V2 Float -> SatelliteSlot Battler -> IO (Maybe (CardId, Int), Vector Mesh)
+sateliteMesh unit slot = do
+  let c = card slot
+  m <- toMesh unit (Card {height = 0.01, id = fst <$> c, yOffset = 0}, (1, 1), V.singleton 0)
+  return (c, m)
+  where
+    card (Assigned Battler {..}) = Just id
+    card _ = Nothing
 
-parseMapFile :: (HasCallStack, Exception String) => BattleField -> IO (Vector SceneObject)
+data FieldSlot
+  = Origin
+  | FrontL
+  | FrontR
+  | BackL
+  | BackR
+  | Cemetry
+  | Deck
+  deriving (Eq, Ord, Show)
+
+parseMapFile :: (HasCallStack, Exception String) => BattleField -> IO (M.Map (CardId, Int) SceneObject)
 parseMapFile f = do
   let unit = V2 1 1.25
-  -- ds <- either E.throw return (V.mapM (parseMapDef m.size) m.mapData)
-  o0 <- toMesh unit (Card {height = 0.1, id = Just (origin f.own.origin).id, yOffset = 0}, (1, 1), V.singleton (V2 0 0))
-  fl <- sateliteMesh unit f.own.frontL (V2 4 4)
-  fr <- sateliteMesh unit f.own.frontR (V2 2 2)
-  bl <- sateliteMesh unit f.own.backL (V2 4 2)
-  br <- sateliteMesh unit f.own.backR (V2 2 4)
+  o0 <- toMesh unit (Card {height = 0.1, id = Just $ fst (origin Own f.own.origin).id, yOffset = 0}, (1, 1), V.singleton 0)
+  r0 <- toMesh unit (Card {height = 0.1, id = Just $ fst (origin Rival f.own.origin).id, yOffset = 0}, (1, 1), V.singleton 0)
+  cs <- forM [f.own.frontL, f.own.frontR, f.rival.frontL, f.rival.frontR, f.own.backL, f.own.backR, f.rival.backL, f.rival.backR] $ sateliteMesh unit
   return
-    $ V.fromList
-      [ SceneObject
-          { meshes = o0,
-            id = ObjectId 0
-          },
-        SceneObject
-          { meshes = fl,
-            id = ObjectId 1
-          },
-        SceneObject
-          { meshes = fr,
-            id = ObjectId 2
-          },
-        SceneObject
-          { meshes = bl,
-            id = ObjectId 3
-          },
-        SceneObject
-          { meshes = br,
-            id = ObjectId 4
-          }
-      ]
+    $ M.fromList
+    . V.toList
+    $ V.imap (\i (id, m) -> (id, SceneObject m (ObjectId i)))
+    $ ((origin Own f.own.origin).id, o0)
+    `V.cons` (((origin Rival f.own.origin).id, r0) `V.cons` V.fromList (mapMaybe (\(c, m) -> (\c' -> (c', m)) <$> c) cs))
+
+-- ,
+-- ( f.own.frontL
+-- SceneObject
+--   { meshes = fl,
+--     id = fieldObjectId Own FrontL
+--   },
+-- SceneObject
+--   { meshes = fr,
+--     id = fieldObjectId Own FrontR
+--   },
+-- SceneObject
+--   { meshes = bl,
+--     id = fieldObjectId Own BackL
+--   },
+-- SceneObject
+--   { meshes = br,
+--     id = fieldObjectId Own BackR
+--   }
+-- ]
 
 -- lookupMapDef :: Maps -> BB.Box V2 Float -> Vector (MapDef, BB.Box V2 Float)
 -- lookupMapDef m t = select <$> V.filter (\(bb, _, _) -> any (\c -> BB.isInside c ((fromIntegral <$> bb) `BB.mult` m.unit)) corners) m.defs

@@ -7,7 +7,6 @@ import Astrata.Spline
 import Astrata.Uniform
 import Data.Aeson
 import Data.Array (Ix)
-import Data.BoundingBox qualified as BB
 import Data.Either.Combinators (maybeToRight)
 import Data.Map.Strict qualified as M
 import Data.Tuple.Extra (third3)
@@ -70,7 +69,7 @@ data Battler = Battler
     def :: Int,
     status :: BattlerStatus,
     effects :: [(Phase, [CardAction], Optionality)],
-    id :: CardId
+    id :: (CardId, Int)
   }
   deriving (Show, ToJSON, FromJSON, Generic)
 
@@ -82,24 +81,34 @@ data OriginSlot = OriginSlot
   }
   deriving (Show, ToJSON, FromJSON, Generic)
 
-data SatelliteSlot = EmptySlot | SealedSlot | Assigned Battler
-  deriving (Show, ToJSON, FromJSON, Generic)
+data SatelliteSlot a = EmptySlot | SealedSlot | Assigned a
+  deriving (Show, ToJSON, FromJSON, Generic, Functor)
 
 data Planet = Mercury
   deriving (Show, Eq, ToJSON, FromJSON, Generic)
 
-origin :: OriginSlot -> Battler
-origin (OriginSlot {planet = Mercury, level = L0, status}) = Battler {atk = 1, def = 1, id = Origin0, status = status, effects = [(StartPhase, [], True)]}
-origin (OriginSlot {planet = Mercury, level = L1, status}) = Battler {atk = 1, def = 1, id = Origin1, status = status, effects = [(StartPhase, [], True)]}
-origin (OriginSlot {planet = Mercury, level = L2, status}) = Battler {atk = 1, def = 1, id = Origin2, status = status, effects = [(StartPhase, [], True)]}
-origin (OriginSlot {planet = Mercury, level = L3, status}) = Battler {atk = 1, def = 1, id = Origin3, status = status, effects = [(StartPhase, [], True)]}
+battler :: SatelliteSlot Battler -> Maybe Battler
+battler (Assigned b) = Just b
+battler _ = Nothing
+
+data FieldSide = Own | Rival
+  deriving (Eq, Ord, Show)
+
+origin :: FieldSide -> OriginSlot -> Battler
+origin s (OriginSlot {planet = Mercury, level = L0, status}) = Battler {atk = 1, def = 1, id = (Origin0, originCardId s), status = status, effects = [(StartPhase, [], True)]}
+origin s (OriginSlot {planet = Mercury, level = L1, status}) = Battler {atk = 1, def = 1, id = (Origin1, originCardId s), status = status, effects = [(StartPhase, [], True)]}
+origin s (OriginSlot {planet = Mercury, level = L2, status}) = Battler {atk = 1, def = 1, id = (Origin2, originCardId s), status = status, effects = [(StartPhase, [], True)]}
+origin s (OriginSlot {planet = Mercury, level = L3, status}) = Battler {atk = 1, def = 1, id = (Origin3, originCardId s), status = status, effects = [(StartPhase, [], True)]}
+
+originCardId Own = 0
+originCardId Rival = 1
 
 data Field = Field
   { origin :: OriginSlot,
-    frontL :: SatelliteSlot,
-    frontR :: SatelliteSlot,
-    backL :: SatelliteSlot,
-    backR :: SatelliteSlot,
+    frontL :: SatelliteSlot Battler,
+    frontR :: SatelliteSlot Battler,
+    backL :: SatelliteSlot Battler,
+    backR :: SatelliteSlot Battler,
     cemetry :: V.Vector Battler
   }
   deriving (Show, ToJSON, FromJSON, Generic)

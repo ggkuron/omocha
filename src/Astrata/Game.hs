@@ -75,6 +75,7 @@ import RIO
     String,
     Vector,
     Word32,
+    catMaybes,
     concatMap,
     fromIntegral,
     fromMaybe,
@@ -82,6 +83,7 @@ import RIO
     id,
     isJust,
     map,
+    maybeToList,
     newIORef,
     otherwise,
     readIORef,
@@ -135,7 +137,8 @@ data Env os = Env
     textureStorage :: IORef (M.Map (Double, Char) (Texture2D os (Format RGBAFloat))),
     fpsSetting :: IORef Double,
     lastRenderedTime :: IORef Double,
-    maps :: IORef BattleField
+    maps :: IORef BattleField,
+    cards :: IORef (M.Map (CardId, Int) ObjectId)
   }
 
 type ShaderInput = (V2 Int, String)
@@ -346,9 +349,10 @@ game =
         objs <- liftIO $ parseMapFile g
 
         maps <- liftIO $ newIORef g
+        cards <- liftIO $ newIORef $ M.map (.id) objs
 
-        let gs = gridShader (7, 11) (V2 1 1.25) (V3 (-0.5) 0 (-1.25 / 2))
-        (unis, s) <- GameCtx $ buildRenderer gs win objs
+        let gs = gridShader (7, 8) (V2 1 1.25) (V3 0 0 (-4 * 1.25))
+        (unis, s) <- GameCtx $ buildRenderer gs win (V.fromList $ M.elems objs)
         ts <- GameCtx $ compileShader $ textShader win unis
         renderings <- liftIO $ newIORef $ renderWith unis s
 
@@ -380,7 +384,7 @@ game =
                         objs <- liftIO $ parseMapFile g
                         writeIORef maps g
 
-                        (unis, s) <- buildRenderer gs win objs
+                        (unis, s) <- buildRenderer gs win (V.fromList $ M.elems objs)
 
                         let r = renderWith unis s
                         liftIO $ writeIORef renderings r
@@ -401,7 +405,7 @@ game =
                         let dir = "static/maps/group" ++ show i
                         objs <- liftIO $ loadMap (dir ++ "/group.json")
 
-                        (unis, s) <- buildRenderer gs win objs
+                        (unis, s) <- buildRenderer gs win (V.fromList $ M.elems objs)
 
                         let r = renderWith unis s
                         liftIO $ writeIORef renderings r
@@ -418,7 +422,8 @@ game =
                 textureStorage = textureStorage,
                 fpsSetting = fpsSetting,
                 lastRenderedTime = lastRenderTime,
-                maps = maps
+                maps = maps,
+                cards
               }
           ),
       network = \(update, renderText, env) keyInput ->
@@ -505,6 +510,22 @@ game =
       sig <- E.stateful (0, 0) (\t (_, p) -> (t - p, t))
       return $ fst <$> sig
 
+fieldPosition :: BattleField -> [((CardId, Int), ObjectUniformB)]
+fieldPosition f =
+  [ ( (origin Own f.own.origin).id,
+      ObjectUniformB
+        { position = V3 1 0 (-1.25),
+          proj = identity
+        }
+    ),
+    ( (origin Rival f.rival.origin).id,
+      ObjectUniformB
+        { position = V3 1 0 (-1.25),
+          proj = mkTransformation (axisAngle (V3 0 1 0) (pi)) (V3 0.5 0 0.625)
+        }
+    )
+  ]
+
 updateFrame ::
   forall os.
   Env os ->
@@ -529,6 +550,7 @@ updateFrame env update renderText camera target input = do
   let timePerFrame = 1 / fpsSetting'
   current <- liftIO GLFW.getTime
   m <- liftIO $ readIORef env.maps
+  cards <- liftIO $ readIORef env.cards
   lastRenderTime' <- liftIO $ readIORef env.lastRenderedTime
   let current' = fromMaybe lastRenderTime' current
   liftIO $ writeIORef env.lastRenderedTime current'
@@ -548,14 +570,102 @@ updateFrame env update renderText camera target input = do
           | otherwise -> GameContinue
       )
       GlobalUniform {windowSize = sz, modelNorm = normMat, viewCamera = camera, viewTarget = target.position, viewUp = viewUpNorm, light = light, lightDirection = lightDir}
-      ( M.fromAscList
-          [ ( ObjectId 0,
+      ( M.fromList
+          ( ( cards M.! (origin Own m.own.origin).id,
               ObjectUniformB
-                { position = V3 1 0 (-1.25),
-                  proj = mkTransformation (axisAngle (V3 0 1 0) (pi)) (V3 0.5 0 0.625)
+                { position = V3 2.5 0 (1.25 * 1.5),
+                  proj = rotateCard Own m.own.origin.status
                 }
             )
-          ]
+              : ( cards M.! (origin Rival m.rival.origin).id,
+                  ObjectUniformB
+                    { position = V3 2.5 0 (-1.25 * 1.5),
+                      proj = rotateCard Rival m.rival.origin.status
+                    }
+                )
+              : catMaybes
+                [ ( \b ->
+                      ( cards M.! b.id,
+                        ObjectUniformB
+                          { position = V3 1 0 1.25,
+                            proj = rotateCard Own b.status
+                          }
+                      )
+                  )
+                    <$> battler m.own.frontL,
+                  ( \b ->
+                      ( cards M.! b.id,
+                        ObjectUniformB
+                          { position = V3 4 0 1.25,
+                            proj = rotateCard Own b.status
+                          }
+                      )
+                  )
+                    <$> battler m.own.frontR,
+                  ( \b ->
+                      ( cards M.! b.id,
+                        ObjectUniformB
+                          { position = V3 1 0 (-1.25),
+                            proj = rotateCard Rival b.status
+                          }
+                      )
+                  )
+                    <$> battler m.rival.frontR,
+                  ( \b ->
+                      ( cards M.! b.id,
+                        ObjectUniformB
+                          { position = V3 4 0 (-1.25),
+                            proj = rotateCard Rival b.status
+                          }
+                      )
+                  )
+                    <$> battler m.rival.frontL,
+                  ( \b ->
+                      ( cards M.! b.id,
+                        ObjectUniformB
+                          { position = V3 1 0 (1.25 * 2.5),
+                            proj = rotateCard Own b.status
+                          }
+                      )
+                  )
+                    <$> battler m.own.backL,
+                  ( \b ->
+                      ( cards M.! b.id,
+                        ObjectUniformB
+                          { position = V3 4 0 (1.25 * 2.5),
+                            proj = rotateCard Own b.status
+                          }
+                      )
+                  )
+                    <$> battler m.own.backR,
+                  ( \b ->
+                      ( cards M.! b.id,
+                        ObjectUniformB
+                          { position = V3 1 0 (-1.25 * 2.5),
+                            proj = rotateCard Rival b.status
+                          }
+                      )
+                  )
+                    <$> battler m.rival.backR,
+                  ( \b ->
+                      ( cards M.! b.id,
+                        ObjectUniformB
+                          { position = V3 4 0 (-1.25 * 2.5),
+                            proj = rotateCard Rival b.status
+                          }
+                      )
+                  )
+                    <$> battler m.rival.backL
+                ]
+          )
       )
   renderText Nothing (sz, inp)
   GameCtx $ swapWindowBuffers env.win
+
+rc True = mkTransformation (axisAngle (V3 0 1 0) pi) (V3 1 0 1.3)
+rc False = identity
+
+rotateCard Rival Normal = rc True
+rotateCard Rival Tired = rc False
+rotateCard Own Normal = rc False
+rotateCard Own Tired = rc True
