@@ -88,16 +88,6 @@ sateliteMesh unit slot = do
     card (Assigned Battler {..}) = Just id
     card _ = Nothing
 
-data FieldSlot
-  = Origin
-  | FrontL
-  | FrontR
-  | BackL
-  | BackR
-  | Cemetry
-  | Deck
-  deriving (Eq, Ord, Show)
-
 parseMapFile :: (HasCallStack, Exception String) => BattleField -> IO (M.Map (CardId, Int) SceneObject)
 parseMapFile f = do
   let unit = V2 1 1.25

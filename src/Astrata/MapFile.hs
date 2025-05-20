@@ -4,12 +4,7 @@
 module Astrata.MapFile where
 
 import Astrata.Spline
-import Astrata.Uniform
 import Data.Aeson
-import Data.Array (Ix)
-import Data.Either.Combinators (maybeToRight)
-import Data.Map.Strict qualified as M
-import Data.Tuple.Extra (third3)
 import Data.Vector qualified as V
 import Data.Vector.Algorithms.Intro qualified as VAI
 import Linear.V2
@@ -17,9 +12,6 @@ import Linear.V3
 import RIO
 
 type EdgePoint = (Bool, Bool)
-
--- data MapReference = Embed MapFile | External FilePath
---   deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
 
 type Color = (Float, Float, Float, Float)
 
@@ -100,6 +92,7 @@ origin s (OriginSlot {planet = Mercury, level = L1, status}) = Battler {atk = 1,
 origin s (OriginSlot {planet = Mercury, level = L2, status}) = Battler {atk = 1, def = 1, id = (Origin2, originCardId s), status = status, effects = [(StartPhase, [], True)]}
 origin s (OriginSlot {planet = Mercury, level = L3, status}) = Battler {atk = 1, def = 1, id = (Origin3, originCardId s), status = status, effects = [(StartPhase, [], True)]}
 
+originCardId :: (Num a) => FieldSide -> a
 originCardId Own = 0
 originCardId Rival = 1
 
@@ -112,6 +105,15 @@ data Field = Field
     cemetry :: V.Vector Battler
   }
   deriving (Show, ToJSON, FromJSON, Generic)
+
+data FieldSlot
+  = Origin
+  | FrontL
+  | FrontR
+  | BackL
+  | BackR
+  | Cemetry
+  deriving (Show, Eq)
 
 data BattleField = BattleField
   { own :: Field,

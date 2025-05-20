@@ -48,55 +48,7 @@ import FRP.Elerea.Param qualified as E
 import Graphics.GPipe hiding (trace, transpose)
 import Graphics.GPipe.Context.GLFW qualified as GLFW
 import Numeric (showFFloat)
-import RIO
-  ( Applicative (pure, (<*>)),
-    Bool (False, True),
-    Bounded (maxBound),
-    Char,
-    Double,
-    Eq ((/=), (==)),
-    Float,
-    Floating (pi),
-    Foldable (length),
-    Fractional ((/)),
-    HasCallStack,
-    IO,
-    IORef,
-    Int,
-    Integral,
-    Maybe (..),
-    MonadIO (..),
-    Num ((*), (+), (-)),
-    Ord (min, (>)),
-    RealFloat,
-    RealFrac (floor),
-    Show (..),
-    SomeException,
-    String,
-    Vector,
-    Word32,
-    catMaybes,
-    concatMap,
-    fromIntegral,
-    fromMaybe,
-    fst,
-    id,
-    isJust,
-    map,
-    maybeToList,
-    newIORef,
-    otherwise,
-    readIORef,
-    realToFrac,
-    threadDelay,
-    writeIORef,
-    ($),
-    (&),
-    (++),
-    (.),
-    (<$>),
-    (^.),
-  )
+import RIO hiding (trace)
 
 loadImage ::
   (MonadIO m, ContextHandler ctx) =>
@@ -146,7 +98,6 @@ type ShaderInput = (V2 Int, String)
 data Position = Position
   { position :: V3 Float,
     direction :: V3 Float,
-    bbox :: BB.Box V2 Float,
     inputDirection :: Maybe Astrata.UserInput.Direction
   }
 
@@ -159,18 +110,14 @@ showV3F = concatMap showF
 instance Show Position where
   show Position {..} = "pos: " ++ showV3F position ++ "\n\tdir: " ++ showV3F direction
 
-playerBox :: BB.Box V2 Float
-playerBox = BB.Box (V2 0.8 (-0.55)) (V2 1 0.15)
-
 updatePosition :: Position -> InputE -> IO Position
 updatePosition p input =
   if
     | fst input.reset ->
         return
           $ Position
-            { position = V3 0 0 0,
+            { position = V3 3 0 0,
               direction = p.direction,
-              bbox = playerBox,
               inputDirection = fst input.direction
             }
     | otherwise -> do
@@ -196,7 +143,6 @@ updatePosition p input =
           $ Position
             { position = t',
               direction = d',
-              bbox = BB.Box (V2 0.8 (-0.55)) (V2 1 0.15),
               inputDirection = fst input.direction
             }
 
@@ -351,7 +297,7 @@ game =
         maps <- liftIO $ newIORef g
         cards <- liftIO $ newIORef $ M.map (.id) objs
 
-        let gs = gridShader (7, 8) (V2 1 1.25) (V3 0 0 (-4 * 1.25))
+        let gs = gridShader (7, 8) (V2 1 1.25) (V3 0 0 (-(4 * 1.25)))
         (unis, s) <- GameCtx $ buildRenderer gs win (V.fromList $ M.elems objs)
         ts <- GameCtx $ compileShader $ textShader win unis
         renderings <- liftIO $ newIORef $ renderWith unis s
@@ -441,9 +387,8 @@ game =
           p <-
             E.delay
               ( Position
-                  { position = V3 0 0 0,
+                  { position = V3 3 0 0,
                     direction = V3 0 0 1,
-                    bbox = BB.Box (V2 0.8 (-0.55)) (V2 1 0.15),
                     inputDirection = Nothing
                   }
               )
@@ -470,10 +415,10 @@ game =
               moveUnit
           camera' <-
             E.transfer4
-              (V3 0 5 7.5)
+              (V3 3 5 8)
               ( \_ theta (t :: Position) input mu p ->
                   if
-                    | input.reset -> V3 0 2 2.5
+                    | input.reset -> V3 3 5 8
                     | input.n == Just 0 -> V3 5 15 0
                     | input.cameraLock -> p
                     | otherwise ->
@@ -510,22 +455,6 @@ game =
       sig <- E.stateful (0, 0) (\t (_, p) -> (t - p, t))
       return $ fst <$> sig
 
-fieldPosition :: BattleField -> [((CardId, Int), ObjectUniformB)]
-fieldPosition f =
-  [ ( (origin Own f.own.origin).id,
-      ObjectUniformB
-        { position = V3 1 0 (-1.25),
-          proj = identity
-        }
-    ),
-    ( (origin Rival f.rival.origin).id,
-      ObjectUniformB
-        { position = V3 1 0 (-1.25),
-          proj = mkTransformation (axisAngle (V3 0 1 0) (pi)) (V3 0.5 0 0.625)
-        }
-    )
-  ]
-
 updateFrame ::
   forall os.
   Env os ->
@@ -559,6 +488,7 @@ updateFrame env update renderText camera target input = do
       fps = 1 / delta
   when (waitTime > 0) $ liftIO $ threadDelay $ floor $ waitTime * 1000000
   let inp = "target: " ++ show target ++ "\ncamera: " ++ showV3F camera ++ "\nfps: " ++ showF fps ++ "\nmid:" ++ show input.n
+      cc = let c' = easeOutQuart (current' `mod''` 0.75) in 0.5 * realToFrac (sin $ pi * c')
   _ <-
     update
       ( if
@@ -573,13 +503,13 @@ updateFrame env update renderText camera target input = do
       ( M.fromList
           ( ( cards M.! (origin Own m.own.origin).id,
               ObjectUniformB
-                { position = V3 2.5 0 (1.25 * 1.5),
+                { position = V3 2.5 cc (1.25 * 1.5),
                   proj = rotateCard Own m.own.origin.status
                 }
             )
               : ( cards M.! (origin Rival m.rival.origin).id,
                   ObjectUniformB
-                    { position = V3 2.5 0 (-1.25 * 1.5),
+                    { position = V3 2.5 0 (-(1.25 * 1.5)),
                       proj = rotateCard Rival m.rival.origin.status
                     }
                 )
@@ -641,7 +571,7 @@ updateFrame env update renderText camera target input = do
                   ( \b ->
                       ( cards M.! b.id,
                         ObjectUniformB
-                          { position = V3 1 0 (-1.25 * 2.5),
+                          { position = V3 1 0 (-(1.25 * 2.5)),
                             proj = rotateCard Rival b.status
                           }
                       )
@@ -650,7 +580,7 @@ updateFrame env update renderText camera target input = do
                   ( \b ->
                       ( cards M.! b.id,
                         ObjectUniformB
-                          { position = V3 4 0 (-1.25 * 2.5),
+                          { position = V3 4 0 (-(1.25 * 2.5)),
                             proj = rotateCard Rival b.status
                           }
                       )
@@ -662,10 +592,21 @@ updateFrame env update renderText camera target input = do
   renderText Nothing (sz, inp)
   GameCtx $ swapWindowBuffers env.win
 
-rc True = mkTransformation (axisAngle (V3 0 1 0) pi) (V3 1 0 1.3)
-rc False = identity
+rc :: (Epsilon a, Floating a) => Bool -> M44 a
+rc False = mkTransformation (axisAngle (V3 0 1 0) pi) (V3 1 0 1.3)
+rc True = identity
 
+rotateCard :: (Epsilon a, Floating a) => FieldSide -> BattlerStatus -> M44 a
 rotateCard Rival Normal = rc True
 rotateCard Rival Tired = rc False
 rotateCard Own Normal = rc False
 rotateCard Own Tired = rc True
+
+easeInOutCirc :: (Real a, Ord a, Floating a) => a -> a
+easeInOutCirc x =
+  if x < 0.5
+    then (1 - sqrt (1 - (2 * x) ** 2)) / 2
+    else (sqrt (1 - (-(2 * x) + 2) ** 2) + 1) / 2
+
+easeOutQuart :: (Real a, Ord a, Floating a) => a -> a
+easeOutQuart x = 1 - (1 - x) ** 4
