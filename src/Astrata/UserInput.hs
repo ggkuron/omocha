@@ -21,7 +21,10 @@ data InputG d b r select = Input
     hover :: b,
     n :: select,
     jump :: b,
-    cameraLock :: b
+    cameraLock :: b,
+    selectCard :: select,
+    confirmSelection :: b,
+    cancelSelection :: b
   }
 
 type InputE = InputG (Maybe Direction, Bool) (Bool, Bool) (Maybe Bool, Bool) (Maybe Int, Bool)
@@ -40,7 +43,10 @@ initialInput =
       save = False,
       speedUp = False,
       jump = False,
-      cameraLock = False
+      cameraLock = False,
+      selectCard = Nothing,
+      confirmSelection = False,
+      cancelSelection = False
     }
 
 initialInputE :: InputE
@@ -57,7 +63,10 @@ initialInputE =
       save = (False, False),
       speedUp = (False, False),
       jump = (False, False),
-      cameraLock = (False, False)
+      cameraLock = (False, False),
+      selectCard = (Nothing, False),
+      confirmSelection = (False, False),
+      cancelSelection = (False, False)
     }
 
 onlyInput :: InputE -> Input
@@ -74,7 +83,10 @@ onlyInput i =
       save = fst i.save,
       speedUp = fst i.speedUp,
       jump = fst i.jump,
-      cameraLock = fst i.cameraLock
+      cameraLock = fst i.cameraLock,
+      selectCard = fst i.selectCard,
+      confirmSelection = fst i.confirmSelection,
+      cancelSelection = fst i.cancelSelection
     }
 
 diffInput :: Input -> Input -> InputE
@@ -91,7 +103,10 @@ diffInput a b =
       save = (a.save, a.save /= b.save),
       speedUp = (a.speedUp, a.speedUp /= b.speedUp),
       jump = (a.jump, a.jump /= b.jump),
-      cameraLock = (a.cameraLock, a.cameraLock /= b.cameraLock)
+      cameraLock = (a.cameraLock, a.cameraLock /= b.cameraLock),
+      selectCard = (a.selectCard, a.selectCard /= b.selectCard),
+      confirmSelection = (a.confirmSelection, a.confirmSelection /= b.confirmSelection),
+      cancelSelection = (a.cancelSelection, a.cancelSelection /= b.cancelSelection)
     }
 
 edgeInput :: (Bool, Bool) -> Bool
@@ -135,6 +150,8 @@ readInput win keyInputSink = do
   n0 <- isPressed GLFW.Key'0
   ctl <- isPressed GLFW.Key'LeftControl
   shift <- isPressed GLFW.Key'LeftShift
+  tab <- isPressed GLFW.Key'Tab
+  escape <- isPressed GLFW.Key'Escape
 
   let keyInput =
         Input
@@ -172,7 +189,22 @@ readInput win keyInputSink = do
                 | n7 -> Just 7
                 | n8 -> Just 8
                 | n9 -> Just 9
-                | otherwise -> Nothing
+                | otherwise -> Nothing,
+            selectCard =
+              if
+                | not ctl && n0 -> Just 0
+                | not ctl && n1 -> Just 1
+                | not ctl && n2 -> Just 2
+                | not ctl && n3 -> Just 3
+                | not ctl && n4 -> Just 4
+                | not ctl && n5 -> Just 5
+                | not ctl && n6 -> Just 6
+                | not ctl && n7 -> Just 7
+                | not ctl && n8 -> Just 8
+                | not ctl && n9 -> Just 9
+                | otherwise -> Nothing,
+            confirmSelection = tab,
+            cancelSelection = escape
           }
   _ <- liftIO $ keyInputSink keyInput
   return $ if closeKeyPressed then Nothing else t'

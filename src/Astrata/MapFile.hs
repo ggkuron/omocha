@@ -115,6 +115,43 @@ data FieldSlot
   | Cemetry
   deriving (Show, Eq)
 
+data CardSelection = CardSelection
+  { selectedField :: Maybe FieldSide,
+    selectedSlot :: Maybe FieldSlot,
+    selectedHandIndex :: Maybe Int
+  }
+  deriving (Show, Eq)
+
+initialCardSelection :: CardSelection
+initialCardSelection = CardSelection Nothing Nothing Nothing
+
+selectHandCard :: Int -> BattleField -> FieldSide -> CardSelection
+selectHandCard index bf side = CardSelection (Just side) Nothing (Just index)
+
+selectFieldSlot :: FieldSlot -> FieldSide -> CardSelection
+selectFieldSlot slot side = CardSelection (Just side) (Just slot) Nothing
+
+getSelectedCard :: CardSelection -> BattleField -> Maybe CardId
+getSelectedCard (CardSelection (Just side) Nothing (Just handIndex)) bf = 
+  case side of
+    Own -> bf.ownHands V.!? handIndex
+    Rival -> bf.rivalHands V.!? handIndex
+getSelectedCard _ _ = Nothing
+
+getSelectedBattler :: CardSelection -> BattleField -> Maybe Battler
+getSelectedBattler (CardSelection (Just side) (Just slot) Nothing) bf = 
+  let field = case side of
+        Own -> bf.own
+        Rival -> bf.rival
+  in case slot of
+    Origin -> Just $ origin side field.origin
+    FrontL -> battler field.frontL  
+    FrontR -> battler field.frontR 
+    BackL -> battler field.backL  
+    BackR -> battler field.backR 
+    Cemetry -> Nothing
+getSelectedBattler _ _ = Nothing
+
 data BattleField = BattleField
   { own :: Field,
     rival :: Field,

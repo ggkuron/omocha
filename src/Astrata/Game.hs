@@ -8,7 +8,21 @@ import Astrata.Bitmap
 import Astrata.Context
 import Astrata.Font
 import Astrata.Map
-import Astrata.MapFile
+import Astrata.MapFile 
+  ( BattleField,
+    BattlerStatus (..),
+    CardId,
+    CardSelection (..),
+    FieldSide (..),
+    FieldSlot (..),
+    battler,
+    getSelectedBattler,
+    getSelectedCard,
+    initialCardSelection,
+    selectFieldSlot,
+    selectHandCard
+  )
+import qualified Astrata.MapFile as MF
 import Astrata.Mesh
 import Astrata.Resource
 import Astrata.Scene
@@ -21,16 +35,20 @@ import Astrata.UserInput
     InputE,
     InputG
       ( cameraLock,
+        cancelSelection,
+        confirmSelection,
         direction,
         hardReset,
         n,
         reset,
         rotation,
         save,
+        selectCard,
         speedUp,
         stop
       ),
     diffInput,
+    edgeInput,
     initialInput,
     initialInputE,
     justInput,
@@ -90,7 +108,8 @@ data Env os = Env
     fpsSetting :: IORef Double,
     lastRenderedTime :: IORef Double,
     maps :: IORef BattleField,
-    cards :: IORef (M.Map (CardId, Int) ObjectId)
+    cards :: IORef (M.Map (CardId, Int) ObjectId),
+    cardSelection :: IORef CardSelection
   }
 
 type ShaderInput = (V2 Int, String)
@@ -103,6 +122,27 @@ data Position = Position
 
 showF :: (RealFloat a) => a -> String
 showF a = showFFloat (Just 2) a " "
+
+updateCardSelection :: CardSelection -> InputE -> BattleField -> CardSelection
+updateCardSelection currentSelection input bf =
+  let selectCardInput = justInput input.selectCard
+      confirmPressed = edgeInput input.confirmSelection  
+      cancelPressed = edgeInput input.cancelSelection
+  in case (selectCardInput, confirmPressed, cancelPressed) of
+    (Just cardIndex, False, False) -> 
+      selectHandCard cardIndex bf Own
+    (Nothing, False, True) -> 
+      initialCardSelection
+    _ -> currentSelection
+
+isCardSelected :: CardSelection -> FieldSide -> Int -> Bool
+isCardSelected (CardSelection (Just side) Nothing (Just handIndex)) targetSide targetIndex = 
+  side == targetSide && handIndex == targetIndex
+isCardSelected _ _ _ = False
+
+getSelectionHighlight :: Bool -> Float
+getSelectionHighlight True = 0.3  -- Higher Y position for selected cards
+getSelectionHighlight False = 0.0
 
 showV3F :: V3 Float -> String
 showV3F = concatMap showF
@@ -296,6 +336,7 @@ game =
 
         maps <- liftIO $ newIORef g
         cards <- liftIO $ newIORef $ M.map (.id) objs
+        cardSelection <- liftIO $ newIORef initialCardSelection
 
         let gs = gridShader (7, 8) (V2 1 1.25) (V3 0 0 (-(4 * 1.25)))
         (unis, s) <- GameCtx $ buildRenderer gs win (V.fromList $ M.elems objs)
@@ -369,7 +410,8 @@ game =
                 fpsSetting = fpsSetting,
                 lastRenderedTime = lastRenderTime,
                 maps = maps,
-                cards
+                cards = cards,
+                cardSelection = cardSelection
               }
           ),
       network = \(update, renderText, env) keyInput ->
@@ -400,6 +442,17 @@ game =
               moveUnit
               p
 
+          _cardSelectionSignal <-
+            E.effectful2
+              (\input _ -> do
+                currentBf <- liftIO $ readIORef env.maps
+                currentSelection <- liftIO $ readIORef env.cardSelection
+                let newSelection = updateCardSelection currentSelection input currentBf
+                liftIO $ writeIORef env.cardSelection newSelection
+                return newSelection)
+              ki'
+              target
+
           theta <-
             E.transfer2
               0
@@ -416,7 +469,7 @@ game =
           camera' <-
             E.transfer4
               (V3 3 5 8)
-              ( \_ theta (t :: Position) input mu p ->
+              ( \_ theta (t :: Position) input _ p ->
                   if
                     | input.reset -> V3 3 5 8
                     | input.n == Just 0 -> V3 5 15 0
@@ -476,6 +529,7 @@ updateFrame env update renderText camera target input = do
       light = V3 60 10 60
 
   fpsSetting' <- liftIO $ readIORef env.fpsSetting
+  currentCardSelection <- liftIO $ readIORef env.cardSelection
   let timePerFrame = 1 / fpsSetting'
   current <- liftIO GLFW.getTime
   m <- liftIO $ readIORef env.maps
@@ -487,27 +541,27 @@ updateFrame env update renderText camera target input = do
       waitTime = timePerFrame - delta
       fps = 1 / delta
   when (waitTime > 0) $ liftIO $ threadDelay $ floor $ waitTime * 1000000
-  let inp = "target: " ++ show target ++ "\ncamera: " ++ showV3F camera ++ "\nfps: " ++ showF fps ++ "\nmid:" ++ show input.n
+  let inp = "target: " ++ show target ++ "\ncamera: " ++ showV3F camera ++ "\nfps: " ++ showF fps ++ "\nmid:" ++ show input.n ++ "\nselection: " ++ show currentCardSelection
       cc = let c' = easeOutQuart (current' `mod''` 0.75) in 0.5 * realToFrac (sin $ pi * c')
   _ <-
     update
       ( if
           | input.hardReset -> GameReset
           | input.save -> GameSave 1
-          | input.n == Just 2 -> GameLoad 2
-          | input.n == Just 3 -> GameLoad 3
-          | input.n == Just 4 -> GameLoad 4
+          -- \| input.n == Just 2 -> GameLoad 2
+          -- \| input.n == Just 3 -> GameLoad 3
+          -- \| input.n == Just 4 -> GameLoad 4
           | otherwise -> GameContinue
       )
       GlobalUniform {windowSize = sz, modelNorm = normMat, viewCamera = camera, viewTarget = target.position, viewUp = viewUpNorm, light = light, lightDirection = lightDir}
       ( M.fromList
-          ( ( cards M.! (origin Own m.own.origin).id,
+          ( ( cards M.! (MF.origin Own m.own.origin).id,
               ObjectUniformB
                 { position = V3 2.5 cc (1.25 * 1.5),
                   proj = rotateCard Own m.own.origin.status
                 }
             )
-              : ( cards M.! (origin Rival m.rival.origin).id,
+              : ( cards M.! (MF.origin Rival m.rival.origin).id,
                   ObjectUniformB
                     { position = V3 2.5 0 (-(1.25 * 1.5)),
                       proj = rotateCard Rival m.rival.origin.status
