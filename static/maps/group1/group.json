@@ -4,7 +4,9 @@
         "level" : "L0",
       "hp" : 6,
       "status": "Normal",
-      "planet" : []
+      "planet" : [],
+      "aura" : [],
+      "astraRecords": []
     },
     "frontL": { "tag": "Assigned",
                 "contents": {
@@ -12,7 +14,7 @@
                    "def" : 1,
                    "status" : "Normal",
                    "effects" : [],
-                   "id" : ["S7", 0]
+                   "id" : "S7"
                 }
     },
     "frontR": { "tag": "Assigned",
@@ -21,7 +23,7 @@
                    "def" : 1,
                    "status" : "Tired",
                    "effects" : [],
-                   "id" : ["S7", 1]
+                   "id" : "S7"
                 }
     },
     "backL": { "tag": "Assigned",
@@ -30,7 +32,7 @@
                    "def" : 1,
                    "status" : "Normal",
                    "effects" : [],
-                   "id" : ["S7", 2]
+                   "id" : "S7"
                 }
     },
     "backR": { "tag": "Assigned",
@@ -39,11 +41,11 @@
                    "def" : 1,
                    "status" : "Tired",
                    "effects" : [],
-                   "id" : ["S7", 3]
+                   "id" : "S7"
                 }
     },
-
-    "cemetry" : []
+    "cemetry" : [],
+   "astraRecords": []
   },
   "rival" :
     { "origin": 
@@ -51,7 +53,9 @@
             "level" : "L0",
           "hp" : 6,
           "status": "Normal",
-          "planet" : []
+          "planet" : [],
+         "aura" : [],
+         "astraRecords": []
         },
         "frontL": { "tag": "Assigned",
                 "contents": {
@@ -59,7 +63,7 @@
                    "def" : 1,
                    "status" : "Normal",
                    "effects" : [],
-                   "id" : ["S7", 4]
+                   "id" : "S7"
                 }
         },
         "frontR": { "tag": "Assigned",
@@ -68,7 +72,7 @@
                        "def" : 1,
                        "status" : "Tired",
                        "effects" : [],
-                       "id" : ["S7", 5]
+                       "id" : "S7"
                     }
         },
         "backL": { "tag": "Assigned",
@@ -77,12 +81,14 @@
                        "def" : 1,
                        "status" : "Tired",
                        "effects" : [],
-                       "id" : ["S7", 6]
+                       "id" : "S7"
                     }
         },
         "backR": { "tag": "EmptySlot"},
-        "cemetry" : []
+        "cemetry" : [],
+      "astraRecords": []
       },
   "ownHands" : [],
   "rivalHands" :[]
 }
+

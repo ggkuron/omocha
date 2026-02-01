@@ -44,7 +44,7 @@ plane (V3 w d h) offset color =
         (Just color)
     )
 
-card :: V3 Float -> V3 Float -> Either CardId (V4 Float) -> Vector Mesh
+card :: V3 Float -> V3 Float -> Either FaceId (V4 Float) -> Vector Mesh
 card (V3 w d h) offset t =
   V.imap
     ( \i v ->

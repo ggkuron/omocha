@@ -8,8 +8,6 @@ import Astrata.MapFile
 import Astrata.Scene
 import Astrata.Shape
 import Astrata.Uniform
-import Control.Monad.Exception qualified as E (MonadException (throw), throw)
-import Data.Aeson hiding (json)
 import Data.Either.Combinators (maybeToLeft)
 import Data.Map.Strict qualified as M
 import Data.Tuple.Extra (both)
@@ -18,34 +16,6 @@ import Linear.V2
 import Linear.V3
 import Linear.V4
 import RIO
-
-loadMapFile :: (HasCallStack, Exception String) => FilePath -> IO BattleField
-loadMapFile path = do
-  f <- eitherDecodeFileStrict path
-  case f of
-    Right m -> return m
-    Left m -> E.throw ("invalid map file: " ++ path ++ "\n" ++ m :: String)
-
-loadMap :: (HasCallStack, Exception String) => FilePath -> IO (M.Map (CardId, Int) SceneObject)
-loadMap path = do
-  f <- loadMapFile path
-  parseMapFile f
-
-referenceUnit :: Size Int -> Size Float -> V2 Float
-referenceUnit msize isize =
-  let msize' = fromIntegral <$> uncurry V2 msize
-      size' = uncurry V2 isize
-   in liftA2 (/) size' msize'
-
--- loadReferenceDef :: (Exception String) => FilePath -> MapReference -> IO MapFile
--- loadReferenceDef _ (Embed m) = pure m
--- loadReferenceDef dir (External path) = loadMapFile $ dir </> path -- TODO: check recursive recursion
-
--- loadReference :: (Exception String) => V3 Float -> V3 Float -> Size Float -> FilePath -> MapReference -> IO (Vector (BB.Box V2 Int, MapDef, ObjectId), Vector SceneObject)
--- loadReference offset unit (ix, iy) dir r = do
---   m <- loadReferenceDef dir r
---   let unit' = unit ^. _xz * referenceUnit m.size (ix, iy)
---    in parseMapFile dir offset unit' m
 
 referenceOffset :: Float -> V2 Float -> V3 Float
 referenceOffset yOffset start =
@@ -61,7 +31,7 @@ parseShape unit n isize a =
       yScale = unit ^. _y
    in case n of
         Empty -> return V.empty
-        Card {..} -> return $ card (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (maybeToLeft (V4 0 1 1 1) id)
+        Card {..} -> return $ card (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (maybeToLeft (V4 0 1 1 1) cardFaceId)
         Cube {..} -> return $ cube (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (colorToV4 color)
         Plane {..} -> return $ plane (V3 (size ^. _x) (n.yOffset * yScale) (size ^. _y)) (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (colorToV4 color)
         Sphere {..} -> return $ sphere (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (colorToV4 color)
@@ -79,27 +49,29 @@ toMesh unit (shape, size, pos) =
   let unit' = V3 (unit ^. _x) (mapY unit) (unit ^. _y)
    in V.foldMap (parseShape unit' shape (both fromIntegral size)) pos
 
-sateliteMesh :: (HasCallStack, Exception String) => V2 Float -> SatelliteSlot Battler -> IO (Maybe (CardId, Int), Vector Mesh)
-sateliteMesh unit slot = do
-  let c = card slot
-  m <- toMesh unit (Card {height = 0.01, id = fst <$> c, yOffset = 0}, (1, 1), V.singleton 0)
-  return (c, m)
+satelliteMesh :: (HasCallStack, Exception String) => V2 Float -> SatelliteSlot -> IO (Maybe CardInstanceId, Vector Mesh)
+satelliteMesh unit slot = do
+  let (cid, fid) = cardIds slot
+  m <- toMesh unit (Card {height = 0.01, cardFaceId = fid, yOffset = 0}, (1, 1), V.singleton 0)
+  return (cid, m)
   where
-    card (Assigned Battler {..}) = Just id
-    card _ = Nothing
+    cardIds (Assigned b) = (Just b.instanceId, Just b.faceId)
+    cardIds _ = (Nothing, Nothing)
 
-parseMapFile :: (HasCallStack, Exception String) => BattleField -> IO (M.Map (CardId, Int) SceneObject)
+parseMapFile :: (HasCallStack, Exception String) => BattleField -> IO (M.Map CardInstanceId SceneObject)
 parseMapFile f = do
   let unit = V2 1 1.25
-  o0 <- toMesh unit (Card {height = 0.1, id = Just $ fst (origin Own f.own.origin).id, yOffset = 0}, (1, 1), V.singleton 0)
-  r0 <- toMesh unit (Card {height = 0.1, id = Just $ fst (origin Rival f.own.origin).id, yOffset = 0}, (1, 1), V.singleton 0)
-  cs <- forM [f.own.frontL, f.own.frontR, f.rival.frontL, f.rival.frontR, f.own.backL, f.own.backR, f.rival.backL, f.rival.backR] $ sateliteMesh unit
+      ownOriginFace = originFaceId f.own.origin.level
+      rivalOriginFace = originFaceId f.rival.origin.level
+  o0 <- toMesh unit (Card {height = 0.1, cardFaceId = Just ownOriginFace, yOffset = 0}, (1, 1), V.singleton 0)
+  r0 <- toMesh unit (Card {height = 0.1, cardFaceId = Just rivalOriginFace, yOffset = 0}, (1, 1), V.singleton 0)
+  cs <- forM [f.own.frontL, f.own.frontR, f.rival.frontL, f.rival.frontR, f.own.backL, f.own.backR, f.rival.backL, f.rival.backR] $ satelliteMesh unit
   return
     $ M.fromList
     . V.toList
-    $ V.imap (\i (id, m) -> (id, SceneObject m (ObjectId i)))
-    $ ((origin Own f.own.origin).id, o0)
-    `V.cons` (((origin Rival f.own.origin).id, r0) `V.cons` V.fromList (mapMaybe (\(c, m) -> (\c' -> (c', m)) <$> c) cs))
+    $ V.imap (\i (cid, m) -> (cid, SceneObject m (ObjectId i)))
+    $ (f.own.origin.instanceId, o0)
+    `V.cons` ((f.rival.origin.instanceId, r0) `V.cons` V.fromList (mapMaybe (\(c, m) -> (\c' -> (c', m)) <$> c) cs))
 
 -- ,
 -- ( f.own.frontL

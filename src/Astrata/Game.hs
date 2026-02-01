@@ -8,21 +8,18 @@ import Astrata.Bitmap
 import Astrata.Context
 import Astrata.Font
 import Astrata.Map
-import Astrata.MapFile 
+import Astrata.MapFile
   ( BattleField,
     BattlerStatus (..),
-    CardId,
+    CardInstanceId,
     CardSelection (..),
     FieldSide (..),
-    FieldSlot (..),
     battler,
-    getSelectedBattler,
-    getSelectedCard,
+    initialBattleField,
     initialCardSelection,
-    selectFieldSlot,
-    selectHandCard
+    selectHandCard,
   )
-import qualified Astrata.MapFile as MF
+import Astrata.MapFile qualified as MF
 import Astrata.Mesh
 import Astrata.Resource
 import Astrata.Scene
@@ -107,9 +104,9 @@ data Env os = Env
     textureStorage :: IORef (M.Map (Double, Char) (Texture2D os (Format RGBAFloat))),
     fpsSetting :: IORef Double,
     lastRenderedTime :: IORef Double,
-    maps :: IORef BattleField,
-    cards :: IORef (M.Map (CardId, Int) ObjectId),
-    cardSelection :: IORef CardSelection
+    maps :: IORef Astrata.MapFile.BattleField,
+    cards :: IORef (M.Map Astrata.MapFile.CardInstanceId ObjectId),
+    cardSelection :: IORef Astrata.MapFile.CardSelection
   }
 
 type ShaderInput = (V2 Int, String)
@@ -123,26 +120,22 @@ data Position = Position
 showF :: (RealFloat a) => a -> String
 showF a = showFFloat (Just 2) a " "
 
-updateCardSelection :: CardSelection -> InputE -> BattleField -> CardSelection
+updateCardSelection :: Astrata.MapFile.CardSelection -> InputE -> Astrata.MapFile.BattleField -> Astrata.MapFile.CardSelection
 updateCardSelection currentSelection input bf =
   let selectCardInput = justInput input.selectCard
-      confirmPressed = edgeInput input.confirmSelection  
+      confirmPressed = edgeInput input.confirmSelection
       cancelPressed = edgeInput input.cancelSelection
-  in case (selectCardInput, confirmPressed, cancelPressed) of
-    (Just cardIndex, False, False) -> 
-      selectHandCard cardIndex bf Own
-    (Nothing, False, True) -> 
-      initialCardSelection
-    _ -> currentSelection
+   in case (selectCardInput, confirmPressed, cancelPressed) of
+        (Just cardIndex, False, False) ->
+          Astrata.MapFile.selectHandCard cardIndex bf Astrata.MapFile.Own
+        (Nothing, False, True) ->
+          Astrata.MapFile.initialCardSelection
+        _ -> currentSelection
 
-isCardSelected :: CardSelection -> FieldSide -> Int -> Bool
-isCardSelected (CardSelection (Just side) Nothing (Just handIndex)) targetSide targetIndex = 
+isCardSelected :: Astrata.MapFile.CardSelection -> Astrata.MapFile.FieldSide -> Int -> Bool
+isCardSelected (Astrata.MapFile.CardSelection (Just side) Nothing (Just handIndex)) targetSide targetIndex =
   side == targetSide && handIndex == targetIndex
 isCardSelected _ _ _ = False
-
-getSelectionHighlight :: Bool -> Float
-getSelectionHighlight True = 0.3  -- Higher Y position for selected cards
-getSelectionHighlight False = 0.0
 
 showV3F :: V3 Float -> String
 showV3F = concatMap showF
@@ -330,13 +323,12 @@ game =
 
         -- let offset = V3 (-5) 0 (-5)
 
-        let mapFile = "static/maps/group1/group.json"
-        g <- liftIO $ loadMapFile mapFile
+        let g = initialBattleField
         objs <- liftIO $ parseMapFile g
 
         maps <- liftIO $ newIORef g
-        cards <- liftIO $ newIORef $ M.map (.id) objs
-        cardSelection <- liftIO $ newIORef initialCardSelection
+        cards <- liftIO $ newIORef $ M.map (\o -> o.id) objs
+        cardSelection <- liftIO $ newIORef Astrata.MapFile.initialCardSelection
 
         let gs = gridShader (7, 8) (V2 1 1.25) (V3 0 0 (-(4 * 1.25)))
         (unis, s) <- GameCtx $ buildRenderer gs win (V.fromList $ M.elems objs)
@@ -366,8 +358,7 @@ game =
                 GameReset -> do
                   E.catch
                     ( do
-                        let mapFile = "static/maps/group1/group.json"
-                        g <- liftIO $ loadMapFile mapFile
+                        let g = initialBattleField
                         objs <- liftIO $ parseMapFile g
                         writeIORef maps g
 
@@ -386,18 +377,8 @@ game =
                 GameContinue -> do
                   r <- liftIO $ readIORef renderings
                   r g o
-                GameLoad i -> do
-                  E.catch
-                    ( do
-                        let dir = "static/maps/group" ++ show i
-                        objs <- liftIO $ loadMap (dir ++ "/group.json")
-
-                        (unis, s) <- buildRenderer gs win (V.fromList $ M.elems objs)
-
-                        let r = renderWith unis s
-                        liftIO $ writeIORef renderings r
-                    )
-                    (\e -> trace (show (e :: SomeException)) $ return ())
+                GameLoad _ -> do
+                  -- TODO: implement loading different maps
                   r <- liftIO $ readIORef renderings
                   r g o
 
@@ -444,12 +425,13 @@ game =
 
           _cardSelectionSignal <-
             E.effectful2
-              (\input _ -> do
-                currentBf <- liftIO $ readIORef env.maps
-                currentSelection <- liftIO $ readIORef env.cardSelection
-                let newSelection = updateCardSelection currentSelection input currentBf
-                liftIO $ writeIORef env.cardSelection newSelection
-                return newSelection)
+              ( \input _ -> do
+                  currentBf <- liftIO $ readIORef env.maps
+                  currentSelection <- liftIO $ readIORef env.cardSelection
+                  let newSelection = updateCardSelection currentSelection input currentBf
+                  liftIO $ writeIORef env.cardSelection newSelection
+                  return newSelection
+              )
               ki'
               target
 
@@ -555,91 +537,91 @@ updateFrame env update renderText camera target input = do
       )
       GlobalUniform {windowSize = sz, modelNorm = normMat, viewCamera = camera, viewTarget = target.position, viewUp = viewUpNorm, light = light, lightDirection = lightDir}
       ( M.fromList
-          ( ( cards M.! (MF.origin Own m.own.origin).id,
+          ( ( cards M.! m.own.origin.instanceId,
               ObjectUniformB
                 { position = V3 2.5 cc (1.25 * 1.5),
-                  proj = rotateCard Own m.own.origin.status
+                  proj = rotateCard Astrata.MapFile.Own m.own.origin.status
                 }
             )
-              : ( cards M.! (MF.origin Rival m.rival.origin).id,
+              : ( cards M.! m.rival.origin.instanceId,
                   ObjectUniformB
                     { position = V3 2.5 0 (-(1.25 * 1.5)),
-                      proj = rotateCard Rival m.rival.origin.status
+                      proj = rotateCard Astrata.MapFile.Opponent m.rival.origin.status
                     }
                 )
               : catMaybes
                 [ ( \b ->
-                      ( cards M.! b.id,
+                      ( cards M.! b.instanceId,
                         ObjectUniformB
                           { position = V3 1 0 1.25,
-                            proj = rotateCard Own b.status
+                            proj = rotateCard Astrata.MapFile.Own b.status
                           }
                       )
                   )
-                    <$> battler m.own.frontL,
+                    <$> Astrata.MapFile.battler m.own.frontL,
                   ( \b ->
-                      ( cards M.! b.id,
+                      ( cards M.! b.instanceId,
                         ObjectUniformB
                           { position = V3 4 0 1.25,
-                            proj = rotateCard Own b.status
+                            proj = rotateCard Astrata.MapFile.Own b.status
                           }
                       )
                   )
-                    <$> battler m.own.frontR,
+                    <$> Astrata.MapFile.battler m.own.frontR,
                   ( \b ->
-                      ( cards M.! b.id,
+                      ( cards M.! b.instanceId,
                         ObjectUniformB
                           { position = V3 1 0 (-1.25),
-                            proj = rotateCard Rival b.status
+                            proj = rotateCard Astrata.MapFile.Opponent b.status
                           }
                       )
                   )
-                    <$> battler m.rival.frontR,
+                    <$> Astrata.MapFile.battler m.rival.frontR,
                   ( \b ->
-                      ( cards M.! b.id,
+                      ( cards M.! b.instanceId,
                         ObjectUniformB
                           { position = V3 4 0 (-1.25),
-                            proj = rotateCard Rival b.status
+                            proj = rotateCard Astrata.MapFile.Opponent b.status
                           }
                       )
                   )
-                    <$> battler m.rival.frontL,
+                    <$> Astrata.MapFile.battler m.rival.frontL,
                   ( \b ->
-                      ( cards M.! b.id,
+                      ( cards M.! b.instanceId,
                         ObjectUniformB
                           { position = V3 1 0 (1.25 * 2.5),
-                            proj = rotateCard Own b.status
+                            proj = rotateCard Astrata.MapFile.Own b.status
                           }
                       )
                   )
-                    <$> battler m.own.backL,
+                    <$> Astrata.MapFile.battler m.own.backL,
                   ( \b ->
-                      ( cards M.! b.id,
+                      ( cards M.! b.instanceId,
                         ObjectUniformB
                           { position = V3 4 0 (1.25 * 2.5),
-                            proj = rotateCard Own b.status
+                            proj = rotateCard Astrata.MapFile.Own b.status
                           }
                       )
                   )
-                    <$> battler m.own.backR,
+                    <$> Astrata.MapFile.battler m.own.backR,
                   ( \b ->
-                      ( cards M.! b.id,
+                      ( cards M.! b.instanceId,
                         ObjectUniformB
                           { position = V3 1 0 (-(1.25 * 2.5)),
-                            proj = rotateCard Rival b.status
+                            proj = rotateCard Astrata.MapFile.Opponent b.status
                           }
                       )
                   )
-                    <$> battler m.rival.backR,
+                    <$> Astrata.MapFile.battler m.rival.backR,
                   ( \b ->
-                      ( cards M.! b.id,
+                      ( cards M.! b.instanceId,
                         ObjectUniformB
                           { position = V3 4 0 (-(1.25 * 2.5)),
-                            proj = rotateCard Rival b.status
+                            proj = rotateCard Astrata.MapFile.Opponent b.status
                           }
                       )
                   )
-                    <$> battler m.rival.backL
+                    <$> Astrata.MapFile.battler m.rival.backL
                 ]
           )
       )
@@ -650,11 +632,11 @@ rc :: (Epsilon a, Floating a) => Bool -> M44 a
 rc False = mkTransformation (axisAngle (V3 0 1 0) pi) (V3 1 0 1.3)
 rc True = identity
 
-rotateCard :: (Epsilon a, Floating a) => FieldSide -> BattlerStatus -> M44 a
-rotateCard Rival Normal = rc True
-rotateCard Rival Tired = rc False
-rotateCard Own Normal = rc False
-rotateCard Own Tired = rc True
+rotateCard :: (Epsilon a, Floating a) => Astrata.MapFile.FieldSide -> Astrata.MapFile.BattlerStatus -> M44 a
+rotateCard Astrata.MapFile.Opponent Astrata.MapFile.Normal = rc True
+rotateCard Astrata.MapFile.Opponent Astrata.MapFile.Tired = rc False
+rotateCard Astrata.MapFile.Own Astrata.MapFile.Normal = rc False
+rotateCard Astrata.MapFile.Own Astrata.MapFile.Tired = rc True
 
 easeInOutCirc :: (Real a, Ord a, Floating a) => a -> a
 easeInOutCirc x =

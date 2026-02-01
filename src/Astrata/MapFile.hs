@@ -1,10 +1,8 @@
-{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingVia #-}
 
 module Astrata.MapFile where
 
 import Astrata.Spline
-import Data.Aeson
 import Data.Vector qualified as V
 import Data.Vector.Algorithms.Intro qualified as VAI
 import Linear.V2
@@ -20,7 +18,7 @@ type RGBA = (Int, Int, Int, Int)
 rgba :: RGBA -> Color
 rgba (r, g, b, a) = (fromIntegral r / 255, fromIntegral g / 255, fromIntegral b / 255, fromIntegral a / 255)
 
-data CardId
+data FaceId
   = Origin0
   | Origin1
   | Origin2
@@ -32,79 +30,98 @@ data CardId
   | S5
   | S6
   | S7
-  deriving (Show, Generic, Eq, Ord, ToJSON, FromJSON)
+  deriving (Show, Eq, Ord)
+
+newtype CardInstanceId = CardInstanceId Int
+  deriving (Show, Eq, Ord)
+  deriving (Num) via Int
 
 data CardAction
   = Draw Int
   | Discard Int
-  deriving (Show, Eq, ToJSON, FromJSON, Generic)
+  deriving (Show, Eq)
+
+data ActionCost
+  = DiscardHand Int
+  | DiscardAura Int
 
 data OriginLevel = L0 | L1 | L2 | L3
-  deriving (Show, Eq, ToJSON, FromJSON, Generic)
+  deriving (Show, Eq)
 
 type Optionality = Bool
 
 data BattlerStatus
   = Normal
   | Tired
-  deriving (Show, Eq, ToJSON, FromJSON, Generic)
+  deriving (Show, Eq)
 
 data Phase
   = StartPhase
+  | EvolPhase
   | ActionPhase
   | AttackPhase
   | EndPhase
-  deriving (Show, ToJSON, FromJSON, Generic)
+  deriving (Show)
 
 data Battler = Battler
   { atk :: Int,
     def :: Int,
     status :: BattlerStatus,
     effects :: [(Phase, [CardAction], Optionality)],
-    id :: (CardId, Int)
+    faceId :: FaceId,
+    instanceId :: CardInstanceId
   }
-  deriving (Show, ToJSON, FromJSON, Generic)
+  deriving (Show)
 
 data OriginSlot = OriginSlot
   { level :: OriginLevel,
     hp :: Int,
     status :: BattlerStatus,
-    planet :: Planet
+    planet :: Planet,
+    aura :: [Battler],
+    instanceId :: CardInstanceId
   }
-  deriving (Show, ToJSON, FromJSON, Generic)
+  deriving (Show)
 
-data SatelliteSlot a = EmptySlot | SealedSlot | Assigned a
-  deriving (Show, ToJSON, FromJSON, Generic, Functor)
+data SatelliteSlot = EmptySlot | SealedSlot | Assigned Battler
+  deriving (Show)
 
 data Planet = Mercury
-  deriving (Show, Eq, ToJSON, FromJSON, Generic)
+  deriving (Show, Eq)
 
-battler :: SatelliteSlot Battler -> Maybe Battler
+battler :: SatelliteSlot -> Maybe Battler
 battler (Assigned b) = Just b
 battler _ = Nothing
 
-data FieldSide = Own | Rival
+data FieldSide = Own | Opponent
   deriving (Eq, Ord, Show)
 
-origin :: FieldSide -> OriginSlot -> Battler
-origin s (OriginSlot {planet = Mercury, level = L0, status}) = Battler {atk = 1, def = 1, id = (Origin0, originCardId s), status = status, effects = [(StartPhase, [], True)]}
-origin s (OriginSlot {planet = Mercury, level = L1, status}) = Battler {atk = 1, def = 1, id = (Origin1, originCardId s), status = status, effects = [(StartPhase, [], True)]}
-origin s (OriginSlot {planet = Mercury, level = L2, status}) = Battler {atk = 1, def = 1, id = (Origin2, originCardId s), status = status, effects = [(StartPhase, [], True)]}
-origin s (OriginSlot {planet = Mercury, level = L3, status}) = Battler {atk = 1, def = 1, id = (Origin3, originCardId s), status = status, effects = [(StartPhase, [], True)]}
+originFaceId :: OriginLevel -> FaceId
+originFaceId L0 = Origin0
+originFaceId L1 = Origin1
+originFaceId L2 = Origin2
+originFaceId L3 = Origin3
 
-originCardId :: (Num a) => FieldSide -> a
-originCardId Own = 0
-originCardId Rival = 1
+originToBattler :: OriginSlot -> Battler
+originToBattler slot =
+  Battler
+    { atk = 1,
+      def = 1,
+      faceId = originFaceId slot.level,
+      status = slot.status,
+      effects = [(StartPhase, [], True)],
+      instanceId = slot.instanceId
+    }
 
 data Field = Field
   { origin :: OriginSlot,
-    frontL :: SatelliteSlot Battler,
-    frontR :: SatelliteSlot Battler,
-    backL :: SatelliteSlot Battler,
-    backR :: SatelliteSlot Battler,
-    cemetry :: V.Vector Battler
+    frontL :: SatelliteSlot,
+    frontR :: SatelliteSlot,
+    backL :: SatelliteSlot,
+    backR :: SatelliteSlot,
+    astraRecords :: V.Vector Battler
   }
-  deriving (Show, ToJSON, FromJSON, Generic)
+  deriving (Show)
 
 data FieldSlot
   = Origin
@@ -112,7 +129,8 @@ data FieldSlot
   | FrontR
   | BackL
   | BackR
-  | Cemetry
+  | AstraRecords
+  | Heap
   deriving (Show, Eq)
 
 data CardSelection = CardSelection
@@ -131,41 +149,68 @@ selectHandCard index bf side = CardSelection (Just side) Nothing (Just index)
 selectFieldSlot :: FieldSlot -> FieldSide -> CardSelection
 selectFieldSlot slot side = CardSelection (Just side) (Just slot) Nothing
 
-getSelectedCard :: CardSelection -> BattleField -> Maybe CardId
-getSelectedCard (CardSelection (Just side) Nothing (Just handIndex)) bf = 
+getSelectedCard :: CardSelection -> BattleField -> Maybe FaceId
+getSelectedCard (CardSelection (Just side) Nothing (Just handIndex)) bf =
   case side of
     Own -> bf.ownHands V.!? handIndex
-    Rival -> bf.rivalHands V.!? handIndex
+    Opponent -> bf.rivalHands V.!? handIndex
 getSelectedCard _ _ = Nothing
 
 getSelectedBattler :: CardSelection -> BattleField -> Maybe Battler
-getSelectedBattler (CardSelection (Just side) (Just slot) Nothing) bf = 
+getSelectedBattler (CardSelection (Just side) (Just slot) Nothing) bf =
   let field = case side of
         Own -> bf.own
-        Rival -> bf.rival
-  in case slot of
-    Origin -> Just $ origin side field.origin
-    FrontL -> battler field.frontL  
-    FrontR -> battler field.frontR 
-    BackL -> battler field.backL  
-    BackR -> battler field.backR 
-    Cemetry -> Nothing
+        Opponent -> bf.rival
+   in case slot of
+        Origin -> Just $ originToBattler field.origin
+        FrontL -> battler field.frontL
+        FrontR -> battler field.frontR
+        BackL -> battler field.backL
+        BackR -> battler field.backR
+        AstraRecords -> Nothing
+        Heap -> Nothing
 getSelectedBattler _ _ = Nothing
 
 data BattleField = BattleField
   { own :: Field,
     rival :: Field,
-    ownHands :: V.Vector CardId,
-    rivalHands :: V.Vector CardId
+    ownHands :: V.Vector FaceId,
+    rivalHands :: V.Vector FaceId
   }
-  deriving (Show, ToJSON, FromJSON, Generic)
+  deriving (Show)
+
+-- Initial battlefield for testing
+initialBattleField :: BattleField
+initialBattleField =
+  BattleField
+    { own =
+        Field
+          { origin = OriginSlot {level = L0, hp = 6, status = Normal, planet = Mercury, aura = [], instanceId = 0},
+            frontL = Assigned Battler {atk = 1, def = 1, status = Normal, effects = [], faceId = S7, instanceId = 1},
+            frontR = Assigned Battler {atk = 1, def = 1, status = Tired, effects = [], faceId = S7, instanceId = 2},
+            backL = Assigned Battler {atk = 1, def = 1, status = Normal, effects = [], faceId = S7, instanceId = 3},
+            backR = Assigned Battler {atk = 1, def = 1, status = Tired, effects = [], faceId = S7, instanceId = 4},
+            astraRecords = V.empty
+          },
+      rival =
+        Field
+          { origin = OriginSlot {level = L0, hp = 6, status = Normal, planet = Mercury, aura = [], instanceId = 5},
+            frontL = Assigned Battler {atk = 1, def = 1, status = Normal, effects = [], faceId = S7, instanceId = 6},
+            frontR = Assigned Battler {atk = 1, def = 1, status = Tired, effects = [], faceId = S7, instanceId = 7},
+            backL = Assigned Battler {atk = 1, def = 1, status = Tired, effects = [], faceId = S7, instanceId = 8},
+            backR = EmptySlot,
+            astraRecords = V.empty
+          },
+      ownHands = V.empty,
+      rivalHands = V.empty
+    }
 
 data ShapeDef
   = Empty
   | Card
       { height :: Float,
         yOffset :: Float,
-        id :: Maybe CardId
+        cardFaceId :: Maybe FaceId
       }
   | Cube
       { height :: Float,
@@ -176,15 +221,14 @@ data ShapeDef
       { color :: RGBA,
         yOffset :: Float
       }
-  | -- | Reference MapReference Float
-    Sphere
+  | Sphere
       { height :: Float,
         color :: RGBA,
         yOffset :: Float
       }
   | Gltf FilePath
   | Glb FilePath
-  deriving (Show, Generic, Eq, Ord, ToJSON, FromJSON)
+  deriving (Show, Eq, Ord)
 
 -- data MapData
 --   = Fill MapDef
@@ -201,7 +245,7 @@ vectorToMaybe = V.foldr (const . Just) Nothing
 type Size a = (a, a)
 
 data Axis = X | Y
-  deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
+  deriving (Eq, Ord, Show)
 
 -- data MapFile = MapFile
 --   { size :: Size Int,
