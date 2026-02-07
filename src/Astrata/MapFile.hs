@@ -9,8 +9,6 @@ import Linear.V2
 import Linear.V3
 import RIO
 
-type EdgePoint = (Bool, Bool)
-
 type Color = (Float, Float, Float, Float)
 
 type RGBA = (Int, Int, Int, Int)
@@ -32,6 +30,32 @@ data FaceId
   | S7
   deriving (Show, Eq, Ord)
 
+data Satelite = Satelite
+  { level :: Int,
+    atk :: Int,
+    def :: Int
+  }
+  deriving (Show, Eq)
+
+data Origin = Origin
+  { level :: Int,
+    hp :: Int
+  }
+  deriving (Show, Eq)
+
+-- data Card = Card
+--   { faceId :: FaceId,
+--     cardType :: CardType
+--   }
+--   deriving (Show, Eq)
+
+data Deck
+  = Deck
+  { deckName :: String,
+    cards :: V.Vector FaceId
+  }
+  deriving (Show)
+
 newtype CardInstanceId = CardInstanceId Int
   deriving (Show, Eq, Ord)
   deriving (Num) via Int
@@ -43,9 +67,9 @@ data CardAction
 
 data ActionCost
   = DiscardHand Int
-  | DiscardAura Int
+  | UseAura Int
 
-data OriginLevel = L0 | L1 | L2 | L3
+data Level = L0 | L1 | L2 | L3
   deriving (Show, Eq)
 
 type Optionality = Bool
@@ -73,12 +97,10 @@ data Battler = Battler
   }
   deriving (Show)
 
-data OriginSlot = OriginSlot
-  { level :: OriginLevel,
+data OriginStatus = OriginStatus
+  { level :: Level,
     hp :: Int,
     status :: BattlerStatus,
-    planet :: Planet,
-    aura :: [Battler],
     instanceId :: CardInstanceId
   }
   deriving (Show)
@@ -96,13 +118,13 @@ battler _ = Nothing
 data FieldSide = Own | Opponent
   deriving (Eq, Ord, Show)
 
-originFaceId :: OriginLevel -> FaceId
+originFaceId :: Level -> FaceId
 originFaceId L0 = Origin0
 originFaceId L1 = Origin1
 originFaceId L2 = Origin2
 originFaceId L3 = Origin3
 
-originToBattler :: OriginSlot -> Battler
+originToBattler :: OriginStatus -> Battler
 originToBattler slot =
   Battler
     { atk = 1,
@@ -114,7 +136,7 @@ originToBattler slot =
     }
 
 data Field = Field
-  { origin :: OriginSlot,
+  { origin :: OriginStatus,
     frontL :: SatelliteSlot,
     frontR :: SatelliteSlot,
     backL :: SatelliteSlot,
@@ -124,7 +146,7 @@ data Field = Field
   deriving (Show)
 
 data FieldSlot
-  = Origin
+  = OriginSlot
   | FrontL
   | FrontR
   | BackL
@@ -162,7 +184,7 @@ getSelectedBattler (CardSelection (Just side) (Just slot) Nothing) bf =
         Own -> bf.own
         Opponent -> bf.rival
    in case slot of
-        Origin -> Just $ originToBattler field.origin
+        OriginSlot -> Just $ originToBattler field.origin
         FrontL -> battler field.frontL
         FrontR -> battler field.frontR
         BackL -> battler field.backL
@@ -185,7 +207,7 @@ initialBattleField =
   BattleField
     { own =
         Field
-          { origin = OriginSlot {level = L0, hp = 6, status = Normal, planet = Mercury, aura = [], instanceId = 0},
+          { origin = OriginStatus {level = L0, hp = 6, status = Normal, instanceId = 0},
             frontL = Assigned Battler {atk = 1, def = 1, status = Normal, effects = [], faceId = S7, instanceId = 1},
             frontR = Assigned Battler {atk = 1, def = 1, status = Tired, effects = [], faceId = S7, instanceId = 2},
             backL = Assigned Battler {atk = 1, def = 1, status = Normal, effects = [], faceId = S7, instanceId = 3},
@@ -194,7 +216,7 @@ initialBattleField =
           },
       rival =
         Field
-          { origin = OriginSlot {level = L0, hp = 6, status = Normal, planet = Mercury, aura = [], instanceId = 5},
+          { origin = OriginStatus {level = L0, hp = 6, status = Normal, instanceId = 5},
             frontL = Assigned Battler {atk = 1, def = 1, status = Normal, effects = [], faceId = S7, instanceId = 6},
             frontR = Assigned Battler {atk = 1, def = 1, status = Tired, effects = [], faceId = S7, instanceId = 7},
             backL = Assigned Battler {atk = 1, def = 1, status = Tired, effects = [], faceId = S7, instanceId = 8},
