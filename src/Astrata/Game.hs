@@ -132,11 +132,6 @@ updateCardSelection currentSelection input bf =
           Astrata.MapFile.initialCardSelection
         _ -> currentSelection
 
-isCardSelected :: Astrata.MapFile.CardSelection -> Astrata.MapFile.FieldSide -> Int -> Bool
-isCardSelected (Astrata.MapFile.CardSelection (Just side) Nothing (Just handIndex)) targetSide targetIndex =
-  side == targetSide && handIndex == targetIndex
-isCardSelected _ _ _ = False
-
 showV3F :: V3 Float -> String
 showV3F = concatMap showF
 
@@ -154,15 +149,15 @@ updatePosition p input =
               inputDirection = fst input.direction
             }
     | otherwise -> do
-        let (d', keepMoving) = case justInput input.direction of
+        let d' = case justInput input.direction of
               Just n -> case p.inputDirection of
-                Just current' | n == current' -> (p.direction, True)
+                Just current' | n == current' -> p.direction
                 _ -> case n of
-                  DirUp -> (p.direction, False)
-                  DirDown -> (-p.direction, False)
-                  DirRight -> (fromQuaternion (axisAngle (V3 0 1 0) (-(pi / 2))) !* p.direction, False)
-                  DirLeft -> (fromQuaternion (axisAngle (V3 0 1 0) (pi / 2)) !* p.direction, False)
-              Nothing -> (p.direction, False)
+                  DirUp -> p.direction
+                  DirDown -> -p.direction
+                  DirRight -> fromQuaternion (axisAngle (V3 0 1 0) (-(pi / 2))) !* p.direction
+                  DirLeft -> fromQuaternion (axisAngle (V3 0 1 0) (pi / 2)) !* p.direction
+              Nothing -> p.direction
             perFrameTime = 1 / 5
             v' =
               min
@@ -223,7 +218,7 @@ buildRenderer init win os = do
           let shader' = bs
           pure
             $ V.singleton
-              ( \(i, m) ->
+              ( \(i, _m) ->
                   case topology of
                     TopologyTriangles p -> do
                       prims <- newPrimitiveArray1 p vbuf ibuf nbuf ubuf
@@ -233,7 +228,7 @@ buildRenderer init win os = do
         Nothing -> do
           pure
             $ V.singleton
-              ( \(i, m) ->
+              ( \(i, _m) ->
                   case topology of
                     TopologyTriangles p -> do
                       prims <- newPrimitiveArray2 p vbuf ibuf nbuf
@@ -320,8 +315,6 @@ game =
         textureStorage <- liftIO $ newIORef M.empty
         fpsSetting <- liftIO $ newIORef 60
         lastRenderTime <- liftIO $ newIORef 0
-
-        -- let offset = V3 (-5) 0 (-5)
 
         let g = initialBattleField
         objs <- liftIO $ parseMapFile g
@@ -460,22 +453,7 @@ game =
                         if isJust t.inputDirection
                           then (p + ((t.position - 10 * t.direction) & _y +~ 3)) / 2
                           else
-                            let t' =
-                                  p
-                                -- & _y
-                                -- +~ ( case input.direction2 of
-                                --        Just DirRight -> mu
-                                --        Just DirLeft -> -mu
-                                --        _ -> 0
-                                --    )
-                                --   & _z
-                                -- +~ ( case input.direction2 of
-                                --        Just DirUp -> mu
-                                --        Just DirDown -> -mu
-                                --        _ -> 0
-                                --    )
-
-                                traslated = t' - t.position
+                            let traslated = p - t.position
                                 rotated = fromQuaternion (axisAngle (V3 0 1 0) theta) !* traslated
                              in rotated ^. _xyz + t.position
               )
@@ -530,9 +508,6 @@ updateFrame env update renderText camera target input = do
       ( if
           | input.hardReset -> GameReset
           | input.save -> GameSave 1
-          -- \| input.n == Just 2 -> GameLoad 2
-          -- \| input.n == Just 3 -> GameLoad 3
-          -- \| input.n == Just 4 -> GameLoad 4
           | otherwise -> GameContinue
       )
       GlobalUniform {windowSize = sz, modelNorm = normMat, viewCamera = camera, viewTarget = target.position, viewUp = viewUpNorm, light = light, lightDirection = lightDir}
@@ -637,12 +612,6 @@ rotateCard Astrata.MapFile.Opponent Astrata.MapFile.Normal = rc True
 rotateCard Astrata.MapFile.Opponent Astrata.MapFile.Tired = rc False
 rotateCard Astrata.MapFile.Own Astrata.MapFile.Normal = rc False
 rotateCard Astrata.MapFile.Own Astrata.MapFile.Tired = rc True
-
-easeInOutCirc :: (Real a, Ord a, Floating a) => a -> a
-easeInOutCirc x =
-  if x < 0.5
-    then (1 - sqrt (1 - (2 * x) ** 2)) / 2
-    else (sqrt (1 - (-(2 * x) + 2) ** 2) + 1) / 2
 
 easeOutQuart :: (Real a, Ord a, Floating a) => a -> a
 easeOutQuart x = 1 - (1 - x) ** 4

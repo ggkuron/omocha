@@ -84,12 +84,6 @@ calcSplines :: forall a. (HasCallStack) => (Num a, RealFrac a, Show a) => V.Vect
 calcSplines splines t =
   let (seg, t') = findSegment splines t
    in calcSpline seg t'
-
--- calcSplinePairs :: forall a. (HasCallStack) => (Num a, RealFrac a, Show a) => V.Vector (Spline a, Spline a) -> a -> (a, a)
--- calcSplinePairs splines t =
---   let (seg, t') = findSegment splines t
---    in both (`calcSpline` t') seg
-
 fromAxisValues :: (Num a, Fractional a, Real b, Num c) => Vector (c, b) -> Vector a
 fromAxisValues = V.map fromAxisValue
 

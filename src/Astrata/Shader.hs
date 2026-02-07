@@ -6,7 +6,7 @@
 
 module Astrata.Shader where
 
-import Astrata.Scene (SceneObject (..))
+import Astrata.Scene ()
 import Astrata.Shape
 import Astrata.Uniform
 import Control.Monad.Exception (MonadException)
@@ -52,19 +52,13 @@ boardShader win unis = do
   o <- readObjectUniform'' unis
   boards <- toPrimitiveStream (.primitives)
   let projected = (\(v, n, uv) -> (proj g (normalizePoint (o.proj !* point v) + o.position), (g.modelNorm !* n, uv, biasMat !* lightProj g v))) <$> boards
-      -- let ssampler :: S V Float = sample2DShadow ssamp (SampleLod 0) Nothing (Just 1) 1 (V2 0 0) in ssampler
-      -- let projected :: PrimitiveStream Triangles (VPos, (V3 VFloat, V2 VFloat))= (\(v, n, uv) -> (proj g v, (g.modelNorm !* n, uv))) <$> boards
       filterMode = SamplerFilter Linear Linear Linear (Just 16)
       edge = (pure ClampToEdge, 1.0)
   samp <- newSampler2D $ \env -> (env.colorImage, filterMode, edge)
-  -- ssamp <- newSampler2DShadow $ \env -> (env.depthImage, SamplerNearest, (pure ClampToEdge, 1 :: BorderColor Depth), Lequal)
 
   fragmentStream <- rasterize (\env -> (Front, ViewPort (V2 0 0) env.size, DepthRange 0 1)) projected
   let litFrags =
-        ( \(_c, u, s) -> light samp u
-        -- z = sample2DShadow ssamp (SampleLod 0) Nothing Nothing 1 (s ^. _xy)
-        -- visibility = ifB (z <* (s ^. _z)) (point . pure $ 0.5) 1
-        )
+        (\(_c, u, _s) -> light samp u)
           <$> fragmentStream
       frags = filterFragments (\f -> f ^. _w /=* 0) litFrags
       fragsWithDepth =
@@ -73,7 +67,6 @@ boardShader win unis = do
           frags
   let colorOption = ContextColorOption (BlendRgbAlpha (FuncAdd, Min) (BlendingFactors SrcAlpha OneMinusSrcAlpha, BlendingFactors SrcAlpha DstAlpha) (V4 0 0 0 0)) (pure True)
       depthOption = DepthOption Lequal True
-  -- stencilOptions = FrontBack (StencilOption Equal 0 OpKeep OpKeep (complement 0) (complement 0)) (StencilOption Equal 0 OpKeep OpKeep (complement 0) (complement 0))
   drawWindowColorDepth (const (win, colorOption, depthOption)) fragsWithDepth
 
 biasMat :: (Fractional a) => M44 a
@@ -110,29 +103,19 @@ phongShader win unis = do
   o <- readObjectUniform' unis
   boards <- toPrimitiveStream $ \env -> (\v -> (v, env.color)) <$> env.primitives
   let projected = (\((v, n), c) -> let v' = normalizePoint (o.proj !* point v) + o.position in (proj g v', (g.modelNorm !* n, c, biasMat !* (point . normalizePoint $ lightProj g v')))) <$> boards
-  -- filterMode = SamplerFilter Linear Linear Linear (Just 16)
-  -- edge = (pure ClampToEdge, 1.0)
   fragmentStream <- rasterize (\env -> (Front, ViewPort (V2 0 0) env.size, DepthRange 0 1)) projected
-  -- samp <- newSampler2D $ \env -> (env.color, filterMode, edge)
-  -- ssamp <- newSampler2DShadow $ \env -> (env.depthImage, SamplerNearest, (pure ClampToEdge, 0 :: BorderColor Depth), Lequal)
   unif <- readGlobalUniform unis
-  -- eyeDir = normalizeS $ unif.viewCamera
   let lightDir :: V3 FFloat = normalizeS unif.lightDirection
   let litFrags =
         withRasterizedInfo
-          ( \(n, c, s) x ->
+          ( \(n, c, _s) x ->
               let v = rasterizedFragCoord x
                   diffuse = point . pure $ clamp (lightDir `dot` n * 10) 0.1 1.0
-               in -- z = sample2DShadow ssamp (SampleLod 0) Nothing Nothing (s ^. _z) (s ^. _xy)
-                  -- visibility = ifB (z {- 0 to 1 -} <* 1) (V4 0.5 0.5 0.5 1) 1
-                  -- halfLE :: V3 FFloat = normalizeS $ lightDir + eyeDir
-                  -- specular :: FFloat = clamp (n `dot` halfLE) 0.0 1.0 ^* 50
-                  (c * diffuse, v ^. _z)
+               in (c * diffuse, v ^. _z)
           )
           fragmentStream
   let colorOption = ContextColorOption (BlendRgbAlpha (FuncAdd, Min) (BlendingFactors SrcAlpha OneMinusSrcAlpha, BlendingFactors SrcAlpha DstAlpha) (V4 0 0 0 0)) (pure True)
       depthOption = DepthOption Less True
-  -- stencilOptions = FrontBack (StencilOption Equal 0 OpKeep OpKeep (complement 0) (complement 0)) (StencilOption Equal 0 OpKeep OpKeep (complement 0) (complement 0))
   drawWindowColorDepth (const (win, colorOption, depthOption)) litFrags
 
 monoShader :: Window os RGBAFloat Depth -> ApplicationUniforms os -> Shader os (PlainEnvironment os) ()
@@ -144,18 +127,9 @@ light samp = sample2D samp (SampleLod 0) (Just 1) Nothing
 proj :: (Floating (ConvertFloat a), Convert a) => GlobalUniform a (ConvertFloat a) -> V3 (ConvertFloat a) -> V4 (ConvertFloat a)
 proj g v = viewProjection g !* point v
 
--- proj = lightProj
-
 lightProj :: (Floating (ConvertFloat a), Convert a) => GlobalUniform a (ConvertFloat a) -> V3 (ConvertFloat a) -> V4 (ConvertFloat a)
-lightProj g v = infinitePerspective (pi / 3) 1 0.01 !*! lookAt' (V3 60 40 80) (V3 60 0 0) (V3 0 1 0) !* point v
-  where
-    n = V3 60 0 0 - V3 60 40 80
+lightProj _g v = infinitePerspective (pi / 3) 1 0.01 !*! lookAt' (V3 60 40 80) (V3 60 0 0) (V3 0 1 0) !* point v
 
-unproj :: (Floating (ConvertFloat a), Convert a) => GlobalUniform a (ConvertFloat a) -> V3 (ConvertFloat a) -> V4 (ConvertFloat a)
-unproj uni v = inv44 (viewProjection uni) !* point v
-
--- V3 (ConvertFloat a) ->  V3 (ConvertFloat a)
--- uni.modelNorm !* normal
 projection :: (Floating (ConvertFloat a), Convert a) => GlobalUniform a (ConvertFloat a) -> M44 (ConvertFloat a)
 projection uni = infinitePerspective (pi / 3) (let V2 w h = uni.windowSize in toFloat w / toFloat h) 0.01
 
@@ -179,9 +153,6 @@ lookAt' eye center up =
     xd = -dot xa eye
     yd = -dot ya eye
     zd = dot za eye
-
-invertModelViewProjection :: (Floating (ConvertFloat a), Convert a) => GlobalUniform a (ConvertFloat a) -> M44 (ConvertFloat a)
-invertModelViewProjection uni = inv44 $ viewProjection uni
 
 textShader ::
   Window os RGBAFloat Depth ->
@@ -273,9 +244,5 @@ transpose v = case V.uncons v of
       let (hds, tls) = V.unzip $ V.map (\x'' -> (V.head x'', V.tail x'')) xss
        in (x' `V.cons` hds) `V.cons` transpose (xs `V.cons` tls)
 
-rankBundle :: (Monad m, Monad n) => Vector (Vector (b -> n ())) -> m (b -> n ())
-rankBundle fs = pure $ bundle (join . transpose $ fs)
-
--- rankBundle' :: (Monad m, Monad n) => Vector (Vector (b -> n ())) -> Vector (b -> n ())
 rankBundle' :: Vector (Vector a) -> Vector a
 rankBundle' fs = let rs = (join . transpose $ fs) in rs

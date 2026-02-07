@@ -9,7 +9,6 @@ module Astrata.Resource where
 import Control.Monad.Exception qualified as E (MonadAsyncException (..), MonadException (throw), catch, fromException, throw)
 import Control.Monad.Trans.Resource (MonadResource (..), ResourceT, resourceMask, runResourceT)
 import Debug.Trace (traceStack)
-import GHC.Stack (callStack)
 import RIO hiding (traceStack)
 
 newtype GameResource m a = GameResource (ResourceT m a)
@@ -22,12 +21,6 @@ newtype GameResource m a = GameResource (ResourceT m a)
       MonadResource
     )
     via (ResourceT m)
-
-data FooException where
-  FooException :: (HasCallStack) => FooException
-
-instance Show FooException where
-  show FooException = "FooException\n" <> show callStack
 
 instance E.MonadException (GameResource IO) where
   throw = liftIO . throwIO

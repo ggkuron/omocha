@@ -144,7 +144,7 @@ initialCardSelection :: CardSelection
 initialCardSelection = CardSelection Nothing Nothing Nothing
 
 selectHandCard :: Int -> BattleField -> FieldSide -> CardSelection
-selectHandCard index bf side = CardSelection (Just side) Nothing (Just index)
+selectHandCard index _bf side = CardSelection (Just side) Nothing (Just index)
 
 selectFieldSlot :: FieldSlot -> FieldSide -> CardSelection
 selectFieldSlot slot side = CardSelection (Just side) (Just slot) Nothing
@@ -230,14 +230,6 @@ data ShapeDef
   | Glb FilePath
   deriving (Show, Eq, Ord)
 
--- data MapData
---   = Fill MapDef
---   | Tips
---       { maps :: Vector (Vector (Vector DefId)),
---         defs :: M.Map DefId MapDef
---       }
---   deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
-
 vectorToMaybe :: Vector a -> Maybe a
 vectorToMaybe = V.foldr (const . Just) Nothing
 {-# INLINE vectorToMaybe #-}
@@ -246,88 +238,6 @@ type Size a = (a, a)
 
 data Axis = X | Y
   deriving (Eq, Ord, Show)
-
--- data MapFile = MapFile
---   { size :: Size Int,
---     mapData :: Vector MapData
---   }
---   deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
-
--- newtype DefId = DefId Int
---   deriving (Generic)
---   deriving (Eq, Show, Num, Ord, Ix, ToJSON, FromJSON, ToJSONKey, FromJSONKey) via Int
-
--- parseMap :: (HasCallStack) => (Int, Int) -> Vector (Vector DefId) -> Either String (Vector (BB.Box V2 Int, DefId))
--- parseMap (sw, sh) mapData
---   | length mapData /= sh = Left "row mismatch"
---   | any (\row -> length row /= sw) mapData = Left "column mismatch"
---   | otherwise =
---       Right
---         $ foldl'
---           ( \a (V2 x y) ->
---               let k@(DefId ik) = l x y
---                   w = ew k x y a
---                   h = eh k w x y a
---                in (if (ik == 0) || (w == 0) then a else (BB.Box (V2 x y) (V2 (x + w) (y + h + 1)), k) `V.cons` a)
---           )
---           V.empty
---           ([V2 x y | y <- [0 .. sh - 1], x <- [0 .. sw - 1]])
---   where
---     l x y = mapData V.! y V.! x
---     ew v x y bbs = length (takeWhile id [v == l x' y && all (\(b, _) -> not $ isInside b x' y) bbs | x' <- [x .. sw - 1]])
---     eh v w x y bbs = length (takeWhile id [ew v x y' bbs == w | w > 0, y' <- [y + 1 .. sh - 1]])
---
--- isInside :: BB.Box V2 Int -> Int -> Int -> Bool
--- isInside bb x y = BB.isInside (fmap fromIntegral (V2 x y) + (V2 0.5 0.5 :: V2 Float)) (fmap fromIntegral bb)
-
--- newtype MapDefs b = MapDefs
---   { defs :: M.Map ObjectId (ShapeDef, Size Int, b)
---   }
---   deriving (Show)
---
--- instance Monoid (MapDefs (Vector a)) where
---   mempty = MapDefs M.empty
-
--- data Maps = Maps
---   { unit :: V2 Float,
---     defs :: Vector (BB.Box V2 Int, ShapeDef, ObjectId),
---     offset :: V3 Float,
---     size :: V2 Int,
---     dir :: FilePath
---   }
-
--- instance Semigroup (MapDefs (Vector a)) where
---   (MapDefs im) <> (MapDefs im') = MapDefs (im `M.union` M.mapKeys (+ leftMaxId) im')
---     where
---       leftMaxId = M.foldlWithKey' (\a i _ -> max a i) 1 im
-
--- parse :: (HasCallStack) => (Int, Int) -> MapData -> Either String (Vector (BB.Box V2 Int, MapDef, ObjectId))
--- parse (x, y) (Fill def) = Right $ V.singleton (BB.Box (V2 0 0) (V2 x y), def, ObjectId 0)
--- parse size (Tips {..}) = do
---   b <- foldMapM (parseMap size) maps
---   V.imapM
---     ( \i (bb, k) -> do
---         def <- maybeToRight ("key: " ++ show k ++ " not found") (defs M.!? k)
---         return (bb, def, ObjectId i)
---     )
---     b
-
--- parseMapDef :: (HasCallStack) => (Int, Int) -> MapData -> Either String (Vector (BB.Box V2 Int, MapDef, ObjectId), MapDefs (Vector (V2 Int, ObjectId)))
--- parseMapDef size md = do
---   ls <- parse size md
---   return
---     ( ls,
---       MapDefs
---         ( V.foldl'
---             ( \im (BB.Box start end, def, objId) ->
---                 let V2 w h = end - start
---                     size = (w, h)
---                  in M.alter (Just . maybe (def, size, V.singleton (start, objId)) (third3 (`V.snoc` (start, objId)))) objId im
---             )
---             M.empty
---             ls
---         )
---     )
 
 adjust :: Int -> Bool -> Float -> Vector (Int, Int) -> V.Vector (Int, Float)
 adjust sz asc crossSize v =
