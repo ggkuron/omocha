@@ -1,13 +1,28 @@
 {-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Astrata.MapFile where
 
-import Astrata.Spline
+import Astrata.Bitmap
+  ( Bitmap,
+    loadBitmapsWith,
+  )
 import Data.Vector qualified as V
-import Data.Vector.Algorithms.Intro qualified as VAI
-import Linear.V2
-import Linear.V3
+import GHC.Enum (pred, succ)
+import Paths_astrata (getDataFileName)
 import RIO
+import Text.Show (Show (showsPrec), showString, shows)
+
+loadBitmapsWith [|getDataFileName|] "../../static/images"
+
+next :: (Bounded a, Enum a, Eq a) => a -> a
+next x =
+  if x == maxBound then minBound else succ x
+
+prev :: (Bounded a, Enum a, Eq a) => a -> a
+prev x =
+  if x == minBound then maxBound else pred x
 
 type Color = (Float, Float, Float, Float)
 
@@ -16,67 +31,121 @@ type RGBA = (Int, Int, Int, Int)
 rgba :: RGBA -> Color
 rgba (r, g, b, a) = (fromIntegral r / 255, fromIntegral g / 255, fromIntegral b / 255, fromIntegral a / 255)
 
-data FaceId
-  = Origin0
-  | Origin1
-  | Origin2
-  | Origin3
-  | S1
-  | S2
-  | S3
-  | S4
-  | S5
-  | S6
-  | S7
-  deriving (Show, Eq, Ord)
+data CardPlanet = Moon | Mercury
+  deriving (Show, Eq)
 
-data Satelite = Satelite
-  { level :: Int,
-    atk :: Int,
+data GeneralProp = GeneralProp
+  { level :: Level,
+    name :: Text,
+    action :: [CardAction],
+    bitmap :: Bitmap
+  }
+
+instance Eq GeneralProp where
+  a == b = a.name == b.name
+
+instance Show GeneralProp where
+  showsPrec _ (GeneralProp lvl nm acts _bmp) =
+    showString "GeneralProp {level = "
+      . shows lvl
+      . showString ", name = "
+      . shows nm
+      . showString ", action = "
+      . shows acts
+      . showString "}"
+
+data BattlerProp = BattlerProp
+  { atk :: Int,
     def :: Int
   }
-  deriving (Show, Eq)
+  deriving (Eq, Show)
 
-data Origin = Origin
-  { level :: Int,
-    hp :: Int
+newtype GuardProp = GuardProp
+  { def :: Int
   }
+  deriving (Eq, Show)
+
+data Satelite deriving (Show, Eq)
+
+data Origin deriving (Show, Eq)
+
+data Portion deriving (Show, Eq)
+
+data Arts deriving (Show, Eq)
+
+data AsGuard deriving (Show, Eq)
+
+data Card s where
+  Satelite :: GeneralProp -> BattlerProp -> Card Satelite
+  Origin :: GeneralProp -> BattlerProp -> Card Origin
+  Portion :: GeneralProp -> Card Portion
+  Arts :: GeneralProp -> Card Arts
+  AsGuard :: GeneralProp -> GuardProp -> Card AsGuard
+
+deriving instance Show (Card s)
+
+class CardClass s where
+  cardProp :: s -> GeneralProp
+
+deriving instance Eq (Card s)
+
+instance CardClass (Card s) where
+  cardProp (Satelite gp _) = gp
+  cardProp (Origin gp _) = gp
+  cardProp (Portion gp) = gp
+  cardProp (Arts gp) = gp
+  cardProp (AsGuard gp _) = gp
+
+cardBitmap :: (CardClass a) => a -> Bitmap
+cardBitmap = (.bitmap) . cardProp
+
+data MainCard = MainSatellite (Card Satelite) | MainPortion (Card Portion) | MainArts (Card Arts)
   deriving (Show, Eq)
 
--- data Card = Card
---   { faceId :: FaceId,
---     cardType :: CardType
---   }
---   deriving (Show, Eq)
+instance CardClass MainCard where
+  cardProp (MainSatellite c) = cardProp c
+  cardProp (MainPortion c) = cardProp c
+  cardProp (MainArts c) = cardProp c
 
 data Deck
   = Deck
-  { deckName :: String,
-    cards :: V.Vector FaceId
+  { main :: V.Vector MainCard,
+    guard :: V.Vector (Card AsGuard),
+    origin :: V.Vector (Card Origin)
   }
-  deriving (Show)
 
 newtype CardInstanceId = CardInstanceId Int
   deriving (Show, Eq, Ord)
   deriving (Num) via Int
 
-data CardAction
+data ActionTarget
+  = SelfTarget
+  | AllTargets
+  | SelfOrigin
+  | SelfSatteliteSelect Int
+  deriving (Show, Eq)
+
+data CardEffect
   = Draw Int
   | Discard Int
+  | GainAtk Int
   deriving (Show, Eq)
 
 data ActionCost
   = DiscardHand Int
   | UseAura Int
+  deriving (Show, Eq)
 
 data Level = L0 | L1 | L2 | L3
-  deriving (Show, Eq)
+  deriving (Show, Eq, Ord)
 
 type Optionality = Bool
 
-data BattlerStatus
-  = Normal
-  | Tired
+data CardAction = CardAction
+  { phase :: Phase,
+    costs :: [ActionCost],
+    effects :: [(CardEffect, ActionTarget, Optionality)]
+  }
   deriving (Show, Eq)
 
 data Phase
@@ -85,121 +154,119 @@ data Phase
   | ActionPhase
   | AttackPhase
   | EndPhase
-  deriving (Show)
+  deriving (Show, Eq, Ord)
 
-data Battler = Battler
-  { atk :: Int,
-    def :: Int,
-    status :: BattlerStatus,
-    effects :: [(Phase, [CardAction], Optionality)],
-    faceId :: FaceId,
-    instanceId :: CardInstanceId
-  }
-  deriving (Show)
-
-data OriginStatus = OriginStatus
-  { level :: Level,
-    hp :: Int,
-    status :: BattlerStatus,
-    instanceId :: CardInstanceId
-  }
-  deriving (Show)
-
-data SatelliteSlot = EmptySlot | SealedSlot | Assigned Battler
-  deriving (Show)
-
-data Planet = Mercury
+data OpenStatus = Hidden | Private | Revealed
   deriving (Show, Eq)
 
-battler :: SatelliteSlot -> Maybe Battler
-battler (Assigned b) = Just b
-battler _ = Nothing
+type Active = Bool
+
+data CardInstance s where
+  SateliteInstance :: Card Satelite -> CardInstanceId -> BattleInstance -> CardInstance Satelite
+  OriginInstance :: Card Origin -> CardInstanceId -> BattleInstance -> OriginStatus -> CardInstance Origin
+  PortionInstance :: Card Portion -> CardInstanceId -> CardInstance Portion
+  ArtsInstance :: Card Arts -> CardInstanceId -> CardInstance Arts
+  AsGuardInstance :: Card AsGuard -> CardInstanceId -> CardInstance AsGuard
+
+deriving instance Show (CardInstance s)
+
+class CardInstanceClass s where
+  instanceId :: s -> CardInstanceId
+
+instance CardClass (CardInstance s) where
+  cardProp (SateliteInstance c _ _) = cardProp c
+  cardProp (OriginInstance c _ _ _) = cardProp c
+  cardProp (PortionInstance c _) = cardProp c
+  cardProp (ArtsInstance c _) = cardProp c
+  cardProp (AsGuardInstance c _) = cardProp c
+
+instance CardInstanceClass (CardInstance s) where
+  instanceId (SateliteInstance _ id _) = id
+  instanceId (OriginInstance _ id _ _) = id
+  instanceId (PortionInstance _ id) = id
+  instanceId (ArtsInstance _ id) = id
+  instanceId (AsGuardInstance _ id) = id
+
+data HandCardInstance where
+  HandSatelliteInstance ::
+    CardInstance Satelite ->
+    HandCardInstance
+  HandPortionInstance ::
+    CardInstance Portion ->
+    HandCardInstance
+  HandArtsInstance ::
+    CardInstance Arts ->
+    HandCardInstance
+
+data AllCardInstance where
+  AllCardInstance :: forall s. (CardInstance s) -> AllCardInstance
+
+instance CardInstanceClass HandCardInstance where
+  instanceId (HandSatelliteInstance ci) = instanceId ci
+  instanceId (HandPortionInstance ci) = instanceId ci
+  instanceId (HandArtsInstance ci) = instanceId ci
+
+isTired :: CardInstance s -> Bool
+isTired (SateliteInstance _ _ battle) = battle.tired
+isTired (OriginInstance _ _ battle _) = battle.tired
+isTired _ = False
+
+data BattleInstance = BattleInstance
+  { tired :: Bool,
+    effects :: [CardAction]
+  }
+  deriving (Show)
+
+newtype OriginStatus = OriginStatus
+  { hp :: Int
+  }
+  deriving (Show)
+
+data SatelliteSlot = EmptySlot | SealedSlot | Assigned (CardInstance Satelite)
+  deriving (Show)
+
+maybeSlot :: SatelliteSlot -> Maybe (CardInstance Satelite)
+maybeSlot (Assigned b) = Just b
+maybeSlot _ = Nothing
 
 data FieldSide = Own | Opponent
-  deriving (Eq, Ord, Show)
-
-originFaceId :: Level -> FaceId
-originFaceId L0 = Origin0
-originFaceId L1 = Origin1
-originFaceId L2 = Origin2
-originFaceId L3 = Origin3
-
-originToBattler :: OriginStatus -> Battler
-originToBattler slot =
-  Battler
-    { atk = 1,
-      def = 1,
-      faceId = originFaceId slot.level,
-      status = slot.status,
-      effects = [(StartPhase, [], True)],
-      instanceId = slot.instanceId
-    }
+  deriving (Eq, Show, Enum, Bounded)
 
 data Field = Field
-  { origin :: OriginStatus,
+  { origin :: CardInstance Origin,
     frontL :: SatelliteSlot,
     frontR :: SatelliteSlot,
     backL :: SatelliteSlot,
     backR :: SatelliteSlot,
-    astraRecords :: V.Vector Battler
+    aura :: V.Vector HandCardInstance,
+    astraRecords :: V.Vector AllCardInstance,
+    hands :: V.Vector HandCardInstance
   }
-  deriving (Show)
 
-data FieldSlot
+data FieldZone = BattleZone | AuraZone | AstraRecordZone | HandZone | DeckZone | GuardZone
+  deriving (Show, Eq, Enum, Bounded)
+
+data Selection = SideSelect FieldSide | FiledSelect FieldSide FieldZone | BattleSlotSelect FieldSide FieldZone BattleFieldSlot | CardSelect CardInstanceId
+  deriving (Show, Eq)
+
+data BattleFieldSlot
   = OriginSlot
   | FrontL
   | FrontR
   | BackL
   | BackR
-  | AstraRecords
-  | Heap
-  deriving (Show, Eq)
-
-data CardSelection = CardSelection
-  { selectedField :: Maybe FieldSide,
-    selectedSlot :: Maybe FieldSlot,
-    selectedHandIndex :: Maybe Int
-  }
-  deriving (Show, Eq)
-
-initialCardSelection :: CardSelection
-initialCardSelection = CardSelection Nothing Nothing Nothing
-
-selectHandCard :: Int -> BattleField -> FieldSide -> CardSelection
-selectHandCard index _bf side = CardSelection (Just side) Nothing (Just index)
-
-selectFieldSlot :: FieldSlot -> FieldSide -> CardSelection
-selectFieldSlot slot side = CardSelection (Just side) (Just slot) Nothing
-
-getSelectedCard :: CardSelection -> BattleField -> Maybe FaceId
-getSelectedCard (CardSelection (Just side) Nothing (Just handIndex)) bf =
-  case side of
-    Own -> bf.ownHands V.!? handIndex
-    Opponent -> bf.rivalHands V.!? handIndex
-getSelectedCard _ _ = Nothing
-
-getSelectedBattler :: CardSelection -> BattleField -> Maybe Battler
-getSelectedBattler (CardSelection (Just side) (Just slot) Nothing) bf =
-  let field = case side of
-        Own -> bf.own
-        Opponent -> bf.rival
-   in case slot of
-        OriginSlot -> Just $ originToBattler field.origin
-        FrontL -> battler field.frontL
-        FrontR -> battler field.frontR
-        BackL -> battler field.backL
-        BackR -> battler field.backR
-        AstraRecords -> Nothing
-        Heap -> Nothing
-getSelectedBattler _ _ = Nothing
+  deriving (Show, Eq, Enum, Bounded)
 
 data BattleField = BattleField
   { own :: Field,
-    rival :: Field,
-    ownHands :: V.Vector FaceId,
-    rivalHands :: V.Vector FaceId
+    rival :: Field
   }
-  deriving (Show)
+
+cardM0 :: Card Origin
+cardM0 = Origin (GeneralProp {level = L0, name = "Moon Origin0", action = [], bitmap = _S__23388166_0_jpg}) (BattlerProp {atk = 1, def = 1})
+
+cardS0 :: Card Satelite
+cardS0 = Satelite (GeneralProp {level = L0, name = "Moon Satellite0", action = [], bitmap = _S__23388170_0_jpg}) (BattlerProp {atk = 1, def = 1})
 
 -- Initial battlefield for testing
 initialBattleField :: BattleField
@@ -207,98 +274,26 @@ initialBattleField =
   BattleField
     { own =
         Field
-          { origin = OriginStatus {level = L0, hp = 6, status = Normal, instanceId = 0},
-            frontL = Assigned Battler {atk = 1, def = 1, status = Normal, effects = [], faceId = S7, instanceId = 1},
-            frontR = Assigned Battler {atk = 1, def = 1, status = Tired, effects = [], faceId = S7, instanceId = 2},
-            backL = Assigned Battler {atk = 1, def = 1, status = Normal, effects = [], faceId = S7, instanceId = 3},
-            backR = Assigned Battler {atk = 1, def = 1, status = Tired, effects = [], faceId = S7, instanceId = 4},
-            astraRecords = V.empty
+          { origin = OriginInstance cardM0 0 (BattleInstance {tired = False, effects = []}) (OriginStatus {hp = 6}),
+            frontL = Assigned $ SateliteInstance cardS0 1 $ BattleInstance {tired = False, effects = []},
+            frontR = Assigned $ SateliteInstance cardS0 2 $ BattleInstance {tired = False, effects = []},
+            backL = Assigned $ SateliteInstance cardS0 3 $ BattleInstance {tired = False, effects = []},
+            backR = Assigned $ SateliteInstance cardS0 4 $ BattleInstance {tired = False, effects = []},
+            astraRecords = V.empty,
+            aura = V.empty,
+            hands = V.empty
           },
       rival =
         Field
-          { origin = OriginStatus {level = L0, hp = 6, status = Normal, instanceId = 5},
-            frontL = Assigned Battler {atk = 1, def = 1, status = Normal, effects = [], faceId = S7, instanceId = 6},
-            frontR = Assigned Battler {atk = 1, def = 1, status = Tired, effects = [], faceId = S7, instanceId = 7},
-            backL = Assigned Battler {atk = 1, def = 1, status = Tired, effects = [], faceId = S7, instanceId = 8},
+          { origin = OriginInstance cardM0 5 (BattleInstance {tired = False, effects = []}) (OriginStatus {hp = 6}),
+            frontL = Assigned $ SateliteInstance cardS0 6 $ BattleInstance {tired = False, effects = []},
+            frontR = Assigned $ SateliteInstance cardS0 7 $ BattleInstance {tired = False, effects = []},
+            backL = Assigned $ SateliteInstance cardS0 8 $ BattleInstance {tired = False, effects = []},
             backR = EmptySlot,
-            astraRecords = V.empty
-          },
-      ownHands = V.empty,
-      rivalHands = V.empty
+            astraRecords = V.empty,
+            aura = V.empty,
+            hands = V.empty
+          }
     }
 
-data ShapeDef
-  = Empty
-  | Card
-      { height :: Float,
-        yOffset :: Float,
-        cardFaceId :: Maybe FaceId
-      }
-  | Cube
-      { height :: Float,
-        color :: RGBA,
-        yOffset :: Float
-      }
-  | Plane
-      { color :: RGBA,
-        yOffset :: Float
-      }
-  | Sphere
-      { height :: Float,
-        color :: RGBA,
-        yOffset :: Float
-      }
-  | Gltf FilePath
-  | Glb FilePath
-  deriving (Show, Eq, Ord)
-
-vectorToMaybe :: Vector a -> Maybe a
-vectorToMaybe = V.foldr (const . Just) Nothing
-{-# INLINE vectorToMaybe #-}
-
 type Size a = (a, a)
-
-data Axis = X | Y
-  deriving (Eq, Ord, Show)
-
-adjust :: Int -> Bool -> Float -> Vector (Int, Int) -> V.Vector (Int, Float)
-adjust sz asc crossSize v =
-  if
-    | null s -> (0, e0) `V.cons` v' `V.snoc` (sz, en)
-    | (fst (V.head s) == 0) && (fst (V.last s) == sz) -> v'
-    | (fst (V.head s) /= 0) && (fst (V.last s) == sz) -> (0, e0) `V.cons` s'
-    | (fst (V.head s) == 0) && (fst (V.last s) /= sz) -> s' `V.snoc` (sz, en)
-    | otherwise -> (0, e0) `V.cons` s' `V.snoc` (sz, en)
-  where
-    s = V.modify (VAI.sortBy (comparing fst)) (V.filter ((\a -> a >= 0 && a <= sz) . fst) v)
-    e0 = if asc then 0 else crossSize
-    en = if asc then crossSize else 0
-    v' = V.map (second fromIntegral) v
-    s' = V.map (second fromIntegral) s
-
-splined :: (HasCallStack) => SplinePair Float -> V2 Float -> V2 Float
-splined (xsp, ysp) (V2 x y) = V2 x rx + V2 ry y
-  where
-    rx = calcSplines xsp x
-    ry = calcSplines ysp y
-
-splined3 :: (HasCallStack) => SplinePair Float -> V3 Float -> V3 Float
-splined3 sps (V3 x y z) =
-  let V2 x' z' = splined sps (V2 x z)
-   in V3 x' y z'
-
-interpolate1 :: V.Vector (Int, Float) -> V.Vector Float
-interpolate1 ps | null ps = V.empty
-interpolate1 ps =
-  V.concatMap
-    ( \(i, d) -> V.generate d
-        $ \t ->
-          let t' :: Float = (fromIntegral i + fromIntegral t / fromIntegral d)
-              sps = (spline . fromAxisValues $ ps)
-              v = calcSplines sps t'
-           in v
-    )
-    (V.izipWith (\i a b -> (i, a - b)) (V.tail xs) xs)
-    `V.snoc` (fromAxisValue . V.last) ps
-  where
-    xs = V.map fst ps

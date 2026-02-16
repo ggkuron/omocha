@@ -1,5 +1,3 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 module Astrata.Shape
   ( plane,
     cube,
@@ -12,14 +10,10 @@ module Astrata.Shape
 where
 
 import Astrata.Bitmap
-import Astrata.MapFile
 import Astrata.Mesh
 import Data.Vector qualified as V
 import Graphics.GPipe hiding (trace)
-import Paths_astrata
 import RIO hiding (trace, traceStack)
-
-loadBitmapsWith [|getDataFileName|] "../../static/images"
 
 plane :: V3 Float -> V3 Float -> V4 Float -> Vector Mesh
 plane (V3 w d h) offset color =
@@ -34,24 +28,14 @@ plane (V3 w d h) offset color =
         (Just color)
     )
 
-card :: V3 Float -> V3 Float -> Either FaceId (V4 Float) -> Vector Mesh
+card :: V3 Float -> V3 Float -> Either Bitmap (V4 Float) -> Vector Mesh
 card (V3 w d h) offset t =
   V.imap
     ( \i v ->
         let (tex, c) =
               if i == 0
                 then case t of
-                  Left Origin0 -> (Just _O0_png, Nothing)
-                  Left Origin1 -> (Just _O1_jpg, Nothing)
-                  Left Origin2 -> (Just _O2_jpg, Nothing)
-                  Left Origin3 -> (Just _O3_jpg, Nothing)
-                  Left S1 -> (Just _S1_jpg, Nothing)
-                  Left S2 -> (Just _S2_jpg, Nothing)
-                  Left S3 -> (Just _S3_jpg, Nothing)
-                  Left S4 -> (Just _S4_jpg, Nothing)
-                  Left S5 -> (Just _S5_jpg, Nothing)
-                  Left S6 -> (Just _S6_jpg, Nothing)
-                  Left S7 -> (Just _S7_png, Nothing)
+                  Left bitmap -> (Just bitmap, Nothing)
                   Right c -> (Nothing, Just c)
                 else (Nothing, Just $ V4 0 1 1 1)
          in Mesh v Nothing offset tex BoardShader (TopologyTriangles TriangleStrip) c

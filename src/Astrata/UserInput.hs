@@ -17,12 +17,8 @@ data InputG d b r select = Input
     hardReset :: b,
     enter :: b,
     rotation :: r,
-    speedUp :: b,
-    hover :: b,
     n :: select,
-    jump :: b,
     cameraLock :: b,
-    selectCard :: select,
     confirmSelection :: b,
     cancelSelection :: b
   }
@@ -38,13 +34,9 @@ initialInput =
       enter = False,
       rotation = Nothing,
       n = Nothing,
-      hover = False,
       hardReset = False,
       save = False,
-      speedUp = False,
-      jump = False,
       cameraLock = False,
-      selectCard = Nothing,
       confirmSelection = False,
       cancelSelection = False
     }
@@ -58,13 +50,9 @@ initialInputE =
       enter = (False, False),
       rotation = (Nothing, False),
       n = (Nothing, False),
-      hover = (False, False),
       hardReset = (False, False),
       save = (False, False),
-      speedUp = (False, False),
-      jump = (False, False),
       cameraLock = (False, False),
-      selectCard = (Nothing, False),
       confirmSelection = (False, False),
       cancelSelection = (False, False)
     }
@@ -78,13 +66,9 @@ onlyInput i =
       enter = fst i.enter,
       rotation = fst i.rotation,
       n = fst i.n,
-      hover = fst i.hover,
       hardReset = fst i.hardReset,
       save = fst i.save,
-      speedUp = fst i.speedUp,
-      jump = fst i.jump,
       cameraLock = fst i.cameraLock,
-      selectCard = fst i.selectCard,
       confirmSelection = fst i.confirmSelection,
       cancelSelection = fst i.cancelSelection
     }
@@ -98,13 +82,9 @@ diffInput a b =
       enter = (a.enter, a.enter /= b.enter),
       rotation = (a.rotation, a.rotation /= b.rotation),
       n = (a.n, a.n /= b.n),
-      hover = (a.hover, a.hover /= b.hover),
       hardReset = (a.hardReset, a.hardReset /= b.hardReset),
       save = (a.save, a.save /= b.save),
-      speedUp = (a.speedUp, a.speedUp /= b.speedUp),
-      jump = (a.jump, a.jump /= b.jump),
       cameraLock = (a.cameraLock, a.cameraLock /= b.cameraLock),
-      selectCard = (a.selectCard, a.selectCard /= b.selectCard),
       confirmSelection = (a.confirmSelection, a.confirmSelection /= b.confirmSelection),
       cancelSelection = (a.cancelSelection, a.cancelSelection /= b.cancelSelection)
     }
@@ -133,9 +113,9 @@ readInput win keyInputSink = do
   x <- isPressed GLFW.Key'X
   c <- isPressed GLFW.Key'C
   s <- isPressed GLFW.Key'S
-  e <- isPressed GLFW.Key'E
-  g <- isPressed GLFW.Key'G
-  d <- isPressed GLFW.Key'D
+  _e <- isPressed GLFW.Key'E
+  _g <- isPressed GLFW.Key'G
+  _d <- isPressed GLFW.Key'D
   f <- isPressed GLFW.Key'F
   z <- isPressed GLFW.Key'Z
   n1 <- isPressed GLFW.Key'1
@@ -169,14 +149,11 @@ readInput win keyInputSink = do
             enter = f,
             save = ctl && s,
             stop = c,
-            speedUp = shift,
             rotation =
               if
                 | w -> Just True
                 | f -> Just False
                 | otherwise -> Nothing,
-            jump = a,
-            hover = x,
             n =
               if
                 | n0 -> Just 0
@@ -189,19 +166,6 @@ readInput win keyInputSink = do
                 | n7 -> Just 7
                 | n8 -> Just 8
                 | n9 -> Just 9
-                | otherwise -> Nothing,
-            selectCard =
-              if
-                | not ctl && n0 -> Just 0
-                | not ctl && n1 -> Just 1
-                | not ctl && n2 -> Just 2
-                | not ctl && n3 -> Just 3
-                | not ctl && n4 -> Just 4
-                | not ctl && n5 -> Just 5
-                | not ctl && n6 -> Just 6
-                | not ctl && n7 -> Just 7
-                | not ctl && n8 -> Just 8
-                | not ctl && n9 -> Just 9
                 | otherwise -> Nothing,
             confirmSelection = tab,
             cancelSelection = escape

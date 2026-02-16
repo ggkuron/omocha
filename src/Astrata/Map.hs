@@ -3,6 +3,7 @@
 
 module Astrata.Map where
 
+import Astrata.Bitmap (Bitmap)
 import Astrata.Gltf
 import Astrata.MapFile
 import Astrata.Scene
@@ -22,6 +23,30 @@ referenceOffset yOffset start =
   let offset' = start
    in V3 (offset' ^. _x) yOffset (offset' ^. _y)
 
+data ShapeDef
+  = Empty
+  | Card
+      { height :: Float,
+        yOffset :: Float,
+        bitmap :: Maybe Bitmap
+      }
+  | Cube
+      { height :: Float,
+        color :: RGBA,
+        yOffset :: Float
+      }
+  | Plane
+      { color :: RGBA,
+        yOffset :: Float
+      }
+  | Sphere
+      { height :: Float,
+        color :: RGBA,
+        yOffset :: Float
+      }
+  | Gltf FilePath
+  | Glb FilePath
+
 parseShape :: (HasCallStack, Exception String) => V3 Float -> ShapeDef -> Size Float -> V2 Int -> IO (Vector Mesh)
 parseShape unit n isize a =
   let a' = fromIntegral <$> a
@@ -31,7 +56,7 @@ parseShape unit n isize a =
       yScale = unit ^. _y
    in case n of
         Empty -> return V.empty
-        Card {..} -> return $ card (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (maybeToLeft (V4 0 1 1 1) cardFaceId)
+        Card {..} -> return $ card (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (maybeToLeft (V4 0 1 1 1) bitmap)
         Cube {..} -> return $ cube (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (colorToV4 color)
         Plane {..} -> return $ plane (V3 (size ^. _x) (n.yOffset * yScale) (size ^. _y)) (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (colorToV4 color)
         Sphere {..} -> return $ sphere (V3 (size ^. _x) (height * yScale) (size ^. _y)) (V3 (start ^. _x) (start ^. _y + yOffset * yScale) (start ^. _z)) (colorToV4 color)
@@ -51,27 +76,26 @@ toMesh unit (shape, size, pos) =
 
 satelliteMesh :: (HasCallStack, Exception String) => V2 Float -> SatelliteSlot -> IO (Maybe CardInstanceId, Vector Mesh)
 satelliteMesh unit slot = do
-  let (cid, fid) = cardIds slot
-  m <- toMesh unit (Card {height = 0.01, cardFaceId = fid, yOffset = 0}, (1, 1), V.singleton 0)
+  let inst = maybeSlot slot
+      cid = instanceId <$> inst
+      bitmap = (.bitmap) . cardProp <$> inst
+  m <- toMesh unit (Card {height = 0.01, bitmap = bitmap, yOffset = 0}, (1, 1), V.singleton 0)
   return (cid, m)
-  where
-    cardIds (Assigned b) = (Just b.instanceId, Just b.faceId)
-    cardIds _ = (Nothing, Nothing)
 
 parseMapFile :: (HasCallStack, Exception String) => BattleField -> IO (M.Map CardInstanceId SceneObject)
 parseMapFile f = do
   let unit = V2 1 1.25
-      ownOriginFace = originFaceId f.own.origin.level
-      rivalOriginFace = originFaceId f.rival.origin.level
-  o0 <- toMesh unit (Card {height = 0.1, cardFaceId = Just ownOriginFace, yOffset = 0}, (1, 1), V.singleton 0)
-  r0 <- toMesh unit (Card {height = 0.1, cardFaceId = Just rivalOriginFace, yOffset = 0}, (1, 1), V.singleton 0)
+      ownOriginFace = cardBitmap f.own.origin
+      rivalOriginFace = cardBitmap f.rival.origin
+  o0 <- toMesh unit (Card {height = 0.1, bitmap = Just ownOriginFace, yOffset = 0}, (1, 1), V.singleton 0)
+  r0 <- toMesh unit (Card {height = 0.1, bitmap = Just rivalOriginFace, yOffset = 0}, (1, 1), V.singleton 0)
   cs <- forM [f.own.frontL, f.own.frontR, f.rival.frontL, f.rival.frontR, f.own.backL, f.own.backR, f.rival.backL, f.rival.backR] $ satelliteMesh unit
   return
     $ M.fromList
     . V.toList
     $ V.imap (\i (cid, m) -> (cid, SceneObject m (ObjectId i)))
-    $ (f.own.origin.instanceId, o0)
-    `V.cons` ((f.rival.origin.instanceId, r0) `V.cons` V.fromList (mapMaybe (\(c, m) -> (\c' -> (c', m)) <$> c) cs))
+    $ (instanceId f.own.origin, o0)
+    `V.cons` ((instanceId f.rival.origin, r0) `V.cons` V.fromList (mapMaybe (\(c, m) -> (\c' -> (c', m)) <$> c) cs))
 
 mapY :: (Fractional a, R2 t) => t a -> a
 mapY unit = (unit ^. _x + unit ^. _y) / 2
