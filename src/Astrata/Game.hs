@@ -115,7 +115,7 @@ showF a = showFFloat (Just 2) a " "
 
 updateCardSelection :: Vector CardInstanceId -> InputE -> MF.BattleField -> Vector CardInstanceId
 updateCardSelection currentSelection input bf =
-  let selectCardInput = justInput input.selectCard
+  let selectCardInput = fmap MF.CardInstanceId (justInput input.n)
       confirmPressed = edgeInput input.confirmSelection
       cancelPressed = edgeInput input.cancelSelection
    in case (selectCardInput, confirmPressed, cancelPressed) of
@@ -157,7 +157,7 @@ updatePosition p input =
                 (pure 3)
                 if
                   | justInput input.stop -> V3 0 0 0
-                  | isJust (justInput input.direction) -> d' * if justInput input.speedUp then 3 else 1
+                  | isJust (justInput input.direction) -> d'
                   | otherwise -> 0
             t' = p.position + v' * pure perFrameTime
         return
@@ -496,6 +496,15 @@ updateFrame env update renderText camera target input = do
   when (waitTime > 0) $ liftIO $ threadDelay $ floor $ waitTime * 1000000
   let inp = "target: " ++ show target ++ "\ncamera: " ++ showV3F camera ++ "\nfps: " ++ showF fps ++ "\nmid:" ++ show input.n ++ "\nselection: " ++ show currentCardSelection
       cc = let c' = easeOutQuart (current' `mod''` 0.75) in 0.5 * realToFrac (sin $ pi * c')
+      -- 手札・スタック配置定数
+      ownHandZ = 5.0 :: Float
+      ownHandStartX = 0.5 :: Float
+      ownHandSpacingX = 1.1 :: Float
+      ownStackX = 6.0 :: Float
+      ownStackZ = 3.75 :: Float
+      ownStackYStep = 0.005 :: Float
+      rivalHandZ = -5.0 :: Float
+      rivalStackZ = -3.75 :: Float
   _ <-
     update
       ( if
@@ -517,80 +526,113 @@ updateFrame env update renderText camera target input = do
                       proj = rotateCard Astrata.MapFile.Opponent (MF.isTired m.rival.origin)
                     }
                 )
-              : catMaybes
-                [ ( \b ->
-                      ( cards M.! MF.instanceId b,
-                        ObjectUniformB
-                          { position = V3 1 0 1.25,
-                            proj = rotateCard Astrata.MapFile.Own (MF.isTired b)
-                          }
+              : ( catMaybes
+                    [ ( \b ->
+                          ( cards M.! MF.instanceId b,
+                            ObjectUniformB
+                              { position = V3 1 0 1.25,
+                                proj = rotateCard Astrata.MapFile.Own (MF.isTired b)
+                              }
+                          )
                       )
-                  )
-                    <$> MF.maybeSlot m.own.frontL,
-                  ( \b ->
-                      ( cards M.! MF.instanceId b,
-                        ObjectUniformB
-                          { position = V3 4 0 1.25,
-                            proj = rotateCard Astrata.MapFile.Own (MF.isTired b)
-                          }
+                        <$> MF.maybeSlot m.own.frontL,
+                      ( \b ->
+                          ( cards M.! MF.instanceId b,
+                            ObjectUniformB
+                              { position = V3 4 0 1.25,
+                                proj = rotateCard Astrata.MapFile.Own (MF.isTired b)
+                              }
+                          )
                       )
-                  )
-                    <$> MF.maybeSlot m.own.frontR,
-                  ( \b ->
-                      ( cards M.! MF.instanceId b,
-                        ObjectUniformB
-                          { position = V3 1 0 (-1.25),
-                            proj = rotateCard Astrata.MapFile.Opponent (MF.isTired b)
-                          }
+                        <$> MF.maybeSlot m.own.frontR,
+                      ( \b ->
+                          ( cards M.! MF.instanceId b,
+                            ObjectUniformB
+                              { position = V3 1 0 (-1.25),
+                                proj = rotateCard Astrata.MapFile.Opponent (MF.isTired b)
+                              }
+                          )
                       )
-                  )
-                    <$> MF.maybeSlot m.rival.frontR,
-                  ( \b ->
-                      ( cards M.! MF.instanceId b,
-                        ObjectUniformB
-                          { position = V3 4 0 (-1.25),
-                            proj = rotateCard Astrata.MapFile.Opponent (MF.isTired b)
-                          }
+                        <$> MF.maybeSlot m.rival.frontR,
+                      ( \b ->
+                          ( cards M.! MF.instanceId b,
+                            ObjectUniformB
+                              { position = V3 4 0 (-1.25),
+                                proj = rotateCard Astrata.MapFile.Opponent (MF.isTired b)
+                              }
+                          )
                       )
-                  )
-                    <$> MF.maybeSlot m.rival.frontL,
-                  ( \b ->
-                      ( cards M.! MF.instanceId b,
-                        ObjectUniformB
-                          { position = V3 1 0 (1.25 * 2.5),
-                            proj = rotateCard Astrata.MapFile.Own (MF.isTired b)
-                          }
+                        <$> MF.maybeSlot m.rival.frontL,
+                      ( \b ->
+                          ( cards M.! MF.instanceId b,
+                            ObjectUniformB
+                              { position = V3 1 0 (1.25 * 2.5),
+                                proj = rotateCard Astrata.MapFile.Own (MF.isTired b)
+                              }
+                          )
                       )
-                  )
-                    <$> MF.maybeSlot m.own.backL,
-                  ( \b ->
-                      ( cards M.! MF.instanceId b,
-                        ObjectUniformB
-                          { position = V3 4 0 (1.25 * 2.5),
-                            proj = rotateCard Astrata.MapFile.Own (MF.isTired b)
-                          }
+                        <$> MF.maybeSlot m.own.backL,
+                      ( \b ->
+                          ( cards M.! MF.instanceId b,
+                            ObjectUniformB
+                              { position = V3 4 0 (1.25 * 2.5),
+                                proj = rotateCard Astrata.MapFile.Own (MF.isTired b)
+                              }
+                          )
                       )
-                  )
-                    <$> MF.maybeSlot m.own.backR,
-                  ( \b ->
-                      ( cards M.! MF.instanceId b,
-                        ObjectUniformB
-                          { position = V3 1 0 (-(1.25 * 2.5)),
-                            proj = rotateCard Astrata.MapFile.Opponent (MF.isTired b)
-                          }
+                        <$> MF.maybeSlot m.own.backR,
+                      ( \b ->
+                          ( cards M.! MF.instanceId b,
+                            ObjectUniformB
+                              { position = V3 1 0 (-(1.25 * 2.5)),
+                                proj = rotateCard Astrata.MapFile.Opponent (MF.isTired b)
+                              }
+                          )
                       )
-                  )
-                    <$> MF.maybeSlot m.rival.backR,
-                  ( \b ->
-                      ( cards M.! MF.instanceId b,
-                        ObjectUniformB
-                          { position = V3 4 0 (-(1.25 * 2.5)),
-                            proj = rotateCard Astrata.MapFile.Opponent (MF.isTired b)
-                          }
+                        <$> MF.maybeSlot m.rival.backR,
+                      ( \b ->
+                          ( cards M.! MF.instanceId b,
+                            ObjectUniformB
+                              { position = V3 4 0 (-(1.25 * 2.5)),
+                                proj = rotateCard Astrata.MapFile.Opponent (MF.isTired b)
+                              }
+                          )
                       )
-                  )
-                    <$> MF.maybeSlot m.rival.backL
-                ]
+                        <$> MF.maybeSlot m.rival.backL
+                    ]
+                    ++ [ ( cards M.! MF.instanceId c,
+                           ObjectUniformB
+                             { position = V3 (ownHandStartX + fromIntegral i * ownHandSpacingX) 0 ownHandZ,
+                               proj = rotateHandCard MF.Own False
+                             }
+                         )
+                         | (i, c) <- zip [0 ..] (V.toList m.own.hands)
+                       ]
+                    ++ [ ( cards M.! MF.instanceId c,
+                           ObjectUniformB
+                             { position = V3 ownStackX (fromIntegral i * ownStackYStep) ownStackZ,
+                               proj = rotateCard MF.Own False
+                             }
+                         )
+                         | (i, c) <- zip [0 ..] (V.toList m.own.stack)
+                       ]
+                    ++ [ ( cards M.! MF.instanceId c,
+                           ObjectUniformB
+                             { position = V3 (ownHandStartX + fromIntegral i * ownHandSpacingX) 0 rivalHandZ,
+                               proj = rotateHandCard MF.Opponent False
+                             }
+                         )
+                         | (i, c) <- zip [0 ..] (V.toList m.rival.hands)
+                       ]
+                    ++ [ ( cards M.! MF.instanceId c,
+                           ObjectUniformB
+                             { position = V3 ownStackX (fromIntegral i * ownStackYStep) rivalStackZ,
+                               proj = rotateCard MF.Opponent False
+                             }
+                         )
+                         | (i, c) <- zip [0 ..] (V.toList m.rival.stack)
+                       ]
+                )
           )
       )
   renderText Nothing (sz, inp)
@@ -599,6 +641,16 @@ updateFrame env update renderText camera target input = do
 rc :: (Epsilon a, Floating a) => Bool -> M44 a
 rc False = mkTransformation (axisAngle (V3 0 1 0) pi) (V3 1 0 1.3)
 rc True = identity
+
+rcHand :: (Epsilon a, RealFloat a) => Bool -> M44 a
+rcHand False = mkTransformation (axisAngle (V3 0 1 0) pi * axisAngle (V3 1 0 0) (-(pi / 2))) (V3 1 1 0)
+rcHand True = identity
+
+rotateHandCard :: (Epsilon a, RealFloat a) => Astrata.MapFile.FieldSide -> Bool -> M44 a
+rotateHandCard Astrata.MapFile.Opponent False = rcHand True
+rotateHandCard Astrata.MapFile.Opponent True = rcHand False
+rotateHandCard Astrata.MapFile.Own False = rcHand False
+rotateHandCard Astrata.MapFile.Own True = rcHand True
 
 rotateCard :: (Epsilon a, Floating a) => Astrata.MapFile.FieldSide -> Bool -> M44 a
 rotateCard Astrata.MapFile.Opponent False = rc True
