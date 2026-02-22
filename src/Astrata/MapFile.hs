@@ -99,23 +99,23 @@ instance CardClass (Card s) where
 cardBitmap :: (CardClass a) => a -> Bitmap
 cardBitmap = (.bitmap) . cardProp
 
-data MainCard = MainSatellite (Card Satelite) | MainPortion (Card Portion) | MainArts (Card Arts)
+data MainCard = MainSatellite (Card Satelite) | MainPortion (Card Portion) | MainGuard (Card AsGuard)
   deriving (Show, Eq)
 
 instance CardClass MainCard where
   cardProp (MainSatellite c) = cardProp c
   cardProp (MainPortion c) = cardProp c
-  cardProp (MainArts c) = cardProp c
+  cardProp (MainGuard c) = cardProp c
 
 data Deck
   = Deck
   { main :: V.Vector MainCard,
-    guard :: V.Vector (Card AsGuard),
+    arts :: V.Vector (Card Arts),
     origin :: V.Vector (Card Origin)
   }
 
 newtype CardInstanceId = CardInstanceId Int
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Enum)
   deriving (Num) via Int
 
 data ActionTarget
@@ -194,17 +194,22 @@ data HandCardInstance where
   HandPortionInstance ::
     CardInstance Portion ->
     HandCardInstance
-  HandArtsInstance ::
-    CardInstance Arts ->
+  HandGuardInstance ::
+    CardInstance AsGuard ->
     HandCardInstance
+    deriving (Show)
 
 data AllCardInstance where
-  AllCardInstance :: forall s. (CardInstance s) -> AllCardInstance
+  AllSatelliteInstance :: CardInstance Satelite -> AllCardInstance
+  AllPortionInstance   :: CardInstance Portion  -> AllCardInstance
+  AllArtsInstance      :: CardInstance Arts     -> AllCardInstance
+  AllGuardInstance     :: CardInstance AsGuard  -> AllCardInstance
+  deriving (Show)
 
 instance CardInstanceClass HandCardInstance where
   instanceId (HandSatelliteInstance ci) = instanceId ci
   instanceId (HandPortionInstance ci) = instanceId ci
-  instanceId (HandArtsInstance ci) = instanceId ci
+  instanceId (HandGuardInstance ci) = instanceId ci
 
 isTired :: CardInstance s -> Bool
 isTired (SateliteInstance _ _ battle) = battle.tired
@@ -241,7 +246,8 @@ data Field = Field
     aura :: V.Vector HandCardInstance,
     astraRecords :: V.Vector AllCardInstance,
     hands :: V.Vector HandCardInstance
-  }
+  } 
+  deriving (Show)
 
 data FieldZone = BattleZone | AuraZone | AstraRecordZone | HandZone | DeckZone | GuardZone
   deriving (Show, Eq, Enum, Bounded)
@@ -261,6 +267,7 @@ data BattleField = BattleField
   { own :: Field,
     rival :: Field
   }
+  deriving (Show)
 
 cardM0 :: Card Origin
 cardM0 = Origin (GeneralProp {level = L0, name = "Moon Origin0", action = [], bitmap = _S__23388166_0_jpg}) (BattlerProp {atk = 1, def = 1})

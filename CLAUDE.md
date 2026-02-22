@@ -72,13 +72,24 @@ cabal build --dependencies-only
 - `Shape.hs`: Primitive 3D geometry generation
 - `Mesh.hs`: 3D mesh data structures
 
+**Animation**:
+- `Control.hs`: Animation progress controllers (`Controller` class, `Fixed` frame-based, `Timed` time-based)
+- `Spline.hs`: Cubic spline interpolation for smooth animations
+
 **Asset Loading**:
 - `Gltf.hs`: 3D model loading from GLTF/GLB files
 - `Resource.hs`: Resource management and cleanup
 
 ### Key Data Structures
 
-**Game State**: `BattleField` containing `Own` and `Rival` fields with origin and satellite card slots (frontL, frontR, backL, backR).
+**Game State**: `BattleField` containing `own` and `rival` fields (`Field` type). Each `Field` has:
+- `origin`: `CardInstance Origin` — オリジンカード（1枚固定）
+- `frontL`, `frontR`, `backL`, `backR`: `SatelliteSlot` — 衛星カードスロット（EmptySlot / SealedSlot / Assigned）
+- `aura`: `V.Vector HandCardInstance` — オーラゾーン
+- `astraRecords`: `V.Vector AllCardInstance` — アストラレコードゾーン（Satelite/Portion/Arts/AsGuard）
+- `hands`: `V.Vector HandCardInstance` — 手札（Satelite/Portion/AsGuard）
+
+Card instance types use GADTs: `CardInstance s` (型パラメータで種別を区別), `HandCardInstance` (手札用 sum type), `AllCardInstance` (アストラレコード用 sum type).
 
 **Graphics State**: `ApplicationUniforms` for global/per-object uniform buffers, `TextureStorage` for cached font textures, and scene objects mapped to card positions.
 
