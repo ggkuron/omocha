@@ -1,7 +1,7 @@
-module Omocha.ShapeSpec (spec) where
+module Astrata.ShapeSpec (spec) where
 
 import Data.Vector qualified as V
-import Omocha.Shape
+import Astrata.Shape
 import Test.Hspec
   ( Spec,
     describe,

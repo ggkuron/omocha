@@ -82,6 +82,11 @@ satelliteMesh unit slot = do
   m <- toMesh unit (Card {height = 0.01, bitmap = bitmap, yOffset = 0}, (1, 1), V.singleton 0)
   return (cid, m)
 
+handCardMesh :: (HasCallStack, Exception String) => V2 Float -> HandCardInstance -> IO (CardInstanceId, Vector Mesh)
+handCardMesh unit c = do
+  m <- toMesh unit (Card {height = 0.01, bitmap = Just (cardBitmap c), yOffset = 0}, (1, 1), V.singleton 0)
+  return (instanceId c, m)
+
 parseMapFile :: (HasCallStack, Exception String) => BattleField -> IO (M.Map CardInstanceId SceneObject)
 parseMapFile f = do
   let unit = V2 1 1.25
@@ -90,12 +95,17 @@ parseMapFile f = do
   o0 <- toMesh unit (Card {height = 0.1, bitmap = Just ownOriginFace, yOffset = 0}, (1, 1), V.singleton 0)
   r0 <- toMesh unit (Card {height = 0.1, bitmap = Just rivalOriginFace, yOffset = 0}, (1, 1), V.singleton 0)
   cs <- forM [f.own.frontL, f.own.frontR, f.rival.frontL, f.rival.frontR, f.own.backL, f.own.backR, f.rival.backL, f.rival.backR] $ satelliteMesh unit
-  return
-    $ M.fromList
-    . V.toList
-    $ V.imap (\i (cid, m) -> (cid, SceneObject m (ObjectId i)))
-    $ (instanceId f.own.origin, o0)
-    `V.cons` ((instanceId f.rival.origin, r0) `V.cons` V.fromList (mapMaybe (\(c, m) -> (\c' -> (c', m)) <$> c) cs))
+  hs <- mapM (handCardMesh unit) . V.toList $
+          f.own.hands <> f.own.stack <> f.rival.hands <> f.rival.stack
+  let battleZoneObjs =
+        V.imap (\i (cid, m) -> (cid, SceneObject m (ObjectId i)))
+          $  (instanceId f.own.origin, o0)
+          `V.cons` ( (instanceId f.rival.origin, r0)
+          `V.cons` V.fromList (mapMaybe (\(c, m) -> (\c' -> (c', m)) <$> c) cs))
+      handOffset = V.length battleZoneObjs
+      handObjs = V.imap (\i (cid, m) -> (cid, SceneObject m (ObjectId (handOffset + i))))
+                   (V.fromList hs)
+  return . M.fromList . V.toList $ battleZoneObjs <> handObjs
 
 mapY :: (Fractional a, R2 t) => t a -> a
 mapY unit = (unit ^. _x + unit ^. _y) / 2

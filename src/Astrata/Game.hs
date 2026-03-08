@@ -9,8 +9,7 @@ import Astrata.Context
 import Astrata.Font
 import Astrata.Map
 import Astrata.MapFile
-  ( BattleField,
-    CardInstanceId,
+  ( CardInstanceId,
     FieldSide (..),
     initialBattleField,
   )
@@ -19,6 +18,7 @@ import Astrata.Mesh
 import Astrata.Resource
 import Astrata.Scene
 import Astrata.Shader
+import Astrata.Shape (plane)
 import Astrata.Text (text)
 import Astrata.Uniform
 import Astrata.UserInput
@@ -27,8 +27,6 @@ import Astrata.UserInput
     InputE,
     InputG
       ( cameraLock,
-        cancelSelection,
-        confirmSelection,
         direction,
         hardReset,
         n,
@@ -38,14 +36,12 @@ import Astrata.UserInput
         stop
       ),
     diffInput,
-    edgeInput,
     initialInput,
     initialInputE,
     justInput,
     onlyInput,
     readInput,
   )
-import Control.Lens ((+~))
 import Control.Monad
 import Control.Monad.Exception qualified as E (MonadException (catch))
 import Data.BoundingBox qualified as BB
@@ -97,9 +93,7 @@ data Env os = Env
     textureStorage :: IORef (M.Map (Double, Char) (Texture2D os (Format RGBAFloat))),
     fpsSetting :: IORef Double,
     lastRenderedTime :: IORef Double,
-    maps :: IORef BattleField,
-    cards :: IORef (M.Map CardInstanceId ObjectId),
-    cardSelection :: IORef (Vector CardInstanceId)
+    cards :: IORef (M.Map CardInstanceId ObjectId)
   }
 
 type ShaderInput = (V2 Int, String)
@@ -107,23 +101,37 @@ type ShaderInput = (V2 Int, String)
 data Position = Position
   { position :: V3 Float,
     direction :: V3 Float,
-    inputDirection :: Maybe Astrata.UserInput.Direction
+    inputDirection :: Maybe Direction
   }
 
 showF :: (RealFloat a) => a -> String
 showF a = showFFloat (Just 2) a " "
 
-updateCardSelection :: Vector CardInstanceId -> InputE -> MF.BattleField -> Vector CardInstanceId
+updateCardSelection :: MF.Selection -> InputE -> MF.BattleField -> MF.Selection
 updateCardSelection currentSelection input bf =
-  let selectCardInput = fmap MF.CardInstanceId (justInput input.n)
-      confirmPressed = edgeInput input.confirmSelection
-      cancelPressed = edgeInput input.cancelSelection
-   in case (selectCardInput, confirmPressed, cancelPressed) of
-        (Just cardIndex, False, False) ->
-          V.singleton cardIndex
-        (Nothing, False, True) ->
-          V.empty
-        _ -> currentSelection
+  case input.direction of
+    (Just DirLeft, True) -> MF.prevSelection bf currentSelection
+    (Just DirRight, True) -> MF.nextSelection bf currentSelection
+    (Just DirUp, True) -> MF.prevInLevel bf currentSelection
+    (Just DirDown, True) -> MF.nextInLevel bf currentSelection
+    _ -> currentSelection
+
+slotWorldPos :: MF.FieldSide -> MF.BattleFieldSlot -> V3 Float
+slotWorldPos side slot = case (side, slot) of
+  (MF.Own, MF.OriginSlot) -> V3 2.5 0 (1.25 * 1.5)
+  (MF.Opponent, MF.OriginSlot) -> V3 2.5 0 (-(1.25 * 1.5))
+  (MF.Own, MF.FrontL) -> V3 1 0 1.25
+  (MF.Own, MF.FrontR) -> V3 4 0 1.25
+  (MF.Opponent, MF.FrontL) -> V3 4 0 (-1.25)
+  (MF.Opponent, MF.FrontR) -> V3 1 0 (-1.25)
+  (MF.Own, MF.BackL) -> V3 1 0 (1.25 * 2.5)
+  (MF.Own, MF.BackR) -> V3 4 0 (1.25 * 2.5)
+  (MF.Opponent, MF.BackL) -> V3 4 0 (-(1.25 * 2.5))
+  (MF.Opponent, MF.BackR) -> V3 1 0 (-(1.25 * 2.5))
+
+selectionHighlightPos :: MF.Selection -> Maybe (V3 Float)
+selectionHighlightPos (MF.BattleSlotSelect side _ slot) = Just (slotWorldPos side slot)
+selectionHighlightPos _ = Nothing
 
 showV3F :: V3 Float -> String
 showV3F = concatMap showF
@@ -131,7 +139,7 @@ showV3F = concatMap showF
 instance Show Position where
   show Position {..} = "pos: " ++ showV3F position ++ "\n\tdir: " ++ showV3F direction
 
-updatePosition :: Position -> InputE -> IO Position
+updatePosition :: Position -> Astrata.UserInput.InputE -> IO Position
 updatePosition p input =
   if
     | fst input.reset ->
@@ -142,22 +150,21 @@ updatePosition p input =
               inputDirection = fst input.direction
             }
     | otherwise -> do
-        let d' = case justInput input.direction of
+        let d' = case Astrata.UserInput.justInput input.direction of
               Just n -> case p.inputDirection of
                 Just current' | n == current' -> p.direction
                 _ -> case n of
-                  DirUp -> p.direction
-                  DirDown -> -p.direction
-                  DirRight -> fromQuaternion (axisAngle (V3 0 1 0) (-(pi / 2))) !* p.direction
-                  DirLeft -> fromQuaternion (axisAngle (V3 0 1 0) (pi / 2)) !* p.direction
+                  Astrata.UserInput.DirUp -> p.direction
+                  Astrata.UserInput.DirDown -> -p.direction
+                  Astrata.UserInput.DirRight -> fromQuaternion (axisAngle (V3 0 1 0) (-(pi / 2))) !* p.direction
+                  Astrata.UserInput.DirLeft -> fromQuaternion (axisAngle (V3 0 1 0) (pi / 2)) !* p.direction
               Nothing -> p.direction
             perFrameTime = 1 / 5
             v' =
               min
                 (pure 3)
                 if
-                  | justInput input.stop -> V3 0 0 0
-                  | isJust (justInput input.direction) -> d'
+                  | Astrata.UserInput.justInput input.stop -> V3 0 0 0
                   | otherwise -> 0
             t' = p.position + v' * pure perFrameTime
         return
@@ -258,7 +265,7 @@ execGame Game {..} =
   runResourceT' . unResource $ runContextT (GLFW.defaultHandleConfig {GLFW.configEventPolicy = Just GLFW.Poll}) $ unCtx $ do
     rs@(_, _, Env {..}) <- prepare
 
-    (keyInput, keyInputSink) <- liftIO $ E.external initialInput
+    (keyInput, keyInputSink) <- liftIO $ E.external Astrata.UserInput.initialInput
 
     nw <- liftIO $ network rs keyInput
 
@@ -268,7 +275,7 @@ execGame Game {..} =
     loop win keyInputSink nw = do
       closeRequested <- GameCtx $ GLFW.windowShouldClose win
       unless (fromMaybe False closeRequested) $ do
-        dt <- GameCtx $ readInput win keyInputSink
+        dt <- GameCtx $ Astrata.UserInput.readInput win keyInputSink
         case dt of
           Nothing -> return ()
           Just dt' -> (join . liftIO . nw $ dt') >> loop win keyInputSink nw
@@ -285,17 +292,18 @@ data Game = Game
         ( GameOrder ->
           GlobalUniformB ->
           M.Map ObjectId ObjectUniformB ->
+          Maybe (V3 Float, M44 Float) ->
           GameCtx os (),
           Maybe (BB.Box V2 Double) -> ShaderInput -> GameCtx os (),
           Env os
         ),
     network ::
       forall os.
-      ( GameOrder -> GlobalUniformB -> M.Map ObjectId ObjectUniformB -> GameCtx os (),
+      ( GameOrder -> GlobalUniformB -> M.Map ObjectId ObjectUniformB -> Maybe (V3 Float, M44 Float) -> GameCtx os (),
         Maybe (BB.Box V2 Double) -> ShaderInput -> GameCtx os (),
         Env os
       ) ->
-      E.SignalGen Double (E.Signal Input) ->
+      E.SignalGen Double (E.Signal Astrata.UserInput.Input) ->
       IO (Double -> IO (GameCtx os ()))
   }
 
@@ -312,14 +320,34 @@ game =
         let g = initialBattleField
         objs <- liftIO $ parseMapFile g
 
-        maps <- liftIO $ newIORef g
         cards <- liftIO $ newIORef $ M.map (\o -> o.id) objs
-        cardSelection <- liftIO $ newIORef V.empty
 
         let gs = gridShader (7, 8) (V2 1 1.25) (V3 0 0 (-(4 * 1.25)))
-        (unis, s) <- GameCtx $ buildRenderer gs win (V.fromList $ M.elems objs)
+            cardsVec = V.fromList (M.elems objs)
+            allObjs = cardsVec
+        (unis, s) <- GameCtx $ buildRenderer gs win allObjs
         ts <- GameCtx $ compileShader $ textShader win unis
-        renderings <- liftIO $ newIORef $ renderWith unis s
+        hs <- GameCtx $ compileShader $ highlightShader win unis
+        let hlMesh = V.head $ plane (V3 1 0 1.25) (V3 (-0.5) 0 (-0.625)) (V4 1 1 1 1)
+            hlL = length hlMesh.vertices
+            hlOff = hlMesh.offset
+        hlVbuf <- GameCtx $ newBuffer hlL
+        hlNbuf <- GameCtx $ newBuffer hlL
+        GameCtx $ when (hlL > 0) $ do
+          writeBuffer hlVbuf 0 [v.position + hlOff | v <- hlMesh.vertices]
+          writeBuffer hlNbuf 0 [v.normal | v <- hlMesh.vertices]
+        let hlRender g' pos proj' = do
+              writeHighlight unis pos proj'
+              render $ do
+                pArr :: VertexArray () BPosition <- newVertexArray hlVbuf
+                nArr :: VertexArray () BNormal <- newVertexArray hlNbuf
+                let prims = toPrimitiveArray TriangleStrip (zipVertices (,) pArr nArr)
+                hs $ HighlightEnvironment {size = g'.windowSize, color = V4 1 1 1 1, primitives = prims}
+        renderings <- liftIO $ newIORef $ \g' os' mHighlight -> do
+          renderWith unis s g' os'
+          case mHighlight of
+            Nothing -> return ()
+            Just (V3 hx _ hz, proj') -> hlRender g' (V3 hx 0.02 hz) proj'
 
         let renderText bbox (ws, inp) = do
               vs <- charMeshes font bbox 24 inp
@@ -339,34 +367,44 @@ game =
                     let pa = toPrimitiveArray TriangleStrip pArr
                     ts $ TextEnvironment vpSize pa t
                 render $ bundle t ws
-        let update c g o = GameCtx
+        let update c g o mHighlight = GameCtx
               $ case c of
                 GameReset -> do
                   E.catch
                     ( do
-                        let g = initialBattleField
-                        objs <- liftIO $ parseMapFile g
-                        writeIORef maps g
-
-                        (unis, s) <- buildRenderer gs win (V.fromList $ M.elems objs)
-
-                        let r = renderWith unis s
+                        let bf = initialBattleField
+                        objs <- liftIO $ parseMapFile bf
+                        let newCardsVec = V.fromList (M.elems objs)
+                        (unis', s') <- buildRenderer gs win newCardsVec
+                        newHs <- compileShader $ highlightShader win unis'
+                        let newHlRender g' pos proj' = do
+                              writeHighlight unis' pos proj'
+                              render $ do
+                                pArr :: VertexArray () BPosition <- newVertexArray hlVbuf
+                                nArr :: VertexArray () BNormal <- newVertexArray hlNbuf
+                                let prims = toPrimitiveArray TriangleStrip (zipVertices (,) pArr nArr)
+                                newHs $ HighlightEnvironment {size = g'.windowSize, color = V4 1 1 1 1, primitives = prims}
+                        let r = \g' os' mH -> do
+                              renderWith unis' s' g' os'
+                              case mH of
+                                Nothing -> return ()
+                                Just (V3 hx _ hz, proj') -> newHlRender g' (V3 hx 0.02 hz) proj'
                         liftIO $ writeIORef renderings r
                     )
                     (\e -> trace (show (e :: SomeException)) $ return ())
 
                   r <- liftIO $ readIORef renderings
-                  r g o
+                  r g o mHighlight
                 GameSave _ -> do
                   r <- liftIO $ readIORef renderings
-                  r g o
+                  r g o mHighlight
                 GameContinue -> do
                   r <- liftIO $ readIORef renderings
-                  r g o
+                  r g o mHighlight
                 GameLoad _ -> do
                   -- TODO: implement loading different maps
                   r <- liftIO $ readIORef renderings
-                  r g o
+                  r g o mHighlight
 
         return
           ( update,
@@ -376,9 +414,7 @@ game =
                 textureStorage = textureStorage,
                 fpsSetting = fpsSetting,
                 lastRenderedTime = lastRenderTime,
-                maps = maps,
-                cards = cards,
-                cardSelection = cardSelection
+                cards = cards
               }
           ),
       network = \(update, renderText, env) keyInput ->
@@ -389,8 +425,8 @@ game =
           ki <- keyInput
           ki' <-
             E.transfer
-              initialInputE
-              (\_ i p -> diffInput i $ onlyInput p)
+              Astrata.UserInput.initialInputE
+              (\_ i p -> Astrata.UserInput.diffInput i $ Astrata.UserInput.onlyInput p)
               ki
 
           p <-
@@ -409,17 +445,13 @@ game =
               moveUnit
               p
 
-          _cardSelectionSignal <-
-            E.effectful2
-              ( \input _ -> do
-                  currentBf <- liftIO $ readIORef env.maps
-                  currentSelection <- liftIO $ readIORef env.cardSelection
-                  let newSelection = updateCardSelection currentSelection input currentBf
-                  liftIO $ writeIORef env.cardSelection newSelection
-                  return newSelection
-              )
+          mapsSignal <- E.transfer initialBattleField (\_ input current -> if input.hardReset then initialBattleField else current) ki
+          cardSelectionSignal <-
+            E.transfer2
+              (MF.SideSelect Own)
+              (\_ input bf sel -> updateCardSelection sel input bf)
               ki'
-              target
+              mapsSignal
 
           theta <-
             E.transfer2
@@ -443,18 +475,15 @@ game =
                     | input.n == Just 0 -> V3 5 15 0
                     | input.cameraLock -> p
                     | otherwise ->
-                        if isJust t.inputDirection
-                          then (p + ((t.position - 10 * t.direction) & _y +~ 3)) / 2
-                          else
-                            let traslated = p - t.position
-                                rotated = fromQuaternion (axisAngle (V3 0 1 0) theta) !* traslated
-                             in rotated ^. _xyz + t.position
+                        let traslated = p - t.position
+                            rotated = fromQuaternion (axisAngle (V3 0 1 0) theta) !* traslated
+                         in rotated ^. _xyz + t.position
               )
               theta
               target
               ki
               moveUnit
-          return $ updateFrame env update renderText <$> camera' <*> target <*> ki
+          return $ updateFrame env update renderText <$> camera' <*> target <*> ki <*> cardSelectionSignal <*> mapsSignal
     }
   where
     genDeltaTime = do
@@ -467,14 +496,17 @@ updateFrame ::
   ( GameOrder ->
     GlobalUniformB ->
     M.Map ObjectId ObjectUniformB ->
+    Maybe (V3 Float, M44 Float) ->
     GameCtx os ()
   ) ->
   (Maybe (BB.Box V2 Double) -> ShaderInput -> GameCtx os ()) ->
   V3 Float ->
   Position ->
-  Input ->
+  Astrata.UserInput.Input ->
+  MF.Selection ->
+  MF.BattleField ->
   (GameCtx os) ()
-updateFrame env update renderText camera target input = do
+updateFrame env update renderText camera target input cardSelection m = do
   sz <- GameCtx $ getFrameBufferSize env.win
   let viewUpNorm = V3 0 1 0
       normMat = identity
@@ -482,10 +514,8 @@ updateFrame env update renderText camera target input = do
       light = V3 60 10 60
 
   fpsSetting' <- liftIO $ readIORef env.fpsSetting
-  currentCardSelection <- liftIO $ readIORef env.cardSelection
   let timePerFrame = 1 / fpsSetting'
   current <- liftIO GLFW.getTime
-  m <- liftIO $ readIORef env.maps
   cards <- liftIO $ readIORef env.cards
   lastRenderTime' <- liftIO $ readIORef env.lastRenderedTime
   let current' = fromMaybe lastRenderTime' current
@@ -494,7 +524,7 @@ updateFrame env update renderText camera target input = do
       waitTime = timePerFrame - delta
       fps = 1 / delta
   when (waitTime > 0) $ liftIO $ threadDelay $ floor $ waitTime * 1000000
-  let inp = "target: " ++ show target ++ "\ncamera: " ++ showV3F camera ++ "\nfps: " ++ showF fps ++ "\nmid:" ++ show input.n ++ "\nselection: " ++ show currentCardSelection
+  let inp = "target: " ++ show target ++ "\ncamera: " ++ showV3F camera ++ "\nfps: " ++ showF fps ++ "\nmid:" ++ show input.n ++ "\nselection: " ++ show cardSelection
       cc = let c' = easeOutQuart (current' `mod''` 0.75) in 0.5 * realToFrac (sin $ pi * c')
       -- 手札・スタック配置定数
       ownHandZ = 5.0 :: Float
@@ -516,13 +546,13 @@ updateFrame env update renderText camera target input = do
       ( M.fromList
           ( ( cards M.! MF.instanceId m.own.origin,
               ObjectUniformB
-                { position = V3 2.5 cc (1.25 * 1.5),
+                { position = slotWorldPos MF.Own MF.OriginSlot,
                   proj = rotateCard Astrata.MapFile.Own (MF.isTired m.own.origin)
                 }
             )
               : ( cards M.! MF.instanceId m.rival.origin,
                   ObjectUniformB
-                    { position = V3 2.5 0 (-(1.25 * 1.5)),
+                    { position = slotWorldPos MF.Opponent MF.OriginSlot,
                       proj = rotateCard Astrata.MapFile.Opponent (MF.isTired m.rival.origin)
                     }
                 )
@@ -530,7 +560,7 @@ updateFrame env update renderText camera target input = do
                     [ ( \b ->
                           ( cards M.! MF.instanceId b,
                             ObjectUniformB
-                              { position = V3 1 0 1.25,
+                              { position = slotWorldPos MF.Own MF.FrontL,
                                 proj = rotateCard Astrata.MapFile.Own (MF.isTired b)
                               }
                           )
@@ -539,7 +569,7 @@ updateFrame env update renderText camera target input = do
                       ( \b ->
                           ( cards M.! MF.instanceId b,
                             ObjectUniformB
-                              { position = V3 4 0 1.25,
+                              { position = slotWorldPos MF.Own MF.FrontR,
                                 proj = rotateCard Astrata.MapFile.Own (MF.isTired b)
                               }
                           )
@@ -606,7 +636,7 @@ updateFrame env update renderText camera target input = do
                                proj = rotateHandCard MF.Own False
                              }
                          )
-                         | (i, c) <- zip [0 ..] (V.toList m.own.hands)
+                         | (i, c) <- zip [0 :: Int ..] (V.toList m.own.hands)
                        ]
                     ++ [ ( cards M.! MF.instanceId c,
                            ObjectUniformB
@@ -614,7 +644,7 @@ updateFrame env update renderText camera target input = do
                                proj = rotateCard MF.Own False
                              }
                          )
-                         | (i, c) <- zip [0 ..] (V.toList m.own.stack)
+                         | (i, c) <- zip [0 :: Int ..] (V.toList m.own.stack)
                        ]
                     ++ [ ( cards M.! MF.instanceId c,
                            ObjectUniformB
@@ -622,7 +652,7 @@ updateFrame env update renderText camera target input = do
                                proj = rotateHandCard MF.Opponent False
                              }
                          )
-                         | (i, c) <- zip [0 ..] (V.toList m.rival.hands)
+                         | (i, c) <- zip [0 :: Int ..] (V.toList m.rival.hands)
                        ]
                     ++ [ ( cards M.! MF.instanceId c,
                            ObjectUniformB
@@ -630,11 +660,12 @@ updateFrame env update renderText camera target input = do
                                proj = rotateCard MF.Opponent False
                              }
                          )
-                         | (i, c) <- zip [0 ..] (V.toList m.rival.stack)
+                         | (i, c) <- zip [0 :: Int ..] (V.toList m.rival.stack)
                        ]
                 )
           )
       )
+      (fmap (\pos -> (pos, rotateCard Astrata.MapFile.Own (MF.isTired m.own.origin))) (selectionHighlightPos cardSelection))
   renderText Nothing (sz, inp)
   GameCtx $ swapWindowBuffers env.win
 

@@ -5,6 +5,7 @@ module Astrata.Uniform
     ObjectUniform (..),
     newUniforms,
     writeGlobal,
+    writeHighlight,
     GlobalUniformS,
     readObjectUniform,
     GlobalUniformB,
@@ -25,6 +26,7 @@ import RIO
 data ApplicationUniforms os = ApplicationUniforms
   { global :: Buffer os (Uniform ({- WindowSize -} B2 Int32 {- Normal -}, V3 (B3 Float {- CameraPosition -}), B3 Float {- CameraTarget -}, B3 Float {- CameraUp -}, B3 Float {- LightDirection -}, B3 Float, B3 Float)),
     objects :: Buffer os (Uniform ({- Uniform (V3 (B3 Float) {- Normal -} , -} B3 Float {- Position -}, V4 (B4 Float))),
+    highlight :: Buffer os (Uniform (B3 Float, V4 (B4 Float))),
     sizeOfObjects :: Natural
   }
 
@@ -77,7 +79,11 @@ newUniforms :: (ContextHandler ctx, MonadIO m) => Natural -> ContextT ctx os m (
 newUniforms numOfObjects = do
   g <- newBuffer 1
   o <- newBuffer (fromIntegral numOfObjects)
-  return $ ApplicationUniforms g o numOfObjects
+  h <- newBuffer 1
+  return $ ApplicationUniforms g o h numOfObjects
+
+writeHighlight :: (MonadIO m, ContextHandler ctx) => ApplicationUniforms os -> V3 Float -> M44 Float -> ContextT ctx os m ()
+writeHighlight uni pos proj = writeBuffer uni.highlight 0 [(pos, proj)]
 
 renderWith ::
   (MonadIO m, ContextHandler ctx, Control.Monad.Exception.MonadException m) =>

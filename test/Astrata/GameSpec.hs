@@ -1,8 +1,8 @@
-module Omocha.GameSpec (spec) where
+module Astrata.GameSpec (spec) where
 
 import Data.List qualified as L
 import Data.Vector qualified as V
-import Omocha.Game
+import Astrata.Game
 import Test.Hspec
 import Test.QuickCheck
 import Prelude

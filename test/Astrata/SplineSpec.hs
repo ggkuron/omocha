@@ -1,8 +1,8 @@
-module Omocha.SplineSpec (spec) where
+module Astrata.SplineSpec (spec) where
 
 import Data.List (nub, sort)
 import Data.Vector qualified as V
-import Omocha.Spline
+import Astrata.Spline
 import Test.Hspec
 import Test.QuickCheck
 import Prelude

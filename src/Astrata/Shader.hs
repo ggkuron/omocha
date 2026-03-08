@@ -171,6 +171,37 @@ textShader win unis = do
       colorOption = ContextColorOption (BlendRgbAlpha (FuncAdd, FuncAdd) (BlendingFactors SrcAlpha OneMinusSrcAlpha, BlendingFactors Zero One) (V4 0 0 0 0)) (pure True)
   drawWindowColor (const (win, colorOption)) litFrags
 
+data HighlightEnvironment os = HighlightEnvironment
+  { size :: V2 Int,
+    color :: V4 Float,
+    primitives :: PrimitiveArray Triangles (BPosition, BNormal)
+  }
+
+highlightShader ::
+  Window os RGBAFloat Depth ->
+  ApplicationUniforms os ->
+  Shader os (HighlightEnvironment os) ()
+highlightShader win unis = do
+  g <- readGlobalUniform unis
+  uni <- getUniform (\_ -> (unis.highlight, 0))
+  let (position, modelProj) = uni
+  boards <- toPrimitiveStream $ \env -> (\v -> (v, env.color)) <$> env.primitives
+  let projected = (\((v, n), c) -> let v' = normalizePoint (modelProj !* point v) + position in (proj g v', (g.modelNorm !* n, c, biasMat !* (point . normalizePoint $ lightProj g v')))) <$> boards
+  fragmentStream <- rasterize (\env -> (Front, ViewPort (V2 0 0) env.size, DepthRange 0 1)) projected
+  unif <- readGlobalUniform unis
+  let lightDir :: V3 FFloat = normalizeS unif.lightDirection
+  let litFrags =
+        withRasterizedInfo
+          ( \(n, c, _s) x ->
+              let v = rasterizedFragCoord x
+                  diffuse = point . pure $ clamp (lightDir `dot` n * 10) 0.1 1.0
+               in (c * diffuse, v ^. _z)
+          )
+          fragmentStream
+  let colorOption = ContextColorOption (BlendRgbAlpha (FuncAdd, Min) (BlendingFactors SrcAlpha OneMinusSrcAlpha, BlendingFactors SrcAlpha DstAlpha) (V4 0 0 0 0)) (pure True)
+      depthOption = DepthOption Less True
+  drawWindowColorDepth (const (win, colorOption, depthOption)) litFrags
+
 data GridInput = GridInput (V2 Int) (PrimitiveArray Lines (B3 Float))
 
 gridShader ::
