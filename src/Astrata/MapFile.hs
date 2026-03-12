@@ -324,23 +324,13 @@ findCardLocation bf cid =
       pairs = V.concatMap (\s -> V.map (s,) zones) sides
    in V.find (\(side, zone) -> V.elem cid (zoneCardIds (fieldFor bf side) zone)) pairs
 
--- | 次の Assigned スロットへ（EmptySlot/SealedSlot をスキップ）
+-- | 次のスロットへ（EmptySlot/SealedSlot も含む）
 nextAssignedSlot :: Field -> BattleFieldSlot -> BattleFieldSlot
-nextAssignedSlot field current = go (next current)
-  where
-    go slot
-      | isAssigned field slot = slot
-      | slot == current = current
-      | otherwise = go (next slot)
+nextAssignedSlot _field = next
 
--- | 前の Assigned スロットへ（EmptySlot/SealedSlot をスキップ）
+-- | 前のスロットへ（EmptySlot/SealedSlot も含む）
 prevAssignedSlot :: Field -> BattleFieldSlot -> BattleFieldSlot
-prevAssignedSlot field current = go (prev current)
-  where
-    go slot
-      | isAssigned field slot = slot
-      | slot == current = current
-      | otherwise = go (prev slot)
+prevAssignedSlot _field = prev
 
 -- | 同ゾーン内の次カード ID へ
 nextCardIdInZone :: BattleField -> CardInstanceId -> CardInstanceId

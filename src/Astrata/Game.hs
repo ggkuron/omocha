@@ -116,22 +116,143 @@ updateCardSelection currentSelection input bf =
     (Just DirDown, True) -> MF.nextInLevel bf currentSelection
     _ -> currentSelection
 
-slotWorldPos :: MF.FieldSide -> MF.BattleFieldSlot -> V3 Float
-slotWorldPos side slot = case (side, slot) of
-  (MF.Own, MF.OriginSlot) -> V3 2.5 0 (1.25 * 1.5)
-  (MF.Opponent, MF.OriginSlot) -> V3 2.5 0 (-(1.25 * 1.5))
-  (MF.Own, MF.FrontL) -> V3 1 0 1.25
-  (MF.Own, MF.FrontR) -> V3 4 0 1.25
-  (MF.Opponent, MF.FrontL) -> V3 4 0 (-1.25)
-  (MF.Opponent, MF.FrontR) -> V3 1 0 (-1.25)
-  (MF.Own, MF.BackL) -> V3 1 0 (1.25 * 2.5)
-  (MF.Own, MF.BackR) -> V3 4 0 (1.25 * 2.5)
-  (MF.Opponent, MF.BackL) -> V3 4 0 (-(1.25 * 2.5))
-  (MF.Opponent, MF.BackR) -> V3 1 0 (-(1.25 * 2.5))
+-- グリッド座標でハイライト範囲を指定する型
+data GridRect = GridRect
+  { gx :: !Float, -- グリッドX座標（左端）
+    gz :: !Float, -- グリッドZ座標（下端）
+    gw :: !Float, -- グリッド幅
+    gh :: !Float -- グリッド高さ
+  }
 
-selectionHighlightPos :: MF.Selection -> Maybe (V3 Float)
-selectionHighlightPos (MF.BattleSlotSelect side _ slot) = Just (slotWorldPos side slot)
-selectionHighlightPos _ = Nothing
+-- グリッド定数
+gridCellW :: Float
+gridCellW = 1
+
+gridCellH :: Float
+gridCellH = 1.25
+
+gridOffsetZ :: Float
+gridOffsetZ = -5
+
+-- GridRect → (ワールド中心座標, スケール)
+gridRectToWorld :: GridRect -> (V3 Float, V3 Float)
+gridRectToWorld GridRect {..} =
+  let cx = (gx + gw / 2) * gridCellW
+      cz = (gz + gh / 2) * gridCellH + gridOffsetZ
+      sx = gw * gridCellW
+      sz = gh * gridCellH
+   in (V3 cx 0 cz, V3 sx 1 sz)
+
+-- Opponent側はZ軸をグリッド中心(gz=4)で反転
+mirrorGridRect :: GridRect -> GridRect
+mirrorGridRect GridRect {..} = GridRect gx (8 - gz - gh) gw gh
+
+-- スロットのグリッド座標（Own側基準）
+slotGridRect :: MF.FieldSide -> MF.BattleFieldSlot -> GridRect
+slotGridRect side slot = case side of
+  MF.Own -> ownSlotRect slot
+  MF.Opponent -> mirrorGridRect $ case slot of
+    MF.OriginSlot -> ownSlotRect MF.OriginSlot
+    MF.FrontL -> ownSlotRect MF.FrontR
+    MF.FrontR -> ownSlotRect MF.FrontL
+    MF.BackL -> ownSlotRect MF.BackR
+    MF.BackR -> ownSlotRect MF.BackL
+  where
+    ownSlotRect MF.OriginSlot = GridRect 3 6 1 1
+    ownSlotRect MF.FrontL = GridRect 1.75 5.25 1 1
+    ownSlotRect MF.FrontR = GridRect 4.25 5.25 1 1
+    ownSlotRect MF.BackL = GridRect 1.75 6.75 1 1
+    ownSlotRect MF.BackR = GridRect 4.25 6.75 1 1
+
+slotWorldPos :: MF.FieldSide -> MF.BattleFieldSlot -> V3 Float
+slotWorldPos side slot =
+  let (V3 cx _ cz, V3 sx _ sz) = gridRectToWorld $ slotGridRect side slot
+   in V3 (cx - sx / 2) 0 (cz - sz / 2)
+
+-- バトルスロット用統合関数
+slotUniform :: MF.FieldSide -> MF.BattleFieldSlot -> Bool -> ObjectUniformB
+slotUniform side slot tired =
+  ObjectUniformB
+    { position = slotWorldPos side slot,
+      proj = rotateCard side tired
+    }
+
+-- サイドのバトルスロットカード一覧を生成
+battleSlotEntries :: M.Map CardInstanceId ObjectId -> MF.FieldSide -> MF.Field -> [(ObjectId, ObjectUniformB)]
+battleSlotEntries cards side field =
+  (cards M.! MF.instanceId field.origin, slotUniform side MF.OriginSlot (MF.isTired field.origin))
+    : catMaybes
+      [ (\b -> (cards M.! MF.instanceId b, slotUniform side slot (MF.isTired b)))
+          <$> MF.maybeSlot sat
+        | (slot, sat) <-
+            [ (MF.FrontL, field.frontL),
+              (MF.FrontR, field.frontR),
+              (MF.BackL, field.backL),
+              (MF.BackR, field.backR)
+            ]
+      ]
+
+-- 手札一覧を生成
+handEntries :: M.Map CardInstanceId ObjectId -> MF.FieldSide -> V.Vector MF.HandCardInstance -> [(ObjectId, ObjectUniformB)]
+handEntries cards side hands =
+  [ ( cards M.! MF.instanceId c,
+      ObjectUniformB
+        { position = handWorldPos side i,
+          proj = rotateHandCard side False
+        }
+    )
+    | (i, c) <- zip [0 :: Int ..] (V.toList hands)
+  ]
+
+-- スタック一覧を生成
+stackEntries :: M.Map CardInstanceId ObjectId -> MF.FieldSide -> V.Vector MF.HandCardInstance -> [(ObjectId, ObjectUniformB)]
+stackEntries cards side stk =
+  [ ( cards M.! MF.instanceId c,
+      ObjectUniformB
+        { position = stackWorldPos side i,
+          proj = rotateCard side False
+        }
+    )
+    | (i, c) <- zip [0 :: Int ..] (V.toList stk)
+  ]
+
+-- 座標計算関数
+handWorldPos :: MF.FieldSide -> Int -> V3 Float
+handWorldPos side idx = V3 (0.5 + fromIntegral idx * 1.1) 0 z
+  where
+    z = case side of MF.Own -> 5.0; MF.Opponent -> -5.0
+
+stackWorldPos :: MF.FieldSide -> Int -> V3 Float
+stackWorldPos side idx = V3 6.0 (fromIntegral idx * 0.005) z
+  where
+    z = case side of MF.Own -> 3.75; MF.Opponent -> -3.75
+
+-- サイド全体のグリッド座標
+sideGridRect :: MF.FieldSide -> GridRect
+sideGridRect MF.Own = GridRect 0 4 7 4
+sideGridRect MF.Opponent = mirrorGridRect $ sideGridRect MF.Own
+
+-- ゾーンのグリッド座標
+zoneGridRect :: MF.FieldSide -> MF.FieldZone -> GridRect
+zoneGridRect side zone = case side of
+  MF.Own -> ownZoneRect zone
+  MF.Opponent -> mirrorGridRect $ ownZoneRect zone
+  where
+    ownZoneRect MF.BattleZone = GridRect 1.5 5 4 3
+    ownZoneRect MF.HandZone = GridRect 0 7.6 7 0.8
+    ownZoneRect MF.DeckZone = GridRect 6 5 1.1 1
+    ownZoneRect MF.AuraZone = GridRect 3 6 1 1
+    ownZoneRect MF.AstraRecordZone = GridRect 6 6 1 1
+    ownZoneRect MF.GuardZone = GridRect 1 4.5 6 1
+
+selectionHighlight :: MF.Selection -> Maybe (V3 Float, V3 Float)
+selectionHighlight (MF.SideSelect side) = Just $ gridRectToWorld $ sideGridRect side
+selectionHighlight (MF.FiledSelect side zone) = Just $ gridRectToWorld $ zoneGridRect side zone
+selectionHighlight (MF.BattleSlotSelect side _ slot) = Just $ gridRectToWorld $ slotGridRect side slot
+selectionHighlight (MF.CardSelect _) = Nothing
+
+scaledProj :: V3 Float -> M44 Float -> M44 Float
+scaledProj (V3 sx sy sz) m = V4 (V4 sx 0 0 0) (V4 0 sy 0 0) (V4 0 0 sz 0) (V4 0 0 0 1) !*! m
 
 showV3F :: V3 Float -> String
 showV3F = concatMap showF
@@ -328,7 +449,7 @@ game =
         (unis, s) <- GameCtx $ buildRenderer gs win allObjs
         ts <- GameCtx $ compileShader $ textShader win unis
         hs <- GameCtx $ compileShader $ highlightShader win unis
-        let hlMesh = V.head $ plane (V3 1 0 1.25) (V3 (-0.5) 0 (-0.625)) (V4 1 1 1 1)
+        let hlMesh = V.head $ plane (V3 1 0 1) (V3 (-0.5) 0 (-0.5)) (V4 1 1 1 1)
             hlL = length hlMesh.vertices
             hlOff = hlMesh.offset
         hlVbuf <- GameCtx $ newBuffer hlL
@@ -384,7 +505,7 @@ game =
                                 nArr :: VertexArray () BNormal <- newVertexArray hlNbuf
                                 let prims = toPrimitiveArray TriangleStrip (zipVertices (,) pArr nArr)
                                 newHs $ HighlightEnvironment {size = g'.windowSize, color = V4 1 1 1 1, primitives = prims}
-                        let r = \g' os' mH -> do
+                        let r g' os' mH = do
                               renderWith unis' s' g' os'
                               case mH of
                                 Nothing -> return ()
@@ -526,15 +647,6 @@ updateFrame env update renderText camera target input cardSelection m = do
   when (waitTime > 0) $ liftIO $ threadDelay $ floor $ waitTime * 1000000
   let inp = "target: " ++ show target ++ "\ncamera: " ++ showV3F camera ++ "\nfps: " ++ showF fps ++ "\nmid:" ++ show input.n ++ "\nselection: " ++ show cardSelection
       cc = let c' = easeOutQuart (current' `mod''` 0.75) in 0.5 * realToFrac (sin $ pi * c')
-      -- 手札・スタック配置定数
-      ownHandZ = 5.0 :: Float
-      ownHandStartX = 0.5 :: Float
-      ownHandSpacingX = 1.1 :: Float
-      ownStackX = 6.0 :: Float
-      ownStackZ = 3.75 :: Float
-      ownStackYStep = 0.005 :: Float
-      rivalHandZ = -5.0 :: Float
-      rivalStackZ = -3.75 :: Float
   _ <-
     update
       ( if
@@ -544,128 +656,14 @@ updateFrame env update renderText camera target input cardSelection m = do
       )
       GlobalUniform {windowSize = sz, modelNorm = normMat, viewCamera = camera, viewTarget = target.position, viewUp = viewUpNorm, light = light, lightDirection = lightDir}
       ( M.fromList
-          ( ( cards M.! MF.instanceId m.own.origin,
-              ObjectUniformB
-                { position = slotWorldPos MF.Own MF.OriginSlot,
-                  proj = rotateCard Astrata.MapFile.Own (MF.isTired m.own.origin)
-                }
-            )
-              : ( cards M.! MF.instanceId m.rival.origin,
-                  ObjectUniformB
-                    { position = slotWorldPos MF.Opponent MF.OriginSlot,
-                      proj = rotateCard Astrata.MapFile.Opponent (MF.isTired m.rival.origin)
-                    }
-                )
-              : ( catMaybes
-                    [ ( \b ->
-                          ( cards M.! MF.instanceId b,
-                            ObjectUniformB
-                              { position = slotWorldPos MF.Own MF.FrontL,
-                                proj = rotateCard Astrata.MapFile.Own (MF.isTired b)
-                              }
-                          )
-                      )
-                        <$> MF.maybeSlot m.own.frontL,
-                      ( \b ->
-                          ( cards M.! MF.instanceId b,
-                            ObjectUniformB
-                              { position = slotWorldPos MF.Own MF.FrontR,
-                                proj = rotateCard Astrata.MapFile.Own (MF.isTired b)
-                              }
-                          )
-                      )
-                        <$> MF.maybeSlot m.own.frontR,
-                      ( \b ->
-                          ( cards M.! MF.instanceId b,
-                            ObjectUniformB
-                              { position = V3 1 0 (-1.25),
-                                proj = rotateCard Astrata.MapFile.Opponent (MF.isTired b)
-                              }
-                          )
-                      )
-                        <$> MF.maybeSlot m.rival.frontR,
-                      ( \b ->
-                          ( cards M.! MF.instanceId b,
-                            ObjectUniformB
-                              { position = V3 4 0 (-1.25),
-                                proj = rotateCard Astrata.MapFile.Opponent (MF.isTired b)
-                              }
-                          )
-                      )
-                        <$> MF.maybeSlot m.rival.frontL,
-                      ( \b ->
-                          ( cards M.! MF.instanceId b,
-                            ObjectUniformB
-                              { position = V3 1 0 (1.25 * 2.5),
-                                proj = rotateCard Astrata.MapFile.Own (MF.isTired b)
-                              }
-                          )
-                      )
-                        <$> MF.maybeSlot m.own.backL,
-                      ( \b ->
-                          ( cards M.! MF.instanceId b,
-                            ObjectUniformB
-                              { position = V3 4 0 (1.25 * 2.5),
-                                proj = rotateCard Astrata.MapFile.Own (MF.isTired b)
-                              }
-                          )
-                      )
-                        <$> MF.maybeSlot m.own.backR,
-                      ( \b ->
-                          ( cards M.! MF.instanceId b,
-                            ObjectUniformB
-                              { position = V3 1 0 (-(1.25 * 2.5)),
-                                proj = rotateCard Astrata.MapFile.Opponent (MF.isTired b)
-                              }
-                          )
-                      )
-                        <$> MF.maybeSlot m.rival.backR,
-                      ( \b ->
-                          ( cards M.! MF.instanceId b,
-                            ObjectUniformB
-                              { position = V3 4 0 (-(1.25 * 2.5)),
-                                proj = rotateCard Astrata.MapFile.Opponent (MF.isTired b)
-                              }
-                          )
-                      )
-                        <$> MF.maybeSlot m.rival.backL
-                    ]
-                    ++ [ ( cards M.! MF.instanceId c,
-                           ObjectUniformB
-                             { position = V3 (ownHandStartX + fromIntegral i * ownHandSpacingX) 0 ownHandZ,
-                               proj = rotateHandCard MF.Own False
-                             }
-                         )
-                         | (i, c) <- zip [0 :: Int ..] (V.toList m.own.hands)
-                       ]
-                    ++ [ ( cards M.! MF.instanceId c,
-                           ObjectUniformB
-                             { position = V3 ownStackX (fromIntegral i * ownStackYStep) ownStackZ,
-                               proj = rotateCard MF.Own False
-                             }
-                         )
-                         | (i, c) <- zip [0 :: Int ..] (V.toList m.own.stack)
-                       ]
-                    ++ [ ( cards M.! MF.instanceId c,
-                           ObjectUniformB
-                             { position = V3 (ownHandStartX + fromIntegral i * ownHandSpacingX) 0 rivalHandZ,
-                               proj = rotateHandCard MF.Opponent False
-                             }
-                         )
-                         | (i, c) <- zip [0 :: Int ..] (V.toList m.rival.hands)
-                       ]
-                    ++ [ ( cards M.! MF.instanceId c,
-                           ObjectUniformB
-                             { position = V3 ownStackX (fromIntegral i * ownStackYStep) rivalStackZ,
-                               proj = rotateCard MF.Opponent False
-                             }
-                         )
-                         | (i, c) <- zip [0 :: Int ..] (V.toList m.rival.stack)
-                       ]
-                )
-          )
+          $ battleSlotEntries cards MF.Own m.own
+          ++ battleSlotEntries cards MF.Opponent m.rival
+          ++ handEntries cards MF.Own m.own.hands
+          ++ handEntries cards MF.Opponent m.rival.hands
+          ++ stackEntries cards MF.Own m.own.stack
+          ++ stackEntries cards MF.Opponent m.rival.stack
       )
-      (fmap (\pos -> (pos, rotateCard Astrata.MapFile.Own (MF.isTired m.own.origin))) (selectionHighlightPos cardSelection))
+      (fmap (\(pos, sc) -> (pos, scaledProj sc identity)) (selectionHighlight cardSelection))
   renderText Nothing (sz, inp)
   GameCtx $ swapWindowBuffers env.win
 
