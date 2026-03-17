@@ -2,12 +2,20 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RecursiveDo #-}
 
-module Astrata.Game (run, transpose, bundle) where
+module Astrata.Game (run, transpose, bundle, advanceLogic, updateCardSelection) where
 
 import Astrata.Bitmap
 import Astrata.Context
 import Astrata.Font
 import Astrata.Map
+import Astrata.Logic
+  ( LogicState (..),
+    drainSteps,
+    logicBattleField,
+    runTurn,
+    InputRequest (..),
+    Response (..),
+  )
 import Astrata.MapFile
   ( CardInstanceId,
     FieldSide (..),
@@ -27,7 +35,10 @@ import Astrata.UserInput
     InputE,
     InputG
       ( cameraLock,
+        cancelSelection,
+        confirmSelection,
         direction,
+        enter,
         hardReset,
         n,
         reset,
@@ -36,6 +47,7 @@ import Astrata.UserInput
         stop
       ),
     diffInput,
+    edgeInput,
     initialInput,
     initialInputE,
     justInput,
@@ -240,10 +252,10 @@ zoneGridRect side zone = case side of
   where
     ownZoneRect MF.BattleZone = GridRect 1.5 5 4 3
     ownZoneRect MF.HandZone = GridRect 0 7.6 7 0.8
-    ownZoneRect MF.DeckZone = GridRect 6 5 1.1 1
+    ownZoneRect MF.DeckZone = GridRect 6 5 1 1
     ownZoneRect MF.AuraZone = GridRect 3 6 1 1
     ownZoneRect MF.AstraRecordZone = GridRect 6 6 1 1
-    ownZoneRect MF.GuardZone = GridRect 1 4.5 6 1
+    ownZoneRect MF.GuardZone = GridRect 0 3.5 7 1
 
 selectionHighlight :: MF.Selection -> Maybe (V3 Float, V3 Float)
 selectionHighlight (MF.SideSelect side) = Just $ gridRectToWorld $ sideGridRect side
@@ -449,7 +461,7 @@ game =
         (unis, s) <- GameCtx $ buildRenderer gs win allObjs
         ts <- GameCtx $ compileShader $ textShader win unis
         hs <- GameCtx $ compileShader $ highlightShader win unis
-        let hlMesh = V.head $ plane (V3 1 0 1) (V3 (-0.5) 0 (-0.5)) (V4 1 1 1 1)
+        let hlMesh = V.head $ plane (V3 1 0 1) (V3 (-0.5) 0 (-0.5)) (V4 1 1 1 0.7)
             hlL = length hlMesh.vertices
             hlOff = hlMesh.offset
         hlVbuf <- GameCtx $ newBuffer hlL
@@ -566,13 +578,18 @@ game =
               moveUnit
               p
 
-          mapsSignal <- E.transfer initialBattleField (\_ input current -> if input.hardReset then initialBattleField else current) ki
-          cardSelectionSignal <-
-            E.transfer2
-              (MF.SideSelect Own)
-              (\_ input bf sel -> updateCardSelection sel input bf)
+          logicAndSelection <-
+            E.transfer
+              (LogicIdle initialBattleField, MF.SideSelect Own)
+              ( \_ input (logicSt, sel) ->
+                  let bf = logicBattleField logicSt
+                      sel' = updateCardSelection sel input bf
+                      logicSt' = advanceLogic input sel' logicSt
+                   in (logicSt', sel')
+              )
               ki'
-              mapsSignal
+          let logicSignal = fst <$> logicAndSelection
+              cardSelectionSignal = snd <$> logicAndSelection
 
           theta <-
             E.transfer2
@@ -604,7 +621,7 @@ game =
               target
               ki
               moveUnit
-          return $ updateFrame env update renderText <$> camera' <*> target <*> ki <*> cardSelectionSignal <*> mapsSignal
+          return $ updateFrame env update renderText <$> camera' <*> target <*> ki <*> ki' <*> cardSelectionSignal <*> logicSignal
     }
   where
     genDeltaTime = do
@@ -624,10 +641,12 @@ updateFrame ::
   V3 Float ->
   Position ->
   Astrata.UserInput.Input ->
+  InputE ->
   MF.Selection ->
-  MF.BattleField ->
+  LogicState ->
   (GameCtx os) ()
-updateFrame env update renderText camera target input cardSelection m = do
+updateFrame env update renderText camera target input _inputE cardSelection logicState = do
+  let m = logicBattleField logicState
   sz <- GameCtx $ getFrameBufferSize env.win
   let viewUpNorm = V3 0 1 0
       normMat = identity
@@ -645,7 +664,11 @@ updateFrame env update renderText camera target input cardSelection m = do
       waitTime = timePerFrame - delta
       fps = 1 / delta
   when (waitTime > 0) $ liftIO $ threadDelay $ floor $ waitTime * 1000000
-  let inp = "target: " ++ show target ++ "\ncamera: " ++ showV3F camera ++ "\nfps: " ++ showF fps ++ "\nmid:" ++ show input.n ++ "\nselection: " ++ show cardSelection
+  let logicInfo = case logicState of
+        LogicIdle _ -> "Press Enter to start"
+        LogicWaiting req _ _ -> "Waiting: " ++ show req
+        LogicDone logs _ -> "Turn complete: " ++ show logs
+      inp = "target: " ++ show target ++ "\ncamera: " ++ showV3F camera ++ "\nfps: " ++ showF fps ++ "\nmid:" ++ show input.n ++ "\nselection: " ++ show cardSelection ++ "\n" ++ logicInfo
       cc = let c' = easeOutQuart (current' `mod''` 0.75) in 0.5 * realToFrac (sin $ pi * c')
   _ <-
     update
@@ -666,6 +689,32 @@ updateFrame env update renderText camera target input cardSelection m = do
       (fmap (\(pos, sc) -> (pos, scaledProj sc identity)) (selectionHighlight cardSelection))
   renderText Nothing (sz, inp)
   GameCtx $ swapWindowBuffers env.win
+
+--------------------------------------------------------------------------------
+-- Logic / FRP integration
+--------------------------------------------------------------------------------
+
+advanceLogic :: InputE -> MF.Selection -> LogicState -> LogicState
+advanceLogic input selection state = case state of
+  LogicIdle bf
+    | edgeInput input.enter -> drainSteps bf (runTurn Own)
+    | edgeInput input.hardReset -> LogicIdle initialBattleField
+    | otherwise -> state
+  LogicWaiting req bf k
+    | edgeInput input.hardReset -> LogicIdle initialBattleField
+    | edgeInput input.confirmSelection ->
+        case selectionToResponse req selection of
+          Just resp -> drainSteps bf (k resp)
+          Nothing -> state
+    | edgeInput input.cancelSelection -> drainSteps bf (k Cancelled)
+    | otherwise -> state
+  LogicDone _ bf -> LogicIdle bf
+
+selectionToResponse :: InputRequest -> MF.Selection -> Maybe Response
+selectionToResponse (SelectHandCard _) (MF.CardSelect cid) = Just (SelectedCard cid)
+selectionToResponse (SelectBattleSlot _) (MF.BattleSlotSelect _ _ slot) = Just (SelectedSlot slot)
+selectionToResponse (ConfirmAction _) _ = Just (Confirmed True)
+selectionToResponse _ _ = Nothing
 
 rc :: (Epsilon a, Floating a) => Bool -> M44 a
 rc False = mkTransformation (axisAngle (V3 0 1 0) pi) (V3 1 0 1.3)

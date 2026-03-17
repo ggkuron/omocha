@@ -66,6 +66,8 @@ library
   exposed-modules:
     Data.BoundingBox.V2
     Astrata.Game
+    Astrata.Headless
+    Astrata.Logic
     Astrata.MapFile
     Astrata.Map
     Astrata.Shape
@@ -107,6 +109,8 @@ test-suite astrata-test
   other-modules:
     Data.BoundingBox.V2Spec
     Astrata.GameSpec
+    Astrata.HeadlessSpec
+    Astrata.LogicSpec
     Astrata.MapFileSpec
     Astrata.ShapeSpec
     Astrata.SplineSpec
@@ -118,5 +122,6 @@ test-suite astrata-test
     , astrata
     , QuickCheck
     , raw-strings-qq
+    , text
 
   default-language: GHC2021
