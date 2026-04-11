@@ -102,6 +102,14 @@ executable astrata
 
   default-language: GHC2021
 
+executable astrata-headless
+  main-is:          Headless.hs
+  hs-source-dirs:   ./
+  build-depends:
+    , base
+    , astrata
+  default-language: GHC2021
+
 test-suite astrata-test
   import:           shared-properties
   type:             exitcode-stdio-1.0

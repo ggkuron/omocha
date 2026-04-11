@@ -13,8 +13,11 @@ Astrata is a 3D card-based battle game written in Haskell using functional react
 # Build the project
 cabal build
 
-# Run the game
+# Run the game (GUI)
 cabal run astrata
+
+# Run headless mode (no GPU/window required, runs game logic only)
+cabal run astrata-headless
 
 # Run tests
 cabal test

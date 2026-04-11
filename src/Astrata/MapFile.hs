@@ -263,6 +263,11 @@ data Field = Field
   }
   deriving (Show)
 
+draw :: Field -> Int -> Field
+draw field n = let (drawn, rest) = V.splitAt n field.stack in field {hands = field.hands V.++ drawn, stack = rest}
+
+
+
 data FieldZone = BattleZone | AuraZone | AstraRecordZone | HandZone | DeckZone | GuardZone
   deriving (Show, Eq, Enum, Bounded)
 
