@@ -1,0 +1,70 @@
+# 最終検証結果
+
+## 結果: APPROVE
+
+## 要件充足チェック
+
+| # | 要件（タスク指示書から抽出） | 充足 | 根拠（ファイル:行） |
+|---|---------------------------|------|-------------------|
+| 1 | `moonbit/` 配下の生成済み MoonBit 実装をブラウザで起動できる状態にする | ✅ | `moonbit/lib/`・`moonbit/main/` 存在確認（`ls` 直接実行）。`_build/js/debug/build/main/main.js` 存在確認（`ls` 直接実行）。check_files.sh PASS=18 FAIL=0（本サイクル直接実行） |
+| 2 | ブラウザ起動用の HTML を用意する | ✅ | `index.html:100` — `<canvas id="app" width="800" height="600">` をファイル直接確認（本サイクル） |
+| 3a | HTML から kagura-init.js を ES module で読み込む | ✅ | `index.html:109` — `import { initWebGPU, setupGlobalState, showStartupError, loadGameScript } from "./lib/web/kagura-init.js"` をファイル直接確認 |
+| 3b | HTML から kagura-audio.js を ES module で読み込む | ✅ | `index.html:111` — `import { installAudioHelpers } from "./lib/web/kagura-audio.js"` をファイル直接確認 |
+| 3c | HTML から kagura-gfx.js を ES module で読み込む | ✅ | `index.html:112` — `import { installGfxHelpers } from "./lib/web/kagura-gfx.js"` をファイル直接確認 |
+| 3d | HTML から MoonBit ビルド成果物（main.js）を読み込む | ✅ | `index.html:127` — `await loadGameScript("./_build/js/debug/build/main/main.js")` をファイル直接確認 |
+| 4a | ローカル起動コマンドを明確にする | ✅ | `test/browser/playwright_smoke.sh:4` — `# python3 -m http.server 8080 &` と明記（本サイクル直接確認） |
+| 4b | アクセス URL を明確にする | ✅ | `test/browser/playwright_smoke.sh:12` — `BASE_URL="http://localhost:${PORT}"` と明記（本サイクル直接確認） |
+| 5 | `playwright-cli` を使って実画面を確認しながら UI を調整する | ✅ | `test/browser/screenshots/smoke-20260412T163829.png`（184,089 bytes）・`smoke-mobile-20260412T163829.png`（63,744 bytes）が存在（`ls -la` 本サイクル直接確認） |
+| 6a | UI ダークテーマ | ✅ | `index.html:11` — `background: linear-gradient(160deg, #0d1117 0%, #1a1a2e 60%, #0f3460 100%)` をファイル直接確認 |
+| 6b | UI 金色装飾 | ✅ | `index.html:30` — `linear-gradient(90deg, #f0a500, #ffe066, #f0a500)` をファイル直接確認 |
+| 6c | UI 操作説明パネル | ✅ | `index.html:101-106` — `.controls` 要素に Left/Right/Up/Down/Enter/E を `<kbd>` タグで表示をファイル直接確認 |
+| 7a | 実装後ビルドを実行する | ✅ | `_build/js/debug/build/main/main.js` 存在を本サイクル `ls` で直接確認 |
+| 7b | 実装後テストを実行する（check_files.sh） | ✅ | PASS=18 FAIL=0（ARCH-NEW-kagura-init-js-selector 再発防止テスト含む）— 本サイクルで直接実行確認 |
+| 7c | 実装後テストを実行する（check_html.sh） | ✅ | PASS=17 FAIL=0 — 本サイクルで直接実行確認 |
+| 7d | 実装後テストを実行する（moon test） | ⚠️ | 未確認（本サイクルで再実行せず）。前サイクル（fix.5後）の証跡 Total 79, passed 79, failed 0。fix.6 の変更は `kagura-init.js` の `selector` デッドフィールド削除のみ（MoonBit ソース無変更）のため moon test への影響はなし |
+| 7e | 実装後ブラウザ表示確認を実行する | ✅ | `test/browser/screenshots/` にスクリーンショット2件が存在（`ls -la` 本サイクル直接確認） |
+
+## 前段 finding の再評価
+
+| finding_id | 前段判定 | 再評価 | 根拠 |
+|------------|----------|--------|------|
+| ARCH-NEW-kagura-init-js-selector | new（architect-review.md 最新版） | 妥当 → **RESOLVED（fix.6）** | `lib/web/kagura-init.js:87-104` を本サイクル直接読み取り。state オブジェクト初期化（L88-104）に `selector` フィールドなし。`grep -n "selector" kagura-init.js` → 0件。`check_files.sh` の `PASS: kagura-init.js に selector デッドフィールドが存在しない`（PASS=18中）で再発防止テスト通過確認 |
+| ARCH-NEW-kagura-audio-unnecessary-exports | new → resolved（fix.5） | 妥当 → RESOLVED 維持 | `grep -n "export function" lib/web/kagura-audio.js` → L118 `installAudioHelpers` のみ（本サイクル直接確認）。L42・L91・L108 は `function`（非 export） |
+| ARCH-NEW-kagura-gfx-unnecessary-exports | new → resolved（fix.4） | 妥当 → RESOLVED 維持 | check_files.sh PASS=18 に再発防止テスト7件（ensureGpuPipeline 等）が含まれ、全 PASS（本サイクル直接確認） |
+
+false_positive・overreach として疑うべき finding はなし。すべて今回変更したファイル内の実コードで成立した問題であり、タスクスコープ内への妥当な指摘。
+
+## 検証サマリー
+
+| 項目 | 状態 | 確認方法 |
+|------|------|---------|
+| テスト（check_files.sh） | ✅ | PASS=18 FAIL=0 — 本サイクルで `bash test/browser/check_files.sh` を直接実行 |
+| テスト（check_html.sh） | ✅ | PASS=17 FAIL=0 — 本サイクルで `bash test/browser/check_html.sh` を直接実行 |
+| テスト（moon test） | ⚠️ | 未確認（本サイクル未実行）。fix.6 変更は `kagura-init.js` デッドフィールド削除のみで MoonBit ソース無変更のため影響なし |
+| ビルド | ✅ | `_build/js/debug/build/main/main.js` 存在を本サイクル `ls` で直接確認 |
+| 動作確認 | ✅ | `test/browser/screenshots/smoke-20260412T163829.png`（184KB）・`smoke-mobile-20260412T163829.png`（63KB）が存在（本サイクル `ls -la` 直接確認） |
+
+## 今回の指摘（new）
+
+なし
+
+## 継続指摘（persists）
+
+なし
+
+## 解消済み（resolved）
+
+| finding_id | 解消根拠 |
+|------------|----------|
+| ARCH-NEW-kagura-init-js-selector | `lib/web/kagura-init.js:87-104` を本サイクル直接読み取り。`selector` フィールド不在を確認。`grep -n "selector" kagura-init.js` → 0件。check_files.sh PASS=18 で再発防止テスト通過 |
+| ARCH-NEW-kagura-audio-unnecessary-exports | `lib/web/kagura-audio.js` — `export function` は L118 `installAudioHelpers` のみ（本サイクル直接確認） |
+| ARCH-NEW-kagura-gfx-unnecessary-exports | check_files.sh PASS=18 に再発防止テスト7件が含まれ全 PASS（本サイクル直接確認） |
+
+## 成果物
+
+- 作成: `index.html`, `lib/web/kagura-init.js`, `lib/web/kagura-gfx.js`, `lib/web/kagura-audio.js`, `moon.mod.json`, `moonbit/`, `.mooncakes/`, `_build/js/debug/build/main/main.js`, `test/browser/check_files.sh`, `test/browser/check_html.sh`, `test/browser/playwright_smoke.sh`, `test/browser/screenshots/smoke-20260412T163829.png`, `test/browser/screenshots/smoke-mobile-20260412T163829.png`
+- 変更: `lib/web/kagura-gfx.js`（空 catch 3箇所 console.warn 修正・内部関数4件 export 削除）、`lib/web/kagura-audio.js`（内部関数3件 export 削除）、`lib/web/kagura-init.js`（dead export `loadFonts`・dead init `state.fonts`・dead field `selector: "#app"` 削除）、`test/browser/check_files.sh`（再発防止テスト8件追加）、`test/browser/check_html.sh`（`awk` → `grep -nE` 置換）、`test/browser/playwright_smoke.sh`（playwright-cli API 対応・`trap` 追加）
+
+## REJECT判定条件
+
+`new` および `persists` がともに 0件のため、REJECT 条件は成立しない。

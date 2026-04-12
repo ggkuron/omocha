@@ -1,0 +1,392 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "mizchi/audio"
+
+// Values
+pub fn add_voice(Mixer, Voice) -> VoiceId
+
+pub fn audio_tick(AudioRuntime) -> Unit
+
+pub fn biquad_process(BiquadState, Float) -> Float
+
+pub fn cache_clear(AssetCache) -> Unit
+
+pub fn cache_evict(AssetCache, String) -> Bool
+
+pub fn cache_get(AssetCache, String) -> AudioBuffer?
+
+pub fn cache_put(AssetCache, String, AudioBuffer, policy? : CachePolicy) -> Unit
+
+pub fn collect_stopped(Mixer) -> Unit
+
+pub fn decode_ogg(Bytes) -> AudioBuffer raise AudioError
+
+pub fn decode_wav(Bytes) -> AudioBuffer raise AudioError
+
+pub fn delay_process(DelayState, Float) -> Float
+
+pub fn drift_frames(LatencyMonitor) -> Int
+
+pub fn drift_secs(LatencyMonitor, Int) -> Float
+
+pub fn duration_secs(AudioBuffer) -> Float
+
+pub fn effect_process(EffectNode, Float) -> Float
+
+pub fn effects_chain_process(Array[EffectNode], Float) -> Float
+
+pub fn enqueue(CommandQueue, AudioCommand, Mixer) -> VoiceId?
+
+pub fn envelope_release(Envelope) -> Unit
+
+pub fn envelope_reset(Envelope) -> Unit
+
+pub fn envelope_tick(Envelope) -> Float
+
+pub fn find_voice(Mixer, VoiceId) -> Voice?
+
+pub fn flush_commands(CommandQueue, Mixer) -> Unit
+
+pub fn frame_count(AudioBuffer) -> Int
+
+pub fn get_audio_backend_hooks() -> AudioBackendHooks
+
+pub fn get_sample(AudioBuffer, Int, Int) -> Float
+
+pub fn highpass_coefficients(Float, Int, q? : Float) -> BiquadState
+
+pub fn lowpass_coefficients(Float, Int, q? : Float) -> BiquadState
+
+pub fn new_asset_cache(Int, Int) -> AssetCache
+
+pub fn new_audio_buffer(Int, Int, Int) -> AudioBuffer
+
+pub fn new_audio_runtime(Int, Int) -> AudioRuntime
+
+pub fn new_command_queue() -> CommandQueue
+
+pub fn new_delay(Float, Int, feedback? : Float, mix? : Float) -> DelayState
+
+pub fn new_envelope(EnvelopeConfig, Int) -> Envelope
+
+pub fn new_latency_monitor() -> LatencyMonitor
+
+pub fn new_mixer(Int, resample_quality? : ResampleQuality) -> Mixer
+
+pub fn new_ring_buffer(Int, Int) -> RingBuffer
+
+pub fn new_streaming_source(PullCallback, Int, Int, buffer_frames? : Int) -> StreamingSource
+
+pub fn new_voice(Mixer, AudioSource, gain? : Float, pan? : Float, looping? : Bool, envelope? : Envelope?) -> Voice
+
+pub fn new_voice_from_buffer(Mixer, AudioBuffer, gain? : Float, pan? : Float, looping? : Bool, envelope? : Envelope?) -> Voice
+
+pub fn new_voice_with_loop(Mixer, AudioSource, Int, Int, gain? : Float, pan? : Float, looping? : Bool) -> Voice
+
+pub fn pan_gains(Float) -> (Float, Float)
+
+pub fn pause_voice(Mixer, VoiceId) -> Bool
+
+pub fn play_sound(AudioRuntime, AudioBuffer, gain? : Float, pan? : Float, looping? : Bool) -> VoiceId
+
+pub fn queue_length(CommandQueue) -> Int
+
+pub fn read_source_sample(AudioSource, Int, Int) -> Float
+
+pub fn reset_audio_backend_hooks() -> Unit
+
+pub fn reset_latency_monitor(LatencyMonitor) -> Unit
+
+pub fn resume_voice(Mixer, VoiceId) -> Bool
+
+pub fn ring_available(RingBuffer) -> Int
+
+pub fn ring_consume(RingBuffer, Int) -> Unit
+
+pub fn ring_free(RingBuffer) -> Int
+
+pub fn ring_peek(RingBuffer, Int, Int) -> Float
+
+pub fn ring_reset(RingBuffer) -> Unit
+
+pub fn ring_write(RingBuffer, FixedArray[Float], Int) -> Int
+
+pub fn seek_voice(Mixer, VoiceId, Int) -> Bool
+
+pub fn set_audio_backend_hooks(AudioBackendHooks) -> Unit
+
+pub fn set_sample(AudioBuffer, Int, Int, Float) -> Unit
+
+pub fn source_channels(AudioSource) -> Int
+
+pub fn source_frame_count(AudioSource) -> Int
+
+pub fn source_sample_rate(AudioSource) -> Int
+
+pub fn stop_voice(Mixer, VoiceId) -> Bool
+
+pub fn streaming_available(StreamingSource) -> Int
+
+pub fn streaming_fill(StreamingSource, Int) -> Unit
+
+pub fn tick(Mixer, Int, FixedArray[Float]) -> Unit
+
+pub fn underrun_count(LatencyMonitor) -> Int
+
+pub fn update_latency(LatencyMonitor, Int, Int) -> Unit
+
+pub fn voice_position(Mixer, VoiceId) -> Float?
+
+pub fn voice_state(Mixer, VoiceId) -> VoiceState?
+
+// Errors
+pub suberror AudioError {
+  InvalidFormat(String)
+  DecodeFailed(String)
+}
+pub impl Show for AudioError
+
+// Types and methods
+pub(all) struct AssetCache {
+  entries : Map[String, CacheEntry]
+  mut total_bytes : Int
+  max_bytes : Int
+  max_entries : Int
+  mut access_counter : Int
+}
+pub impl Show for AssetCache
+
+pub(all) struct AudioBackendHooks {
+  initialize : (Int, Int) -> Unit
+  write : (FixedArray[Float], Int) -> Unit
+  suspend : () -> Unit
+  resume_playback : () -> Unit
+  close : () -> Unit
+  report_consumed : () -> Int
+}
+
+pub(all) struct AudioBuffer {
+  channels : Int
+  sample_rate : Int
+  data : FixedArray[Float]
+}
+pub impl Eq for AudioBuffer
+pub impl Show for AudioBuffer
+
+pub(all) enum AudioCommand {
+  PlaySource(AudioSource, Float, Float, Bool)
+  PauseVoice(VoiceId)
+  ResumeVoice(VoiceId)
+  StopVoice(VoiceId)
+  SeekVoice(VoiceId, Int)
+  SetVoiceGain(VoiceId, Float)
+  SetVoicePan(VoiceId, Float)
+  SetMasterGain(Float)
+}
+pub impl Show for AudioCommand
+
+pub(all) struct AudioRuntime {
+  mixer : Mixer
+  output_buffer : FixedArray[Float]
+  frames_per_tick : Int
+  mut tick_count : Int
+  mut initialized : Bool
+  command_queue : CommandQueue
+  latency_monitor : LatencyMonitor
+}
+
+pub(all) enum AudioSource {
+  Buffer(AudioBuffer)
+  Stream(StreamingSource)
+}
+pub impl Show for AudioSource
+
+pub(all) struct BiquadState {
+  b0 : Float
+  b1 : Float
+  b2 : Float
+  a1 : Float
+  a2 : Float
+  mut z1 : Float
+  mut z2 : Float
+}
+pub impl Show for BiquadState
+
+type BitReader
+pub impl Show for BitReader
+
+pub(all) struct CacheEntry {
+  buffer : AudioBuffer
+  policy : CachePolicy
+  byte_size : Int
+  mut last_access : Int
+}
+pub impl Show for CacheEntry
+
+pub(all) enum CachePolicy {
+  AlwaysCache
+  Normal
+  StreamPrefer
+}
+pub impl Eq for CachePolicy
+pub impl Show for CachePolicy
+
+pub(all) struct CommandQueue {
+  mut commands : Array[AudioCommand]
+  mut pending_ids : Array[VoiceId]
+}
+
+pub(all) struct DelayState {
+  buffer : FixedArray[Float]
+  mut write_pos : Int
+  delay_samples : Int
+  feedback : Float
+  mix : Float
+}
+pub impl Show for DelayState
+
+pub(all) enum EffectNode {
+  Lowpass(BiquadState)
+  Highpass(BiquadState)
+  Delay(DelayState)
+}
+pub impl Show for EffectNode
+
+pub(all) struct Envelope {
+  config : EnvelopeConfig
+  sample_rate : Int
+  mut phase : EnvelopePhase
+  mut level : Float
+  mut phase_position : Int
+  mut release_start_level : Float
+}
+pub impl Show for Envelope
+
+pub(all) struct EnvelopeConfig {
+  attack : Float
+  decay : Float
+  sustain : Float
+  release_time : Float
+}
+pub impl Eq for EnvelopeConfig
+pub impl Show for EnvelopeConfig
+
+pub(all) enum EnvelopePhase {
+  Attack
+  Decay
+  Sustain
+  Release
+  Done
+}
+pub impl Eq for EnvelopePhase
+pub impl Show for EnvelopePhase
+
+pub(all) struct LatencyMonitor {
+  mut frames_written : Int
+  mut ticks_elapsed : Int
+  mut drift_frames_val : Int
+  mut underrun_count : Int
+  mut max_drift : Int
+}
+
+pub(all) struct Mixer {
+  mut voices : Array[Voice]
+  mut master_gain : Float
+  channels : Int
+  sample_rate : Int
+  resample_quality : ResampleQuality
+  mut next_voice_id : Int
+}
+
+type OggDemuxer
+pub impl Show for OggDemuxer
+
+type OggPage
+pub impl Show for OggPage
+
+pub(all) struct PullCallback((FixedArray[Float], Int) -> Int)
+#deprecated
+pub fn PullCallback::inner(Self) -> (FixedArray[Float], Int) -> Int
+pub impl Show for PullCallback
+
+pub(all) enum ResampleQuality {
+  Nearest
+  Linear
+  Cubic
+}
+pub impl Eq for ResampleQuality
+pub impl Show for ResampleQuality
+
+pub(all) struct RingBuffer {
+  data : FixedArray[Float]
+  capacity : Int
+  channels : Int
+  mut write_pos : Int
+  mut read_pos : Int
+  mut frames_available : Int
+}
+pub impl Show for RingBuffer
+
+pub(all) struct StreamingSource {
+  ring : RingBuffer
+  pull : PullCallback
+  channels : Int
+  sample_rate : Int
+  mut ended : Bool
+  mut total_pulled : Int
+}
+pub impl Show for StreamingSource
+
+pub(all) struct Voice {
+  id : VoiceId
+  source : AudioSource
+  mut position : Float
+  mut gain : Float
+  mut pan : Float
+  mut state : VoiceState
+  looping : Bool
+  sample_rate : Int
+  loop_start : Int
+  loop_end : Int
+  envelope : Envelope?
+  effects : Array[EffectNode]
+}
+pub impl Show for Voice
+
+pub(all) struct VoiceId(Int)
+#deprecated
+pub fn VoiceId::inner(Self) -> Int
+pub impl Compare for VoiceId
+pub impl Eq for VoiceId
+pub impl Hash for VoiceId
+pub impl Show for VoiceId
+
+pub(all) enum VoiceState {
+  Playing
+  Paused
+  Stopped
+}
+pub impl Eq for VoiceState
+pub impl Show for VoiceState
+
+type VorbisCodebook
+pub impl Show for VorbisCodebook
+
+type VorbisFloorConfig
+pub impl Show for VorbisFloorConfig
+
+type VorbisInfo
+pub impl Show for VorbisInfo
+
+type VorbisMapping
+pub impl Show for VorbisMapping
+
+type VorbisMode
+pub impl Show for VorbisMode
+
+type VorbisResidueConfig
+pub impl Show for VorbisResidueConfig
+
+// Type aliases
+
+// Traits
+

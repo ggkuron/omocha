@@ -1,0 +1,42 @@
+# AI生成コードレビュー
+
+## 結果: REJECT
+
+## サマリー
+
+前回指摘3件（二重 import、空 catch ×2）はすべて修正済みを確認。ただし `kagura-gfx.js`（変更ファイル）の `scheduleTimestampReadback` 関数内に、修正されなかった既存の空 catch が3箇所存在する。ボーイスカウトルールにより REJECT。
+
+## 検証した項目
+
+| 観点 | 結果 | 備考 |
+|------|------|------|
+| 仮定の妥当性 | ✅ | 修正は実コードの挙動と一致 |
+| API/ライブラリの実在 | ✅ | 変更なし |
+| コンテキスト適合 | ✅ | 変更なし |
+| スコープ | ✅ | 前回指摘の対応範囲内 |
+
+## 今回の指摘（new）
+
+| # | finding_id | family_tag | カテゴリ | 場所 | 問題 | 修正案 |
+|---|------------|------------|---------|------|------|--------|
+| 1 | AI-NEW-kagura-gfx-js-L283 | empty-catch | エラー握りつぶし | `lib/web/kagura-gfx.js:283` | `.then()` ブロック内 `catch (_) {}` — `unmap()` 例外を完全に無視 | `catch (unmapError) { console.warn("[kagura] GPU buffer unmap error (then):", unmapError); }` |
+| 2 | AI-NEW-kagura-gfx-js-L293 | empty-catch | エラー握りつぶし | `lib/web/kagura-gfx.js:293` | `.catch(() => {` — タイムスタンプ readback エラーのパラメータなし。エラー内容が完全に捨てられる | `.catch((e) => { console.warn("[kagura] GPU timestamp readback error:", e);` に変更し、その後クリーンアップを続ける |
+| 3 | AI-NEW-kagura-gfx-js-L296 | empty-catch | エラー握りつぶし | `lib/web/kagura-gfx.js:296` | `.catch()` ブロック内 `catch (_) {}` — `unmap()` 例外を完全に無視 | `catch (unmapError) { console.warn("[kagura] GPU buffer unmap error (catch):", unmapError); }` |
+
+**根拠**: `kagura-gfx.js` は今回の変更対象ファイル（L401 の空 catch を修正）。ボーイスカウトルールにより、同ファイル内の既存問題も REJECT 対象。
+
+## 継続指摘（persists）
+
+なし
+
+## 解消済み（resolved）
+
+| finding_id | 解消内容 |
+|------------|---------|
+| AI-NEW-index-html-L109-L113 | `kagura-init.js` への2つの import を1文に統合（L109-110）。`check_order` も `awk` で init() 本体内のみを検索対象にするよう修正済み |
+| AI-NEW-kagura-audio-js-L82 | `.catch((e) => { console.warn("[kagura] AudioWorklet upgrade failed, using ScriptProcessor:", e); })` に修正済み |
+| AI-NEW-kagura-gfx-js-L401 | `.catch((e) => { console.warn("[kagura] GPU submit tracking error:", e); })` に修正済み |
+
+## 再開指摘（reopened）
+
+なし

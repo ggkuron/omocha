@@ -1,0 +1,44 @@
+# タスク完了サマリー
+
+## タスク
+`moonbit/` 配下にある生成済み MoonBit 実装をブラウザで起動できるようにするための HTML/JS/CSS を整備し、シャドウバース風のカードバトル UI に調整する。
+
+## 結果
+**未完了（REJECT）**
+
+ブラウザ起動用ファイルの配置・ビルド・テストは完了済みだが、以下2点が未解消のため承認に至らなかった。
+
+1. `lib/web/kagura-gfx.js` の変更対象ファイル内に空 catch が3箇所残存（ボーイスカウトルール違反）
+2. `playwright-cli` による実画面確認のこの run における実行証跡がない（タスク要件 5 / 7c 未充足）
+
+## 変更内容
+
+| 種別 | ファイル | 概要 |
+|------|---------|------|
+| コピー | `moon.mod.json` | 元プロジェクトから取得 |
+| コピー | `moonbit/` | MoonBit ゲームソース全体 |
+| コピー | `.mooncakes/` | kagura 依存パッケージ（16MB） |
+| 作成 | `lib/web/kagura-init.js` | WebGPU 初期化・startupError 表示 |
+| 作成 | `lib/web/kagura-gfx.js` | GPU グラフィクスヘルパー（L401 修正済み） |
+| 作成 | `lib/web/kagura-audio.js` | 音声ヘルパー（L82 修正済み） |
+| 生成 | `_build/js/debug/build/main/main.js` | `moon build --target js` 出力 |
+| 作成 | `index.html` | シャドウバース風 UI・WebGPU 初期化シーケンス |
+| 作成 | `test/browser/check_files.sh` | ファイル存在確認テスト（10件） |
+| 作成 | `test/browser/check_html.sh` | HTML 内容・初期化順序検証テスト（17件） |
+| 作成 | `test/browser/playwright_smoke.sh` | Playwright スモークテストスクリプト |
+
+## 検証証跡
+
+- `bash test/browser/check_files.sh` → PASS=10 FAIL=0（本次実行）
+- `bash test/browser/check_html.sh` → PASS=17 FAIL=0（本次実行）
+- `moon build --target js` → "Finished. ran 15 tasks, now up to date"（implement.1.20260412T070631Z.md）
+- playwright 実行証跡：**なし**（未確認）
+
+## 未解消の blocking finding
+
+| # | finding_id | 内容 |
+|---|------------|------|
+| 1 | AI-NEW-kagura-gfx-js-L283 | `lib/web/kagura-gfx.js:283` — `catch (_) {}` 空 catch（unmap エラー握りつぶし） |
+| 2 | AI-NEW-kagura-gfx-js-L293 | `lib/web/kagura-gfx.js:293` — `.catch(() => {` エラーパラメータなし（readback 失敗が無音消失） |
+| 3 | AI-NEW-kagura-gfx-js-L296 | `lib/web/kagura-gfx.js:296` — `catch (_) {}` 空 catch（unmap エラー握りつぶし） |
+| 4 | VAL-PERSIST-playwright-confirm | playwright-cli による実画面確認・スクリーンショット取得の実行証跡がない |

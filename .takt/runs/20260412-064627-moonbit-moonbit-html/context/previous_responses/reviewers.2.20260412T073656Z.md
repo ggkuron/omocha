@@ -1,0 +1,97 @@
+## arch-review
+## アーキテクチャレビュー結果
+
+### 結果: **REJECT**
+
+---
+
+### 前回指摘の追跡
+
+| finding_id | 状態 | 根拠 |
+|------------|------|------|
+| ARCH-NEW-check-html-sh-L39 | **resolved** ✅ | `check_html.sh:30-48` で `awk` → `grep -nE` に置き換え済み。`\(` パターンで import 行との誤マッチを排除。PASS=17 FAIL=0 確認済み |
+
+---
+
+### 新規指摘（blocking）
+
+**ARCH-NEW-kagura-init-js-L116** — `lib/web/kagura-init.js:116-131`
+
+**問題**: `export async function loadFonts(entries)` が未使用のデッドエクスポート。
+
+調査した呼び出しチェーン:
+- `index.html` → `loadFonts` は import されていない
+- `_build/js/debug/build/main/main.js` → `loadFonts` への参照 0件
+- `moonbit/` → `loadFonts` への参照 0件
+- `kagura-gfx.js` / `kagura-audio.js` → `state.fonts` を一切読まない
+
+`setupGlobalState` 内の `state.fonts = state.fonts || {};`（L106）も `loadFonts` 削除後は dead initialization になる。
+
+**修正**: `kagura-init.js` の L106 と L116-131 を削除する。
+
+---
+
+### 警告（非ブロッキング）
+
+- `lib/web/kagura-gfx.js` が1624行（300行 REJECT 閾値の5倍超）。メトリクス・タイムスタンプ・パイプライン・描画コマンドの4関心が混在。現タスクスコープを大きく逸脱するリファクタリングのため今回は非ブロッキングとするが、次サイクルでの分割を推奨。
+
+---
+
+## supervise
+以上の確認が完了しました。検証結果を出力します。
+
+---
+
+# 最終検証結果
+
+## 結果: REJECT
+
+## 要件充足チェック
+
+タスク指示書 `order.md` から要件を抽出し、各要件を実コードで個別に検証する。
+
+| # | 要件（タスク指示書から抽出） | 充足 | 根拠（ファイル:行） |
+|---|---------------------------|------|-------------------|
+| 1 | `moonbit/` 配下の生成済み MoonBit 実装をブラウザで起動できる状態にする | ✅ | `moonbit/` コピー済み、`_build/js/debug/build/main/main.js` 生成済み — `check_files.sh` PASS=10（implement.1.20260412T070631Z.md） |
+| 2 | ブラウザ起動用の HTML を用意する | ✅ | `index.html` 存在確認 — `check_files.sh` の対象 |
+| 3 | HTML から MoonBit の生成物または既存の表示ロジックを正しく読み込む | ✅ | `index.html:109-112` で kagura JS 3本を ES module import、`index.html:127` で `loadGameScript("./_build/js/debug/build/main/main.js")` 呼び出し |
+| 4 | ローカルで画面を開ける起動コマンド（コマンド）を明確にする | ✅ | `python3 -m http.server 8080` — implement.1.20260412T070631Z.md に明記 |
+| 4b | ローカルで画面を開ける起動コマンド（URL）を明確にする | ✅ | `http://localhost:8080/` — implement.1.20260412T070631Z.md に明記 |
+| 5 | `playwright-cli` を使って実画面を確認しながら UI を調整する | ❌ | playwright 実行証跡がこの run に存在しない。`playwright_smoke.sh` は playwright 未インストール時 SKIP（exit 0）設計であり、実際に playwright が動作したか判断不能 |
+| 6 | UI はシャドウバース風のカードバトル UI に寄せる（ダークテーマ） | ✅ | `index.html:11` `background: linear-gradient(160deg, #0d1117 0%, #1a1a2e 60%, #0f3460 100%)` |
+| 6b | UI はシャドウバース風のカードバトル UI に寄せる（金色装飾） | ✅ | `index.html:54-60` 金色グローボーダー `rgba(240, 165, 0, 0.4)` |
+| 6c | UI はシャドウバース風のカードバトル UI に寄せる（操作説明パネル） | ✅ | `index.html:101-106` `.controls` 要素、kbd タグで操作キー一覧 |
+| 7a | 実装後、ビルドを実行する | ✅ | `moon build --target js` "Finished. ran 15 tasks, now up to date" — implement.1.20260412T070631Z.md |
+| 7b | 実装後、テストを実行する | ✅ | `check_files.sh` PASS=10 / `check_html.sh` PASS=17 — fix.1.20260412T072936Z.md（実コード整合で検証済み） |
+| 7c | 実装後、ブラウザ表示確認を実行する | ❌ | playwright による実画面確認・スクリーンショット取得の証跡がこの run に存在しない（未確認） |
+
+**❌ が2件（要件5, 7c）あるため REJECT。**
+
+## 前段 finding の再評価
+
+| finding_id | 前段判定 | 再評価 | 根拠 |
+|------------|----------|--------|------|
+| AI-NEW-kagura-gfx-js-L283 | new → persists → 修正済み | **妥当 → RESOLVED** | `lib/web/kagura-gfx.js:283` で `catch (unmapError) { console.warn("[kagura] GPU buffer unmap error (then):", unmapError); }` に変更済みをファイル直接確認 |
+| AI-NEW-kagura-gfx-js-L293 | new → persists → 修正済み | **妥当 → RESOLVED** | `lib/web/kagura-gfx.js:295` で `.catch((e) => { console.warn("[kagura] GPU timestamp readback error:", e);` に変更済みをファイル直接確認 |
+| AI-NEW-kagura-gfx-js-L296 | new → persists → 修正済み | **妥当 → RESOLVED** | `lib/web/kagura-gfx.js:299` で `catch (unmapError) { console.warn("[kagura] GPU buffer unmap error (catch):", unmapError); }` に変更済みをファイル直接確認 |
+| ARCH-NEW-check-html-sh-L39 | new → 修正済み | **妥当 → RESOLVED** | `test/browser/check_html.sh:30-48` で `check_order` 関数が `grep -nE "${first}" "${HTML}"` によるファイル全体検索に置き換え済みを確認。パターンも `setupGlobalState\(` 等に変更され import 行との誤マッチを防いでいる |
+| VAL-PERSIST-playwright-confirm | persists | **妥当 → 継続 REJECT** | fix.1.20260412T072936Z.md に playwright 実行・SKIP理由・代替確認のいずれも記載なし。未解消 |
+
+## 検証サマリー
+
+| 項目 | 状態 | 確認方法 |
+|------|------|---------|
+| テスト | ✅ | `check_files.sh` PASS=10 / `check_html.sh` PASS=17 — fix.1.20260412T072936Z.md 記載、実コード（check_html.sh, index.html, kagura-gfx.js）との整合確認済み |
+| ビルド | ✅ | `moon build --target js` "Finished. ran 15 tasks, now up to date" — implement.1.20260412T070631Z.md |
+| ブラウザ表示確認（playwright） | ❌ | 実行証跡なし（未確認）。`playwright_smoke.sh` は playwright 未インストール時に SKIP (exit 0) する設計のため、この run で playwright が動作したか判断不能。fix.1 は空 catch 修正と check_html.sh 修正のみ行い、playwright については言及なし |
+
+## 成果物
+
+- 作成: `index.html`, `lib/web/kagura-init.js`, `lib/web/kagura-gfx.js`, `lib/web/kagura-audio.js`, `moon.mod.json`, `moonbit/`, `.mooncakes/`, `_build/js/debug/build/main/main.js`, `test/browser/check_files.sh`, `test/browser/check_html.sh`, `test/browser/playwright_smoke.sh`
+- 変更: `lib/web/kagura-gfx.js`（空 catch 3箇所修正）, `test/browser/check_html.sh`（check_order を grep 方式に置換）
+
+## 未完了項目（REJECT）
+
+| # | 項目 | 理由 |
+|---|------|------|
+| 1 | `playwright-cli` または `playwright` を実行し、スクリーンショット取得の証跡を示すこと | タスク指示書 要件5「playwright-cli を使って実画面を確認しながら UI を調整する」および要件7c「ブラウザ表示確認を実行する」の実行証跡がこの run に存在しない。playwright 未インストールの場合は「playwright は未インストール」と明示したうえで、代替の確認（手動確認、CI スクリーンショット等）を提示すること |

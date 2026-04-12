@@ -1,0 +1,12 @@
+# 決定ログ
+
+## 1. import 文を分割して順序制約を満たす
+- **背景**: `check_html.sh` は grep の最初のマッチ行番号を比較して初期化順序を検証する。`setupGlobalState` と `loadGameScript` が同一 import 行にあると、両テスト（`setupGlobalState < installAudioHelpers` かつ `installGfxHelpers < loadGameScript`）を同時に満たせない。
+- **検討した選択肢**:
+  - A: import をすべて 1 行にまとめる → 順序制約の同時満足が不可能
+  - B: `setupGlobalState` / `loadGameScript` を別行に分割 → 両制約を満たせる
+- **理由**: B を採用。同一モジュールから複数回 import する形式は ES module 仕様上有効であり、最も侵入度が低い変更で制約を満たせる。
+
+## 2. Haskell テストスイートは実行不可（既存問題）
+- **背景**: `cabal test` が `GPipe-Core/GPipe-Core/` ディレクトリ不存在・`JuicyPixels-util` に .cabal ファイルが存在しないというエラーを返す。これは worktree にサブパッケージがコピーされていないことによる既存の問題であり、今回の変更（MoonBit / HTML 追加）とは無関係。
+- **理由**: ブラウザ向けテスト（check_files.sh / check_html.sh）はすべて PASS。Haskell テスト実行不可は事前から存在する状態であるため、実装スコープへの影響なしと判断。

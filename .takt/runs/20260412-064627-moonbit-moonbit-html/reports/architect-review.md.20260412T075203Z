@@ -1,0 +1,72 @@
+# アーキテクチャレビュー
+
+## 結果: REJECT
+
+## サマリー
+前回指摘 `ARCH-NEW-playwright-smoke-close-trap`（playwright_smoke.sh リソースリーク）は解消済み。  
+今回、`lib/web/kagura-gfx.js` に存在する 4 つの内部実装関数が ES module として不必要にエクスポートされていることを検出。どの外部モジュールからも `import` されておらず、消費は `globalThis.__kaguraGfx` のみ経由。「内部実装のパブリック API エクスポート」ポリシー違反のためブロッキング。
+
+## 確認した観点
+- [x] 構造・設計
+- [x] コード品質
+- [x] 変更スコープ
+- [x] デッドコード・未使用エクスポート
+- [x] 呼び出しチェーン検証
+- [x] パブリック API の公開範囲
+- [x] エラーパス・リソース管理
+
+## 前回指摘の追跡
+
+| finding_id | 前回状態 | 今回状態 | 根拠 |
+|------------|---------|---------|------|
+| ARCH-NEW-playwright-smoke-close-trap | new | **resolved** | `playwright_smoke.sh:51` に `trap '"${PLAYWRIGHT_CMD}" close 2>/dev/null \|\| true' EXIT` が存在する。`open`（L50）直後に trap が設定されており、`set -euo pipefail` 環境での失敗パスでも必ず `close` が呼ばれる。`PLAYWRIGHT_CMD` はスクリプト開始時点で必ず非空文字列にセットされており、trap 評価時の変数展開も正常 ✅ |
+
+## 今回の指摘（new）
+
+| # | finding_id | family_tag | スコープ | 場所 | 問題 | 修正案 |
+|---|------------|------------|---------|------|------|--------|
+| 1 | ARCH-NEW-kagura-gfx-unnecessary-exports | unnecessary-export | スコープ内 | `lib/web/kagura-gfx.js:568, 698, 786, 1318` | `ensureGpuPipeline`（L568）・`releaseGpuResources`（L698）・`finalizeTextureUpload`（L786）・`renderGpu`（L1318）の 4 関数が `export function` として宣言されているが、`lib/web/` 配下のいずれのファイルも `index.html` も `test/` 配下のスクリプトも、これらを ES module import していない。消費は `installGfxHelpers`（L1594）が `globalThis.__kaguraGfx` に代入することによる MoonBit ランタイム呼び出しのみ。ES module エクスポートは不要であり、内部実装がパブリック API として公開されている状態 | 4 関数から `export` キーワードを削除する: `function ensureGpuPipeline(...)`, `function releaseGpuResources(...)`, `function finalizeTextureUpload(...)`, `function renderGpu(...)` に変更する。`installGfxHelpers` 内の参照はファイル内なので影響なし |
+
+**修正後（4 箇所それぞれ）:**
+```js
+// L568: export function ensureGpuPipeline(gpu, device, format) {
+function ensureGpuPipeline(gpu, device, format) {
+
+// L698: export function releaseGpuResources(gpu) {
+function releaseGpuResources(gpu) {
+
+// L786: export function finalizeTextureUpload(gpu) {
+function finalizeTextureUpload(gpu) {
+
+// L1318: export function renderGpu(gpu, device, context, clearColor, format) {
+function renderGpu(gpu, device, context, clearColor, format) {
+```
+
+## 継続指摘（persists）
+なし
+
+## 解消済み（resolved）
+
+| finding_id | 解消根拠 |
+|------------|----------|
+| ARCH-NEW-check-html-sh-L39 | `check_order` が `grep -nE` ベースに修正済み ✅ |
+| ARCH-NEW-kagura-init-js-L116 | `lib/web/kagura-init.js` から `state.fonts` 初期化と `loadFonts` 関数を削除済み（123行）✅ |
+| ARCH-NEW-playwright-smoke-close-trap | `playwright_smoke.sh:51` に trap 追加済み。open 後の全失敗パスで close が保証される ✅ |
+
+## 警告（非ブロッキング）
+
+| # | 場所 | 問題 | 推奨対応 |
+|---|------|------|---------|
+| W1 | `lib/web/kagura-gfx.js` (1624行) | 300行超の REJECT 基準を大幅超過（5倍超）。shader解析ヘルパー・メトリクス記録・タイムスタンプクエリ管理・パイプライン生成・描画コマンド実行・フレームレンダリングの 6 つの関心が 1 ファイルに同居している（反復2・3でも継続警告） | 現タスクスコープを大きく逸脱するリファクタリングのため即時 REJECT としないが、将来的に `kagura-gfx-metrics.js`（metrics + timestamp query, ~200行）・`kagura-gfx-pipeline.js`（shader helpers + pipeline, ~270行）・`kagura-gfx-draw.js`（draw helpers, ~490行）・`kagura-gfx.js`（renderGpu + resource mgmt + installGfxHelpers）の 4 ファイル体制への分割を推奨する |
+
+## ファクトチェック根拠
+
+- `ensureGpuPipeline` の外部 import 確認: `grep -rn "ensureGpuPipeline" index.html lib/ test/` → `lib/web/kagura-gfx.js` 内のみ（L568定義・L1327内部呼び出し・L1596 globalThis代入）。外部 import ゼロ ✅
+- `releaseGpuResources` の外部 import 確認: 同様 → `lib/web/kagura-gfx.js` 内のみ（L698定義・L1598 globalThis代入）。外部 import ゼロ ✅
+- `finalizeTextureUpload` の外部 import 確認: 同様 → `lib/web/kagura-gfx.js` 内のみ（L786定義・L1599 globalThis代入）。外部 import ゼロ ✅
+- `renderGpu` の外部 import 確認: 同様 → `lib/web/kagura-gfx.js` 内のみ（L1318定義・L1597 globalThis代入）。外部 import ゼロ ✅
+- `installGfxHelpers` はファイル内の全 4 関数を `globalThis.__kaguraGfx.{ensurePipeline, render, release, finalizeTexture}` に代入済み（L1596-1599）。`export` を削除しても MoonBit ランタイムへの露出は変わらない ✅
+- `playwright_smoke.sh:50-51`: `open` 直後の `trap` 設置を実際に確認 ✅
+
+## REJECT判定条件
+ARCH-NEW-kagura-gfx-unnecessary-exports (`new`) が1件存在するため REJECT。

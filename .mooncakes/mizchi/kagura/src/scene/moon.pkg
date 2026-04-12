@@ -1,0 +1,12 @@
+import {
+  "mizchi/signals/ui" @ui,
+  "mizchi/kagura/core" @core,
+  "mizchi/kagura/engine/gfx" @gfx,
+  "mizchi/kagura/engine/audio" @audio,
+  "mizchi/kagura/engine/debugutil" @debugutil,
+  "mizchi/kagura/engine/platform" @platform,
+  "mizchi/kagura/engine/runtime" @runtime,
+  "mizchi/kagura/engine" @engine,
+}
+
+warnings = "-6-53-68"

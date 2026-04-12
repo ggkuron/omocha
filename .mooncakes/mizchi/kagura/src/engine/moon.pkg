@@ -1,0 +1,17 @@
+import {
+  "mizchi/kagura/core" @core,
+  "mizchi/kagura/engine/gfx" @gfx,
+  "mizchi/kagura/engine/audio" @audio,
+  "mizchi/kagura/engine/debugutil" @debugutil,
+  "mizchi/kagura/engine/platform" @platform,
+}
+
+warnings = "-6-53-68"
+
+options(
+  targets: {
+    "game_api.mbt": [ "js", "native" ],
+    "run_js.mbt": [ "js" ],
+    "run_native.mbt": [ "native" ],
+  },
+)

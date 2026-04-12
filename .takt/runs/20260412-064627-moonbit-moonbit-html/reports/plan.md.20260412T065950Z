@@ -1,0 +1,380 @@
+# 計画レポート
+
+## タスク概要
+
+`moonbit/` 配下の MoonBit 実装（カードバトルゲーム "Astrata"）をブラウザで起動できるようにし、シャドウバース風カードバトル UI の HTML/CSS を整備する。
+
+---
+
+## 参照資料の確認結果
+
+### ディレクトリ構造（`/Users/yh/proj/astrata/moonbit/`）
+
+```
+moonbit/
+  lib/
+    moon.pkg        # インポートなし、警告抑制のみ
+    cards.mbt       # カード定義
+    field.mbt       # フィールド操作
+    field_play.mbt  # プレイロジック
+    logic.mbt       # ゲームロジック
+    types.mbt       # 型定義
+    *_wbtest.mbt    # ホワイトボックステスト群
+  main/
+    moon.pkg        # imports: lib, mizchi/kagura/core, scene, inpututil
+    main.mbt        # エントリポイント: canvas="#app", 800x600
+    game.mbt        # Game struct, update_game, view_game
+    view.mbt        # カードバトル画面描画（View関数群）
+    game_update_wbtest.mbt
+    game_view_wbtest.mbt
+```
+
+### moon.mod.json（`/Users/yh/proj/astrata/moon.mod.json`）
+
+```json
+{
+  "name": "astrata/astrata",
+  "version": "0.1.0",
+  "deps": { "mizchi/kagura": "0.3.1" },
+  "source": "moonbit",
+  "preferred-target": "js"
+}
+```
+
+- `"source": "moonbit"` → moon はパッケージを `moonbit/` サブディレクトリから探す
+- `"preferred-target": "js"` → デフォルトで JS ビルド
+
+### 生成済みビルド成果物
+
+- パス: `/Users/yh/proj/astrata/_build/js/debug/build/main/main.js`（4479行、全ゲームコード Bundle済み）
+- ビルドコマンド: `/Users/yh/.moon/bin/moon build --target js`（"no work to do" = 最新ビルド確認済み）
+
+### Kagura エンジン（WebGPU ベース）
+
+- ブラウザレンダリング: WebGPU（Canvas 2D ではない）
+- 必要な JS ライブラリ（`.mooncakes/mizchi/kagura/lib/web/`）:
+  - `kagura-init.js`: WebGPU 初期化、globalState 設定
+  - `kagura-gfx.js`: GFX バックエンド（WGSL シェーダー含む）
+  - `kagura-audio.js`: オーディオヘルパー
+- Canvas セレクタ: `#app`（固定）
+- サイズ: 800×600（`view.mbt:1-2`）
+
+### UI 状態（現在の実装）
+
+`view.mbt` より確認：
+
+| 要素 | 色 | 説明 |
+|------|-----|------|
+| 上部エリア(RIVAL) | `#0f3460` | ライバルフィールド |
+| 中央 HUD | `#0a0a1a` | ターン表示、フェーズ |
+| 下部エリア(OWN) | `#16213e` | 自分フィールド |
+| オリジンカード | `#f0a500` | 金色 |
+| サテライトスロット | `#4ecdc4` | シアン |
+| 手札 | `#6c8ebf` | 青灰色 |
+| ハイライト | `#ffff00` | 選択中 |
+
+操作キー（`game.mbt` より）:
+- Left/Right矢印: 選択移動
+- Up/Down矢印: レベル内移動
+- Enter/Space（confirm）: 自分カードをプレイ
+- E: ターン終了
+
+### Playwright-CLI
+
+- バージョン: 1.59.1（`playwright-cli` コマンドで利用可能）
+- プロジェクト内に Playwright テスト基盤なし（既存テストは Haskell/Hspec）
+
+---
+
+## 作業対象ディレクトリの状況
+
+- **ワークツリー**: `/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/`
+  - ブランチ: `takt/20260412T0647-tasuku-moonbit-niaru-mi-moonbi`
+  - 現在のファイル: Haskell プロジェクト（astrata.cabal, src/, test/ など）
+  - `moonbit/`, `moon.mod.json`, `.mooncakes/` は存在しない
+
+- **元プロジェクト**: `/Users/yh/proj/astrata/`（ブランチ: `billboard`）
+  - `moonbit/`, `moon.mod.json`, `.mooncakes/`, `_build/` が untracked で存在
+
+→ **実装エージェントはワークツリーに `moonbit/`, `moon.mod.json`, `.mooncakes/`, `lib/web/` を追加し、`index.html` を作成する**
+
+---
+
+## 要件と変更要否
+
+| # | 要件 | 変更要否 | 根拠 |
+|---|------|---------|------|
+| 1 | `moonbit/` 実装をブラウザで起動できる状態にする | **変更要** | ワークツリーに `moonbit/` が存在しない |
+| 2 | ブラウザ起動用 HTML を用意する | **変更要** | `index.html` 未存在 |
+| 3 | HTML から生成物を正しく読み込む | **変更要** | kagura libs + main.js の配線が必要 |
+| 4 | ローカル起動コマンドと URL を明確にする | **変更要** | 未定義 |
+| 5 | playwright-cli で実画面確認 | **変更要** | 実装後に実行 |
+| 6 | UI をシャドウバース風に寄せる | **変更要** | HTML/CSS で強化（現行実装は最小限） |
+| 7 | ビルド・テスト・表示確認を実行 | **変更要** | 実装後に実行 |
+
+---
+
+## ファイル構成計画
+
+ワークツリーに追加するファイル（**MoonBit ソースは元プロジェクトから cp**）:
+
+```
+(ワークツリー root)
+├── moon.mod.json            # cp from /Users/yh/proj/astrata/moon.mod.json
+├── moonbit/                 # cp -r from /Users/yh/proj/astrata/moonbit/
+│   ├── lib/                 # ゲームロジック（そのままコピー）
+│   └── main/                # エントリ・ビュー（そのままコピー）
+├── .mooncakes/              # cp -r from /Users/yh/proj/astrata/.mooncakes/ (16MB, 依存)
+│   └── mizchi/kagura/...
+├── lib/
+│   └── web/                 # kagura ブラウザ実行用 JS（.mooncakes から抽出コピー）
+│       ├── kagura-init.js
+│       ├── kagura-gfx.js
+│       └── kagura-audio.js
+├── _build/                  # moon build --target js で生成
+│   └── js/debug/build/main/
+│       └── main.js
+└── index.html               # 新規作成: ブラウザ起動エントリ
+```
+
+---
+
+## 実装アプローチ
+
+### Step 1: ソースとビルド環境をワークツリーに展開
+
+```bash
+# moonbit/ と moon.mod.json をコピー
+cp /Users/yh/proj/astrata/moon.mod.json .
+cp -r /Users/yh/proj/astrata/moonbit .
+cp -r /Users/yh/proj/astrata/.mooncakes .
+
+# kagura lib/web を独立ディレクトリに抽出（index.html から相対参照するため）
+mkdir -p lib/web
+cp .mooncakes/mizchi/kagura/lib/web/kagura-init.js lib/web/
+cp .mooncakes/mizchi/kagura/lib/web/kagura-gfx.js lib/web/
+cp .mooncakes/mizchi/kagura/lib/web/kagura-audio.js lib/web/
+```
+
+### Step 2: ビルド
+
+```bash
+/Users/yh/.moon/bin/moon build --target js
+# 出力: _build/js/debug/build/main/main.js
+```
+
+### Step 3: index.html の作成
+
+**構造:**
+
+```html
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <!-- シャドウバース風ダークテーマ -->
+  <style>
+    /* 800x600 canvas を中央に、周囲にカードバトルUI装飾 */
+  </style>
+</head>
+<body>
+  <!-- キャンバス: #app 固定（kagura エンジン要件） -->
+  <canvas id="app" width="800" height="600"></canvas>
+  <!-- 操作説明パネル -->
+  <div class="controls">...</div>
+  <!-- kagura WebGPU 初期化 + main.js ロード -->
+  <script type="module">
+    import { initWebGPU, setupGlobalState, loadGameScript, showStartupError }
+      from "./lib/web/kagura-init.js";
+    import { installAudioHelpers } from "./lib/web/kagura-audio.js";
+    import { installGfxHelpers } from "./lib/web/kagura-gfx.js";
+    async function init() {
+      const result = await initWebGPU("#app");
+      if (!result) { showStartupError(...); return; }
+      setupGlobalState(result.canvas, result.device, result.format, result.context);
+      installAudioHelpers();
+      installGfxHelpers();
+      await loadGameScript("./_build/js/debug/build/main/main.js");
+    }
+    init().catch(...);
+  </script>
+</body>
+</html>
+```
+
+**UI デザイン方針（シャドウバース風）:**
+- 背景: 深い紺色グラデーション（`#0d1117` 〜 `#1a1a2e`）
+- Canvas 周囲に装飾的ボーダー（金色グロー: `rgba(240,165,0,0.4)`）
+- 上下に薄いパネルで CONTROLS / INFO を表示
+- フォント: system-ui, monospace
+- Canvas サイズ 800x600 固定（ゲーム側から変更不可）
+
+### Step 4: ローカルサーバー起動
+
+```bash
+# Python (標準添付、追加インストール不要)
+python3 -m http.server 8080
+# URL: http://localhost:8080/
+```
+
+### Step 5: playwright-cli による画面確認
+
+```bash
+playwright-cli open http://localhost:8080/
+playwright-cli screenshot
+# → canvas に描画があること、空白でないことを確認
+playwright-cli close
+```
+
+---
+
+## テスト計画（write_tests エージェント向け）
+
+既存テスト基盤: Haskell Hspec（`test/Spec.hs`）→ ブラウザ起動テストとは別系統
+
+Playwright テスト基盤が未存在のため、**シェルスクリプト + playwright-cli** で最小検証を行う。
+
+### test/browser/check_files.sh（ファイル存在確認）
+
+```bash
+#!/bin/bash
+# ブラウザ起動に必要なファイルが存在することを確認
+set -e
+fail=0
+
+check() {
+  if [ ! -e "$1" ]; then echo "MISSING: $1"; fail=1; else echo "OK: $1"; fi
+}
+
+check "index.html"
+check "moon.mod.json"
+check "moonbit/lib/moon.pkg"
+check "moonbit/main/moon.pkg"
+check "lib/web/kagura-init.js"
+check "lib/web/kagura-gfx.js"
+check "lib/web/kagura-audio.js"
+
+exit $fail
+```
+
+### test/browser/check_html.sh（HTML 内容検証）
+
+```bash
+#!/bin/bash
+# index.html が必要な要素を含むことを確認（サーバー不要）
+set -e
+fail=0
+
+grep_check() {
+  grep -q "$1" index.html && echo "OK: $1" || { echo "MISSING: $1 in index.html"; fail=1; }
+}
+
+grep_check 'id="app"'
+grep_check 'width="800"'
+grep_check 'height="600"'
+grep_check 'kagura-init.js'
+grep_check 'kagura-gfx.js'
+grep_check 'kagura-audio.js'
+grep_check 'main/main.js'
+grep_check 'initWebGPU'
+
+exit $fail
+```
+
+### test/browser/playwright_smoke.sh（Playwright ビジュアル確認: 実装後に手動実行）
+
+```bash
+#!/bin/bash
+# 前提: python3 -m http.server 8080 が起動済み
+playwright-cli open http://localhost:8080/
+playwright-cli snapshot  # canvas#app が存在することを確認
+playwright-cli screenshot  # スクリーンショット取得
+playwright-cli close
+```
+
+---
+
+## 実装ガイドライン（Coder 向け）
+
+### 参照すべき既存実装パターン
+
+| 参照先 | 目的 |
+|--------|------|
+| `/Users/yh/proj/astrata/.mooncakes/mizchi/kagura/scripts/web-demo-pages.mjs:537-576` | `renderLoaderModule` — kagura 初期化シーケンスの正しい順序 |
+| `/Users/yh/proj/astrata/.mooncakes/mizchi/kagura/scripts/web-demo-pages.mjs:579-826` | `renderDemoHtml` — HTML 全体テンプレート（CSS・レイアウト参考） |
+| `/Users/yh/proj/astrata/.mooncakes/mizchi/kagura/lib/web/kagura-init.js` | `initWebGPU`, `setupGlobalState`, `loadGameScript` のシグネチャ確認 |
+| `/Users/yh/proj/astrata/moonbit/main/view.mbt:1-17` | 画面サイズ、色定数（コメントや説明に活用） |
+| `/Users/yh/proj/astrata/moonbit/main/game.mbt:20-46` | 操作キー一覧 |
+
+### 変更影響範囲
+
+今回追加するファイル（既存 Haskell コードへの影響ゼロ）:
+1. `moon.mod.json`（新規）
+2. `moonbit/`（新規コピー）
+3. `.mooncakes/`（新規コピー）
+4. `lib/web/kagura-*.js`（新規）
+5. `index.html`（新規）
+6. `_build/`（ビルド生成物）
+7. `test/browser/check_files.sh`（新規）
+8. `test/browser/check_html.sh`（新規）
+9. `test/browser/playwright_smoke.sh`（新規）
+
+### 特に注意すべきアンチパターン
+
+1. **canvas の id を変更しない** — `game.mbt:1` で `canvas="#app"` は固定。HTML 側で `id="app"` 以外にすると描画されない
+
+2. **ES module として index.html から kagura-init.js を読む** — `<script type="module">` が必須。type なし `<script>` では `import` 文が動作しない
+
+3. **WebGPU 対応ブラウザが必要** — Canvas 2D ではない。Chrome 113+ / Edge 113+ が必要。エラーハンドリングとして `showStartupError` を必ず呼ぶ
+
+4. **loadGameScript の順序** — `setupGlobalState` → `installAudioHelpers` → `installGfxHelpers` → `loadGameScript` の順で呼ぶ（`kagura-init.js:87-114` 参照）。順序を変えると globalThis.__kaguraWebRuntime が未設定でゲームがクラッシュする
+
+5. **静的サーバーが必須** — `file://` プロトコルでは ES module の CORS 制限により動作しない。`python3 -m http.server` を必ず経由する
+
+### 利用者向け機能の到達経路
+
+```
+ブラウザ → http://localhost:8080/
+  → index.html ロード
+  → <script type="module"> 実行
+  → initWebGPU("#app") → WebGPU デバイス取得
+  → setupGlobalState() → globalThis.__kaguraWebRuntime 設定
+  → installAudioHelpers() / installGfxHelpers() → FFI バインド
+  → loadGameScript("_build/js/debug/build/main/main.js") → IIFE 実行
+  → Game::new() → @scene.run_game(game, canvas="#app", 800, 600)
+  → ゲームループ開始（60fps, キーボード入力受付）
+```
+
+---
+
+## 起動コマンドまとめ
+
+```bash
+# 1. ソースとビルド環境の展開（元プロジェクトから）
+cp /Users/yh/proj/astrata/moon.mod.json .
+cp -r /Users/yh/proj/astrata/moonbit .
+cp -r /Users/yh/proj/astrata/.mooncakes .
+mkdir -p lib/web
+cp .mooncakes/mizchi/kagura/lib/web/kagura-init.js lib/web/
+cp .mooncakes/mizchi/kagura/lib/web/kagura-gfx.js lib/web/
+cp .mooncakes/mizchi/kagura/lib/web/kagura-audio.js lib/web/
+
+# 2. ビルド
+/Users/yh/.moon/bin/moon build --target js
+
+# 3. テスト（ファイル確認）
+bash test/browser/check_files.sh
+bash test/browser/check_html.sh
+
+# 4. ローカルサーバー起動（別ターミナル）
+python3 -m http.server 8080
+
+# 5. ブラウザ確認
+# open http://localhost:8080/  （手動）
+# playwright-cli open http://localhost:8080/  （playwright-cli 使用）
+```
+
+---
+
+## Open Questions（ユーザーへの確認事項）
+
+なし。コードと設定から全ての情報を確認済み。

@@ -1,0 +1,20 @@
+{
+  "name": "mizchi/image",
+  "version": "0.1.1",
+  "deps": {
+    "mizchi/zlib": "0.3.3"
+  },
+  "readme": "README.mbt.md",
+  "repository": "https://github.com/mizchi/image-mbt",
+  "license": "Apache-2.0",
+  "keywords": [
+    "moonbit",
+    "image",
+    "png",
+    "encoder",
+    "decoder"
+  ],
+  "description": "WIP image codec primitives for MoonBit (PNG-first).",
+  "source": "src",
+  "preferred-target": "js"
+}

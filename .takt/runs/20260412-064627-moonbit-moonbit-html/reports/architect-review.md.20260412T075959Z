@@ -1,0 +1,56 @@
+# アーキテクチャレビュー
+
+## 結果: REJECT
+
+## サマリー
+
+前回指摘 `ARCH-NEW-kagura-gfx-unnecessary-exports` は解消済み。今回、`lib/web/kagura-audio.js` の実装関数 3 件が `export function` のまま残存していることを検出。`index.html` は `installAudioHelpers` のみを import しており、3 関数は直接 import されていない。`kagura-gfx.js` で同一クラスの問題を修正した際に `kagura-audio.js` への適用が漏れたケース。
+
+## 確認した観点
+
+- [x] 構造・設計
+- [x] コード品質
+- [x] 変更スコープ
+- [x] デッドコード・未使用エクスポート
+- [x] 呼び出しチェーン検証
+- [x] パブリック API の公開範囲
+- [x] 前回指摘の解消状況
+
+## 前回指摘の追跡
+
+| finding_id | 前回状態 | 今回状態 | 根拠 |
+|------------|---------|---------|------|
+| ARCH-NEW-kagura-gfx-unnecessary-exports | new | resolved | `grep '^export function' lib/web/kagura-gfx.js` → `installGfxHelpers`（L1594）のみ。`ensureGpuPipeline`(L568)・`releaseGpuResources`(L698)・`finalizeTextureUpload`(L786)・`renderGpu`(L1318) は `function` に変更済み ✅ |
+| ARCH-NEW-playwright-smoke-close-trap | new | resolved | `playwright_smoke.sh:51` に `trap '"${PLAYWRIGHT_CMD}" close 2>/dev/null \|\| true' EXIT` が `open`（L50）直後に設置済み ✅ |
+
+## 今回の指摘（new）
+
+| # | finding_id | family_tag | スコープ | 場所 | 問題 | 修正案 |
+|---|------------|------------|---------|------|------|--------|
+| 1 | ARCH-NEW-kagura-audio-unnecessary-exports | unnecessary-export | スコープ内 | `lib/web/kagura-audio.js:42,91,108` | `createAudioBackend`・`advanceAudioWrite`・`closeAudio` の 3 関数が `export function` だが、プロジェクト内のいずれのファイルからも ES module import されていない。消費は `installAudioHelpers`（L118）が `globalThis.__kaguraAudio` に代入する形のみ（`index.html:111` は `installAudioHelpers` のみを import）。`kagura-gfx.js` で修正した同一クラスの問題 | L42 `export function createAudioBackend` → `function createAudioBackend`、L91 `export function advanceAudioWrite` → `function advanceAudioWrite`、L108 `export function closeAudio` → `function closeAudio` に変更する（`installAudioHelpers` の L118 のエクスポートは変更不要） |
+
+## ファクトチェック根拠
+
+- `grep '^export function' lib/web/kagura-audio.js` → `createAudioBackend`(L42)・`advanceAudioWrite`(L91)・`closeAudio`(L108)・`installAudioHelpers`(L118) の 4 件
+- `grep -rn "kagura-audio" index.html lib/ test/` → `index.html:111` に `import { installAudioHelpers } from "./lib/web/kagura-audio.js"` のみ。`createAudioBackend`・`advanceAudioWrite`・`closeAudio` を直接 import する箇所はゼロ
+- `lib/web/kagura-audio.js:120-122` で 3 関数を `globalThis.__kaguraAudio` に代入していることを確認
+- `moon.mod.json` の `preferred-target` は `"js"` のみ（WASM ターゲットの設定なし）
+
+## 警告（非ブロッキング）
+
+| # | 場所 | 問題 | 推奨対応 |
+|---|------|------|---------|
+| W1 | `lib/web/kagura-gfx.js`（1624行） | 300行超の REJECT 基準を5倍超過。shader解析・metrics・timestamp query・pipeline生成・描画コマンド・main renderの6責務が同居 | 現タスクスコープ逸脱のため非ブロッキング。次サイクルで分割推奨（`kagura-gfx-metrics.js` / `kagura-gfx-pipeline.js` / `kagura-gfx-draw.js` / `kagura-gfx.js` の4ファイル体制） |
+
+## 解消済み（resolved）
+
+| finding_id | 解消根拠 |
+|------------|----------|
+| ARCH-NEW-kagura-gfx-unnecessary-exports | `lib/web/kagura-gfx.js` の 4 関数（`ensureGpuPipeline`・`releaseGpuResources`・`finalizeTextureUpload`・`renderGpu`）の `export` 削除済み ✅ |
+| ARCH-NEW-playwright-smoke-close-trap | `playwright_smoke.sh:51` に `trap` 追加済み ✅ |
+| ARCH-NEW-check-html-sh-L39 | 前回サイクルで解消済み ✅ |
+| ARCH-NEW-kagura-init-js-L116 | 前回サイクルで解消済み ✅ |
+
+## REJECT判定条件
+
+ARCH-NEW-kagura-audio-unnecessary-exports (`new`) が 1 件存在するため REJECT。

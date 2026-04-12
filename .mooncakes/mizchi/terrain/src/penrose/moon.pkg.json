@@ -1,0 +1,6 @@
+{
+  "import": [
+    "mizchi/terrain/types",
+    "moonbitlang/core/math"
+  ]
+}

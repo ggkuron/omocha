@@ -1,0 +1,17 @@
+{
+  "name": "mizchi/terrain",
+  "version": "0.1.1",
+  "source": "src",
+  "readme": "README.md",
+  "repository": "https://github.com/mizchi/terrain",
+  "license": "Apache-2.0",
+  "keywords": [
+    "terrain",
+    "dungeon",
+    "procedural-generation",
+    "map-generation",
+    "roguelike",
+    "gamedev"
+  ],
+  "description": "117 procedural dungeon/terrain generation algorithms"
+}

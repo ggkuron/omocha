@@ -1,0 +1,65 @@
+# アーキテクチャレビュー
+
+## 結果: REJECT
+
+## サマリー
+前回指摘 `ARCH-NEW-check-html-sh-L39` は解消済み。今回新たに `lib/web/kagura-init.js` の `loadFonts` が未使用エクスポートであることを検出。どこからも import・呼び出しされていない dead export であり、ボーイスカウトルールにより差し戻す。
+
+## 確認した観点
+- [x] 構造・設計
+- [x] コード品質
+- [x] 変更スコープ
+- [x] テストカバレッジ
+- [x] デッドコード
+- [x] 呼び出しチェーン検証
+- [x] パブリック API の公開範囲
+
+## 今回の指摘（new）
+
+| # | finding_id | family_tag | スコープ | 場所 | 問題 | 修正案 |
+|---|------------|------------|---------|------|------|--------|
+| 1 | ARCH-NEW-kagura-init-js-L116 | dead-export | スコープ内 | `lib/web/kagura-init.js:116-131` | `export async function loadFonts(entries)` がエクスポートされているが、`index.html` での import なし・`main.js` での参照なし・moonbit ソース内での参照なし。`kagura-gfx.js` も `state.fonts` を一切読まない。`setupGlobalState` 内 L106 の `state.fonts = state.fonts || {};` も `loadFonts` 削除後は dead initialization となる | L106 の `state.fonts = state.fonts || {};` と L116-131 の `loadFonts` 関数全体を削除する |
+
+**修正後の `kagura-init.js` 該当部分（L105〜L115）:**
+```js
+  });
+  state.canvas = canvas;
+  state.surfaceId = state.nextSurfaceId++;
+  canvas.__kaguraSurfaceId = state.surfaceId;
+  state.webgpu.context = context;
+  state.webgpu.device = device;
+  state.webgpu.format = format;
+  return state;
+}
+
+export function loadGameScript(scriptPath) {
+```
+
+## 継続指摘（persists）
+なし
+
+## 解消済み（resolved）
+
+| finding_id | 解消根拠 |
+|------------|----------|
+| ARCH-NEW-check-html-sh-L39 | `test/browser/check_html.sh:30-48` の `check_order` が `grep -nE` ベースに置き換え済み。呼び出しパターンも `'setupGlobalState\('`・`'installGfxHelpers\('` 等 `\(` 付きに修正され、import 行とのマッチを排除。`bash test/browser/check_html.sh` が PASS=17 FAIL=0 で通過 ✅ |
+
+## 再開指摘（reopened）
+なし
+
+## 警告（非ブロッキング）
+
+| # | 場所 | 問題 | 推奨対応 |
+|---|------|------|---------|
+| W1 | `lib/web/kagura-gfx.js` (1624行) | 300行超の REJECT 基準を大幅に超過（5倍超）。実際には shader 解析・メトリクス・タイムスタンプクエリ・パイプライン生成・描画コマンド・main render の6つの関心が1ファイルに同居している | 現タスクスコープを大きく逸脱するリファクタリングのため即時 REJECT としないが、次サイクルで `kagura-gfx-metrics.js`（metrics＋timestamp、~200行）・`kagura-gfx-pipeline.js`（shader helpers＋pipeline creation、~270行）・`kagura-gfx-draw.js`（draw helpers 3関数、~490行 → さらに drawDefault/drawSkinned/drawCustom の3ファイルに分割）・`kagura-gfx.js`（renderGpu＋resource mgmt＋installGfxHelpers）への分割を推奨する |
+
+## ファクトチェック根拠
+
+- `loadFonts` の未使用確認:
+  - `grep -rn "loadFonts" index.html moonbit/` → 0件
+  - `grep -c "loadFonts" _build/js/debug/build/main/main.js` → 0件
+  - `grep -n "\.fonts" lib/web/kagura-gfx.js lib/web/kagura-audio.js` → 0件
+- `state.fonts` の読み取り先: `kagura-gfx.js`・`kagura-audio.js`・`main.js` いずれも参照なし
+
+## REJECT判定条件
+ARCH-NEW-kagura-init-js-L116 (`new`) が1件存在するため REJECT。

@@ -1,0 +1,1519 @@
+{
+  "packages": [
+    {
+      "root": "astrata/astrata",
+      "rel": "lib",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/lib/lib.mi"
+    },
+    {
+      "root": "astrata/astrata",
+      "rel": "main",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/main/main.mi"
+    },
+    {
+      "root": "mizchi/audio",
+      "rel": "",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/audio/audio.mi"
+    },
+    {
+      "root": "mizchi/brotli",
+      "rel": "",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/brotli/brotli.mi"
+    },
+    {
+      "root": "mizchi/font",
+      "rel": "",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/font/font.mi"
+    },
+    {
+      "root": "mizchi/font",
+      "rel": "js",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/font/js/js.mi"
+    },
+    {
+      "root": "mizchi/glfw",
+      "rel": "",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/glfw/glfw.mi"
+    },
+    {
+      "root": "mizchi/image",
+      "rel": "",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/image/image.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/kagura.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "ai",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/ai/ai.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "collision3d",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/collision3d/collision3d.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "core",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/core/core.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "core/animation3d",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/core/animation3d/animation3d.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "core/camera2d",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/core/camera2d/camera2d.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "core/camera3d",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/core/camera3d/camera3d.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "core/image_palette",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/core/image_palette/image_palette.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "core/inpututil",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/core/inpututil/inpututil.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "core/math3d",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/core/math3d/math3d.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "core/mesh3d",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/core/mesh3d/mesh3d.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "core/payload2d",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/core/payload2d/payload2d.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "core/skeleton3d",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/core/skeleton3d/skeleton3d.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "core/svg",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/core/svg/svg.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "core/transform3d",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/core/transform3d/transform3d.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "core/vector",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/core/vector/vector.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "ecs",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/ecs/ecs.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "engine",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/engine/engine.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "engine/animation2d",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/engine/animation2d/animation2d.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "engine/asset",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/engine/asset/asset.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "engine/asset_loader",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/engine/asset_loader/asset_loader.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "engine/audio",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/engine/audio/audio.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "engine/audio3d",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/engine/audio3d/audio3d.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "engine/colorm",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/engine/colorm/colorm.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "engine/debugutil",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/engine/debugutil/debugutil.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "engine/draw2d",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/engine/draw2d/draw2d.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "engine/draw2d_ui",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/engine/draw2d_ui/draw2d_ui.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "engine/draw3d",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/engine/draw3d/draw3d.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "engine/gfx",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/engine/gfx/gfx.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "engine/gfx_wgpu_native",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/engine/gfx_wgpu_native/gfx_wgpu_native.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "engine/light3d",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/engine/light3d/light3d.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "engine/particle3d",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/engine/particle3d/particle3d.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "engine/platform",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/engine/platform/platform.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "engine/postfx",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/engine/postfx/postfx.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "engine/render_pipeline3d",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/engine/render_pipeline3d/render_pipeline3d.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "engine/runtime",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/engine/runtime/runtime.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "engine/scene3d",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/engine/scene3d/scene3d.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "engine/shadow3d",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/engine/shadow3d/shadow3d.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "engine/sprite2d",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/engine/sprite2d/sprite2d.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "engine/text",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/engine/text/text.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "engine/ui",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/engine/ui/ui.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "gameplay2d",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/gameplay2d/gameplay2d.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "gltf",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/gltf/gltf.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "hud",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/hud/hud.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "ik3d",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/ik3d/ik3d.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "interactable2d",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/interactable2d/interactable2d.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "pathfind",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/pathfind/pathfind.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "physics2d",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/physics2d/physics2d.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "physics3d",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/physics3d/physics3d.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "progression",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/progression/progression.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "scene",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/scene/scene.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "scene_manager",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/scene_manager/scene_manager.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "sprite_packer",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/sprite_packer/sprite_packer.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "terrain3d",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/terrain3d/terrain3d.mi"
+    },
+    {
+      "root": "mizchi/kagura",
+      "rel": "tilemap2d",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/kagura/tilemap2d/tilemap2d.mi"
+    },
+    {
+      "root": "mizchi/pixelmatch",
+      "rel": "",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/pixelmatch/pixelmatch.mi"
+    },
+    {
+      "root": "mizchi/signals",
+      "rel": "",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/signals/signals.mi"
+    },
+    {
+      "root": "mizchi/signals",
+      "rel": "ui",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/signals/ui/ui.mi"
+    },
+    {
+      "root": "mizchi/svg",
+      "rel": "",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/svg/svg.mi"
+    },
+    {
+      "root": "mizchi/svg",
+      "rel": "cmd/wpt-svg",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/svg/cmd/wpt-svg/wpt-svg.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "accretion",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/accretion/accretion.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "aldous_broder",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/aldous_broder/aldous_broder.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "amphitheater",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/amphitheater/amphitheater.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "ant_colony",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/ant_colony/ant_colony.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "ant_nest_3d",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/ant_nest_3d/ant_nest_3d.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "aqueduct",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/aqueduct/aqueduct.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "arena_chain",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/arena_chain/arena_chain.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "bfs_rooms",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/bfs_rooms/bfs_rooms.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "binary_tree",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/binary_tree/binary_tree.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "bsp",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/bsp/bsp.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "canyon",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/canyon/canyon.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "castle_gen",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/castle_gen/castle_gen.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "cellular",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/cellular/cellular.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "cellular_3d",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/cellular_3d/cellular_3d.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "city_block",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/city_block/city_block.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "cliff_dungeon",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/cliff_dungeon/cliff_dungeon.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "continent",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/continent/continent.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "crystal",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/crystal/crystal.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "cyclic_dungeon",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/cyclic_dungeon/cyclic_dungeon.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "dead_cells",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/dead_cells/dead_cells.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "delaunay",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/delaunay/delaunay.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "desert_oasis",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/desert_oasis/desert_oasis.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "diablo",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/diablo/diablo.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "diamond_square",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/diamond_square/diamond_square.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "dla",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/dla/dla.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "domain_warp",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/domain_warp/domain_warp.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "drunkard",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/drunkard/drunkard.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "drunkard_3d",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/drunkard_3d/drunkard_3d.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "ecosystem",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/ecosystem/ecosystem.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "eller",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/eller/eller.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "erosion",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/erosion/erosion.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "feature_growing",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/feature_growing/feature_growing.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "floating_islands",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/floating_islands/floating_islands.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "glacier",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/glacier/glacier.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "gosper",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/gosper/gosper.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "graph_grammar",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/graph_grammar/graph_grammar.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "gravity_collapse",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/gravity_collapse/gravity_collapse.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "gravity_puzzle",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/gravity_puzzle/gravity_puzzle.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "growing_tree",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/growing_tree/growing_tree.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "harbor_town",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/harbor_town/harbor_town.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "herringbone",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/herringbone/herringbone.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "hex_biome",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/hex_biome/hex_biome.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "hex_ca",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/hex_ca/hex_ca.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "hex_fortress",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/hex_fortress/hex_fortress.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "hex_grid",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/hex_grid/hex_grid.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "hex_maze",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/hex_maze/hex_maze.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "hex_river_delta",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/hex_river_delta/hex_river_delta.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "hex_snowflake",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/hex_snowflake/hex_snowflake.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "hex_spiral",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/hex_spiral/hex_spiral.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "hex_territory",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/hex_territory/hex_territory.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "hex_voronoi",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/hex_voronoi/hex_voronoi.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "hex_wfc",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/hex_wfc/hex_wfc.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "hilbert",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/hilbert/hilbert.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "hunt_and_kill",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/hunt_and_kill/hunt_and_kill.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "isaac",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/isaac/isaac.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "island",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/island/island.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "iso_city",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/iso_city/iso_city.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "kruskal",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/kruskal/kruskal.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "layered_caves",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/layered_caves/layered_caves.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "layered_plateau",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/layered_plateau/layered_plateau.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "lightning",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/lightning/lightning.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "lock_cascade",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/lock_cascade/lock_cascade.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "lsystem",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/lsystem/lsystem.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "main",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/main/main.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "marching_squares",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/marching_squares/marching_squares.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "maze",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/maze/maze.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "maze_3d",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/maze_3d/maze_3d.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "metroidvania",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/metroidvania/metroidvania.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "midpoint_displacement",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/midpoint_displacement/midpoint_displacement.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "mineshaft",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/mineshaft/mineshaft.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "mirror_dungeon",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/mirror_dungeon/mirror_dungeon.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "mission_graph",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/mission_graph/mission_graph.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "multifloor_bsp",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/multifloor_bsp/multifloor_bsp.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "noise_caves",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/noise_caves/noise_caves.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "oneway_gate",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/oneway_gate/oneway_gate.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "pacman",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/pacman/pacman.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "penrose",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/penrose/penrose.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "percolation",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/percolation/percolation.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "platformer",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/platformer/platformer.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "poisson",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/poisson/poisson.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "prefab",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/prefab/prefab.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "radial",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/radial/radial.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "reaction_diffusion",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/reaction_diffusion/reaction_diffusion.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "recursive_division",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/recursive_division/recursive_division.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "ridged",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/ridged/ridged.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "ring",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/ring/ring.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "river",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/river/river.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "rogue",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/rogue/rogue.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "rooms_and_mazes",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/rooms_and_mazes/rooms_and_mazes.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "seasonal_forest",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/seasonal_forest/seasonal_forest.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "sidewinder",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/sidewinder/sidewinder.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "sierpinski",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/sierpinski/sierpinski.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "slime_mold",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/slime_mold/slime_mold.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "sokoban",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/sokoban/sokoban.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "space_colonization",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/space_colonization/space_colonization.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "space_station",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/space_station/space_station.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "spelunky",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/spelunky/spelunky.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "spiral",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/spiral/spiral.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "superimpose",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/superimpose/superimpose.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "swamp",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/swamp/swamp.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "teleporter",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/teleporter/teleporter.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "terraced_mines",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/terraced_mines/terraced_mines.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "tetromino",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/tetromino/tetromino.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "tinykeep",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/tinykeep/tinykeep.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "tower_dungeon",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/tower_dungeon/tower_dungeon.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "tree_roots",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/tree_roots/tree_roots.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "treehouse",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/treehouse/treehouse.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "tundra",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/tundra/tundra.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "tunneler",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/tunneler/tunneler.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "types",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/types/types.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "underwater_base",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/underwater_base/underwater_base.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "vertical_shaft",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/vertical_shaft/vertical_shaft.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "volcanic_crater",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/volcanic_crater/volcanic_crater.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "voronoi",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/voronoi/voronoi.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "web",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/web/web.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "wfc",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/wfc/wfc.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "wilson",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/wilson/wilson.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "worley",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/worley/worley.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "worm",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/worm/worm.mi"
+    },
+    {
+      "root": "mizchi/terrain",
+      "rel": "ziggurat",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/terrain/ziggurat/ziggurat.mi"
+    },
+    {
+      "root": "mizchi/zlib",
+      "rel": "",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/zlib/zlib.mi"
+    },
+    {
+      "root": "mizchi/zlib",
+      "rel": "cmd/bench",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/mizchi/zlib/cmd/bench/bench.mi"
+    },
+    {
+      "root": "moonbitlang/async",
+      "rel": "",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/async/async.mi"
+    },
+    {
+      "root": "moonbitlang/async",
+      "rel": "aqueue",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/async/aqueue/aqueue.mi"
+    },
+    {
+      "root": "moonbitlang/async",
+      "rel": "cond_var",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/async/cond_var/cond_var.mi"
+    },
+    {
+      "root": "moonbitlang/async",
+      "rel": "fs",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/async/fs/fs.mi"
+    },
+    {
+      "root": "moonbitlang/async",
+      "rel": "http",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/async/http/http.mi"
+    },
+    {
+      "root": "moonbitlang/async",
+      "rel": "internal/bytes_util",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/async/internal/bytes_util/bytes_util.mi"
+    },
+    {
+      "root": "moonbitlang/async",
+      "rel": "internal/c_buffer",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/async/internal/c_buffer/c_buffer.mi"
+    },
+    {
+      "root": "moonbitlang/async",
+      "rel": "internal/coroutine",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/async/internal/coroutine/coroutine.mi"
+    },
+    {
+      "root": "moonbitlang/async",
+      "rel": "internal/env_util",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/async/internal/env_util/env_util.mi"
+    },
+    {
+      "root": "moonbitlang/async",
+      "rel": "internal/event_loop",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/async/internal/event_loop/event_loop.mi"
+    },
+    {
+      "root": "moonbitlang/async",
+      "rel": "internal/fd_util",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/async/internal/fd_util/fd_util.mi"
+    },
+    {
+      "root": "moonbitlang/async",
+      "rel": "internal/io_buffer",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/async/internal/io_buffer/io_buffer.mi"
+    },
+    {
+      "root": "moonbitlang/async",
+      "rel": "internal/os_string",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/async/internal/os_string/os_string.mi"
+    },
+    {
+      "root": "moonbitlang/async",
+      "rel": "internal/time",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/async/internal/time/time.mi"
+    },
+    {
+      "root": "moonbitlang/async",
+      "rel": "io",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/async/io/io.mi"
+    },
+    {
+      "root": "moonbitlang/async",
+      "rel": "js_async",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/async/js_async/js_async.mi"
+    },
+    {
+      "root": "moonbitlang/async",
+      "rel": "os_error",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/async/os_error/os_error.mi"
+    },
+    {
+      "root": "moonbitlang/async",
+      "rel": "pipe",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/async/pipe/pipe.mi"
+    },
+    {
+      "root": "moonbitlang/async",
+      "rel": "process",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/async/process/process.mi"
+    },
+    {
+      "root": "moonbitlang/async",
+      "rel": "semaphore",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/async/semaphore/semaphore.mi"
+    },
+    {
+      "root": "moonbitlang/async",
+      "rel": "socket",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/async/socket/socket.mi"
+    },
+    {
+      "root": "moonbitlang/async",
+      "rel": "stdio",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/async/stdio/stdio.mi"
+    },
+    {
+      "root": "moonbitlang/async",
+      "rel": "tls",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/async/tls/tls.mi"
+    },
+    {
+      "root": "moonbitlang/async",
+      "rel": "websocket",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/async/websocket/websocket.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "abort",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/abort/abort.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "array",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/array/array.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "bench",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/bench/bench.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "bigint",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/bigint/bigint.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "bool",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/bool/bool.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "buffer",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/buffer/buffer.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "builtin",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/builtin/builtin.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "byte",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/byte/byte.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "bytes",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/bytes/bytes.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "char",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/char/char.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "cmp",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/cmp/cmp.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "coverage",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/coverage/coverage.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "debug",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/debug/debug.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "deque",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/deque/deque.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "double",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/double/double.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "encoding/ascii",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/encoding/ascii/ascii.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "encoding/base64",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/encoding/base64/base64.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "encoding/utf16",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/encoding/utf16/utf16.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "encoding/utf8",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/encoding/utf8/utf8.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "env",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/env/env.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "error",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/error/error.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "float",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/float/float.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "hashmap",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/hashmap/hashmap.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "hashset",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/hashset/hashset.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "immut/array",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/immut/array/array.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "immut/hashmap",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/immut/hashmap/hashmap.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "immut/hashset",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/immut/hashset/hashset.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "immut/internal/path",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/immut/internal/path/path.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "immut/internal/sparse_array",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/immut/internal/sparse_array/sparse_array.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "immut/priority_queue",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/immut/priority_queue/priority_queue.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "immut/sorted_map",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/immut/sorted_map/sorted_map.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "immut/sorted_set",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/immut/sorted_set/sorted_set.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "int",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/int/int.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "int16",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/int16/int16.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "int64",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/int64/int64.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "internal/regex_engine",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/internal/regex_engine/regex_engine.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "internal/regex_engine/ast",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/internal/regex_engine/ast/ast.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "internal/regex_engine/automata",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/internal/regex_engine/automata/automata.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "internal/regex_engine/shared_types",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/internal/regex_engine/shared_types/shared_types.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "internal/regex_engine/shared_types/rechar_set",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/internal/regex_engine/shared_types/rechar_set/rechar_set.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "internal/regex_engine/symbol_map",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/internal/regex_engine/symbol_map/symbol_map.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "internal/regex_parser",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/internal/regex_parser/regex_parser.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "json",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/json/json.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "list",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/list/list.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "math",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/math/math.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "option",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/option/option.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "prelude",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/prelude/prelude.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "priority_queue",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/priority_queue/priority_queue.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "queue",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/queue/queue.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "quickcheck",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/quickcheck/quickcheck.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "quickcheck/splitmix",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/quickcheck/splitmix/splitmix.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "random",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/random/random.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "random/internal/random_source",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/random/internal/random_source/random_source.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "ref",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/ref/ref.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "result",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/result/result.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "set",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/set/set.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "sorted_map",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/sorted_map/sorted_map.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "sorted_set",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/sorted_set/sorted_set.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "strconv",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/strconv/strconv.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "string",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/string/string.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "test",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/test/test.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "tuple",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/tuple/tuple.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "uint",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/uint/uint.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "uint16",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/uint16/uint16.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "uint64",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/uint64/uint64.mi"
+    },
+    {
+      "root": "moonbitlang/core",
+      "rel": "unit",
+      "artifact": "/Users/yh/.moon/lib/core/_build/js/release/bundle/unit/unit.mi"
+    },
+    {
+      "root": "moonbitlang/x",
+      "rel": "benchmark",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/x/benchmark/benchmark.mi"
+    },
+    {
+      "root": "moonbitlang/x",
+      "rel": "benchmark/internal/benchmark_ffi",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/x/benchmark/internal/benchmark_ffi/benchmark_ffi.mi"
+    },
+    {
+      "root": "moonbitlang/x",
+      "rel": "codec/base64",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/x/codec/base64/base64.mi"
+    },
+    {
+      "root": "moonbitlang/x",
+      "rel": "crypto",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/x/crypto/crypto.mi"
+    },
+    {
+      "root": "moonbitlang/x",
+      "rel": "decimal",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/x/decimal/decimal.mi"
+    },
+    {
+      "root": "moonbitlang/x",
+      "rel": "encoding",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/x/encoding/encoding.mi"
+    },
+    {
+      "root": "moonbitlang/x",
+      "rel": "encoding/internal/benchmark",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/x/encoding/internal/benchmark/benchmark.mi"
+    },
+    {
+      "root": "moonbitlang/x",
+      "rel": "encoding/internal/benchmark/decoding_batch",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/x/encoding/internal/benchmark/decoding_batch/decoding_batch.mi"
+    },
+    {
+      "root": "moonbitlang/x",
+      "rel": "encoding/internal/benchmark/decoding_streaming",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/x/encoding/internal/benchmark/decoding_streaming/decoding_streaming.mi"
+    },
+    {
+      "root": "moonbitlang/x",
+      "rel": "fs",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/x/fs/fs.mi"
+    },
+    {
+      "root": "moonbitlang/x",
+      "rel": "internal/ffi",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/x/internal/ffi/ffi.mi"
+    },
+    {
+      "root": "moonbitlang/x",
+      "rel": "json5",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/x/json5/json5.mi"
+    },
+    {
+      "root": "moonbitlang/x",
+      "rel": "num",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/x/num/num.mi"
+    },
+    {
+      "root": "moonbitlang/x",
+      "rel": "path",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/x/path/path.mi"
+    },
+    {
+      "root": "moonbitlang/x",
+      "rel": "path/internal/ffi",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/x/path/internal/ffi/ffi.mi"
+    },
+    {
+      "root": "moonbitlang/x",
+      "rel": "path/posix",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/x/path/posix/posix.mi"
+    },
+    {
+      "root": "moonbitlang/x",
+      "rel": "path/win32",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/x/path/win32/win32.mi"
+    },
+    {
+      "root": "moonbitlang/x",
+      "rel": "rational",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/x/rational/rational.mi"
+    },
+    {
+      "root": "moonbitlang/x",
+      "rel": "stack",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/x/stack/stack.mi"
+    },
+    {
+      "root": "moonbitlang/x",
+      "rel": "sys",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/x/sys/sys.mi"
+    },
+    {
+      "root": "moonbitlang/x",
+      "rel": "sys/internal/ffi",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/x/sys/internal/ffi/ffi.mi"
+    },
+    {
+      "root": "moonbitlang/x",
+      "rel": "time",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/x/time/time.mi"
+    },
+    {
+      "root": "moonbitlang/x",
+      "rel": "uuid",
+      "artifact": "/Users/yh/proj/takt-worktrees/20260412T0647-tasuku-moonbit-niaru-mi-moonbi/_build/js/debug/build/.mooncakes/moonbitlang/x/uuid/uuid.mi"
+    }
+  ]
+}

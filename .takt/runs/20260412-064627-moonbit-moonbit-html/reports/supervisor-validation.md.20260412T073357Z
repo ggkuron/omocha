@@ -1,0 +1,71 @@
+# 最終検証結果
+
+## 結果: REJECT
+
+## 要件充足チェック
+
+| # | 分解した要件 | 充足 | 根拠（ファイル:行） |
+|---|------------|------|-------------------|
+| 1 | `moonbit/` 配下の MoonBit ソースをワークツリーに配置する | ✅ | `moonbit/` 存在確認 — `check_files.sh` PASS（本次実行） |
+| 2 | `_build/js/debug/build/main/main.js` をビルド生成する | ✅ | `check_files.sh` PASS=10、implement.1.20260412T070631Z.md「ran 15 tasks」証跡あり |
+| 3 | ブラウザ起動用の HTML を用意する | ✅ | `index.html` 存在 — `check_files.sh` PASS（本次実行） |
+| 4 | HTML に `<canvas id="app" width="800" height="600">` を含める | ✅ | `index.html:100` — `check_html.sh` PASS（canvas id, width, height 各項目） |
+| 5 | HTML から kagura JS（init/gfx/audio）を ES module として読み込む | ✅ | `index.html:109-112` — `check_html.sh` PASS（kagura-init.js, kagura-gfx.js, kagura-audio.js 参照確認） |
+| 6 | HTML から `main.js` を `loadGameScript` で読み込む | ✅ | `index.html:127` — `check_html.sh` PASS（main.js 参照、loadGameScript 呼び出し確認） |
+| 7 | WebGPU 初期化順序 `setupGlobalState → installAudioHelpers → installGfxHelpers → loadGameScript` を守る | ✅ | `index.html:124-127` — `check_html.sh` PASS（順序を行番号比較で検証、PASS=17） |
+| 8 | ローカルで画面を開ける起動コマンドを明確にする（コマンド） | ✅ | `python3 -m http.server 8080` — implement.1.20260412T070631Z.md に明記 |
+| 9 | ローカルで画面を開ける起動コマンドを明確にする（URL） | ✅ | `http://localhost:8080/` — implement.1.20260412T070631Z.md に明記 |
+| 10 | `playwright-cli` を使って実画面を確認する | ❌ | implement.1.20260412T070631Z.md にスクリーンショット確認の証跡なし。`playwright_smoke.sh` は「未インストール時 SKIP (exit 0)」設計のため実際の playwright 実行がこの run で行われたか判断不能（未確認） |
+| 11 | UI をシャドウバース風のカードバトル UI に寄せる（ダークテーマ） | ✅ | `index.html:11` `background: linear-gradient(160deg, #0d1117 ...)` — `check_html.sh` PASS |
+| 12 | UI をシャドウバース風のカードバトル UI に寄せる（金色装飾） | ✅ | `index.html:54-60` 金色グローボーダー — `check_html.sh` PASS（controls キーボード説明含む） |
+| 13 | UI をシャドウバース風のカードバトル UI に寄せる（操作説明パネル） | ✅ | `index.html:101-106` `.controls` 要素と kbd キー一覧 — `check_html.sh` PASS |
+| 14 | 実装後にビルドを実行する | ✅ | `moon build --target js` "Finished. ran 15 tasks" — implement.1.20260412T070631Z.md |
+| 15 | 実装後にテストを実行する | ✅ | `check_files.sh` PASS=10 / `check_html.sh` PASS=17 — 本次実行で確認済み |
+| 16 | 実装後にブラウザ表示確認を実行する | ❌ | playwright 実行の証跡がこの run に存在しない（未確認） |
+
+❌ が2件（要件10, 16）あるため REJECT。
+
+## 前段 finding の再評価
+
+| finding_id | 前段判定 | 再評価 | 根拠 |
+|------------|----------|--------|------|
+| AI-NEW-kagura-gfx-js-L283 | new (REJECT) | **妥当** | `lib/web/kagura-gfx.js:283` で `} catch (_) {}` が実在確認済み。L401 修正により変更対象ファイルのため Boyhood Scout Rule 適用。ポリシー「空の catch（エラー握りつぶし）」REJECT 基準に該当 |
+| AI-NEW-kagura-gfx-js-L293 | new (REJECT) | **妥当** | `lib/web/kagura-gfx.js:293` で `.catch(() => {` が実在確認済み（エラーパラメータなし）。readback 失敗が無音で消える |
+| AI-NEW-kagura-gfx-js-L296 | new (REJECT) | **妥当** | `lib/web/kagura-gfx.js:296` で `} catch (_) {}` が実在確認済み。catch ブロック内 unmap() の例外を握りつぶし |
+| AI-NEW-index-html-L109-L113 | resolved | **妥当** | `index.html:109-110` で `kagura-init.js` からの import が1行に統合済みを確認 |
+| AI-NEW-kagura-audio-js-L82 | resolved | **妥当** | ai-fix.1.20260412T071424Z.md の修正記録、ポリシー基準を満たす catch に変更済み |
+| AI-NEW-kagura-gfx-js-L401 | resolved | **妥当** | `lib/web/kagura-gfx.js:401` で `.catch((e) => { console.warn(...) })` を直接確認済み |
+
+## 検証サマリー
+
+| 項目 | 状態 | 確認方法 |
+|------|------|---------|
+| テスト | ✅ | `bash test/browser/check_files.sh` PASS=10 / `bash test/browser/check_html.sh` PASS=17（本次実行） |
+| ビルド | ✅ | `moon build --target js` "Finished. ran 15 tasks, now up to date" — implement.1.20260412T070631Z.md |
+| 動作確認（playwright） | ❌ | 実行証跡なし（未確認）。implement.1.md にスクリーンショット確認の記載なし。`playwright_smoke.sh` は未インストール時 SKIP 設計のため、この run で playwright が実際に動作したか判断不能 |
+
+## 今回の指摘（new）
+
+なし（前段 ai-review の3件を継続 persists として扱う）
+
+## 継続指摘（persists）
+
+| # | finding_id | 前回根拠 | 今回根拠 | 理由 | 必要アクション |
+|---|------------|----------|----------|------|----------------|
+| 1 | AI-NEW-kagura-gfx-js-L283 | `lib/web/kagura-gfx.js:283`（ai-review.2） | `lib/web/kagura-gfx.js:283`（本次実コード確認） | `} catch (_) {}` が未修正のまま残存。変更対象ファイル内の空 catch | `catch (unmapError) { console.warn("[kagura] GPU buffer unmap error (then):", unmapError); }` に修正 |
+| 2 | AI-NEW-kagura-gfx-js-L293 | `lib/web/kagura-gfx.js:293`（ai-review.2） | `lib/web/kagura-gfx.js:293`（本次実コード確認） | `.catch(() => {` — エラーパラメータなし、readback 失敗が無音で消える。未修正のまま | `.catch((e) => { console.warn("[kagura] GPU timestamp readback error:", e);` に変更してクリーンアップ続行 |
+| 3 | AI-NEW-kagura-gfx-js-L296 | `lib/web/kagura-gfx.js:296`（ai-review.2） | `lib/web/kagura-gfx.js:296`（本次実コード確認） | `} catch (_) {}` が未修正のまま残存。catch 内 unmap() 例外を握りつぶし | `catch (unmapError) { console.warn("[kagura] GPU buffer unmap error (catch):", unmapError); }` に修正 |
+| 4 | VAL-PERSIST-playwright-confirm | 要件10/16（前回 supervisor REJECT） | 要件10/16（本次確認） | タスク指示書 要件5「playwright-cli を使って実画面を確認しながら UI を調整する」/ 要件7「ブラウザ表示確認を実行する」の実行証跡がこの run に存在しない | playwright-cli または playwright を実行し、スクリーンショット取得結果を実行証跡として示すこと。未インストールの場合は明示したうえで代替確認（手動 or CI 証跡）を提示すること |
+
+## 解消済み（resolved）
+
+| finding_id | 解消根拠 |
+|------------|----------|
+| AI-NEW-index-html-L109-L113 | `index.html:109-110` で `kagura-init.js` からの import が1行に統合済みを本次実コードで確認 |
+| AI-NEW-kagura-audio-js-L82 | `lib/web/kagura-audio.js:82` で `.catch((e) => { console.warn(...) })` に修正済み — ai-fix.1.20260412T071424Z.md 証跡あり |
+| AI-NEW-kagura-gfx-js-L401 | `lib/web/kagura-gfx.js:401` で `.catch((e) => { console.warn("[kagura] GPU submit tracking error:", e); })` を本次実コードで直接確認 |
+
+## 成果物
+
+- 作成: `index.html`, `lib/web/kagura-init.js`, `lib/web/kagura-gfx.js`, `lib/web/kagura-audio.js`, `moon.mod.json`, `moonbit/`, `.mooncakes/`, `_build/js/debug/build/main/main.js`, `test/browser/check_files.sh`, `test/browser/check_html.sh`, `test/browser/playwright_smoke.sh`
+- 変更（ai-fix 適用済み）: `index.html`, `test/browser/check_html.sh`, `lib/web/kagura-audio.js`, `lib/web/kagura-gfx.js`

@@ -1,0 +1,81 @@
+# アーキテクチャレビュー
+
+## 結果: REJECT
+
+## サマリー
+前回指摘 `ARCH-NEW-kagura-init-js-L116`（dead export `loadFonts`）は解消済み。  
+今回、`test/browser/playwright_smoke.sh` に新規追加された playwright-cli (Anthropic版) ブランチに、`open` で開いたブラウザセッションが失敗パスで `close` されないリソースリークを検出。今回の変更で導入された問題のためブロッキング。
+
+## 確認した観点
+- [x] 構造・設計
+- [x] コード品質
+- [x] 変更スコープ（変更ファイル: `lib/web/kagura-init.js`, `test/browser/playwright_smoke.sh`）
+- [x] デッドコード
+- [x] 呼び出しチェーン・リソース管理
+- [x] エラーパス検証
+
+## 前回指摘の追跡
+
+| finding_id | 前回状態 | 今回状態 | 根拠 |
+|------------|---------|---------|------|
+| ARCH-NEW-kagura-init-js-L116 | new | resolved | `lib/web/kagura-init.js` 全体を確認。`state.fonts = state.fonts \|\| {}` (旧L106) および `export async function loadFonts` (旧L116-131) が削除済み。現ファイルは123行、該当コードなし |
+
+## 今回の指摘（new）
+
+| # | finding_id | family_tag | スコープ | 場所 | 問題 | 修正案 |
+|---|------------|------------|---------|------|------|--------|
+| 1 | ARCH-NEW-playwright-smoke-close-trap | resource-leak | スコープ内 | `test/browser/playwright_smoke.sh:50-71` | `playwright-cli open`（L50）でブラウザセッションを開くが、`close`（L71）は成功パスにしか存在しない。`set -euo pipefail`（L9）環境下で①L58の `exit 1`（デスクトップSS生成失敗）②L68の `exit 1`（モバイルSS生成失敗）③L51-62の任意コマンド失敗、のいずれかが発生するとセッションが閉じられないまま残る。今回の変更（Anthropic版 playwright-cli ブランチ新規追加）で導入された問題 | `open` 呼び出し直後（L50の次行）に `trap '"${PLAYWRIGHT_CMD}" close 2>/dev/null \|\| true' EXIT` を追加し、L71の明示的 `close` を削除する（trapがEXIT時に必ず呼ぶ） |
+
+**修正後の該当箇所（L50〜L71）:**
+```bash
+  "${PLAYWRIGHT_CMD}" open "${BASE_URL}/"
+  trap '"${PLAYWRIGHT_CMD}" close 2>/dev/null || true' EXIT
+
+  "${PLAYWRIGHT_CMD}" resize 1280 800
+  "${PLAYWRIGHT_CMD}" screenshot --filename "${SCREENSHOT_PATH}"
+
+  if [ -f "${SCREENSHOT_PATH}" ]; then
+    echo "  PASS: デスクトップスクリーンショット取得成功 -> ${SCREENSHOT_PATH}"
+  else
+    echo "  FAIL: スクリーンショットが生成されなかった"
+    exit 1
+  fi
+
+  "${PLAYWRIGHT_CMD}" resize 375 812
+  "${PLAYWRIGHT_CMD}" screenshot --filename "${MOBILE_SCREENSHOT_PATH}"
+
+  if [ -f "${MOBILE_SCREENSHOT_PATH}" ]; then
+    echo "  PASS: モバイルスクリーンショット取得成功 -> ${MOBILE_SCREENSHOT_PATH}"
+  else
+    echo "  FAIL: モバイルスクリーンショットが生成されなかった"
+    exit 1
+  fi
+  # close は trap EXIT で実行される（明示的呼び出し不要）
+```
+
+## 継続指摘（persists）
+なし
+
+## 解消済み（resolved）
+
+| finding_id | 解消根拠 |
+|------------|----------|
+| ARCH-NEW-check-html-sh-L39 | `check_order` が `grep -nE` ベースに修正済み。PASS=17 FAIL=0 確認済み ✅ |
+| ARCH-NEW-kagura-init-js-L116 | `lib/web/kagura-init.js` から `state.fonts` 初期化と `loadFonts` 関数を削除済み（123行に短縮）。`index.html` は `./lib/web/kagura-init.js` を import し、`.mooncakes/` のキャッシュ元には触れていない ✅ |
+
+## 警告（非ブロッキング）
+
+| # | 場所 | 問題 | 推奨対応 |
+|---|------|------|---------|
+| W1 | `lib/web/kagura-gfx.js` (1624行) | 300行超の REJECT 基準を大幅超過（5倍超）。shader解析・metrics・timestamp query・pipeline生成・描画コマンド・main renderの6つの関心が1ファイルに同居 | 現タスクスコープ逸脱のため即時REJECTとしないが、次サイクルで分割を推奨（`kagura-gfx-metrics.js` / `kagura-gfx-pipeline.js` / `kagura-gfx-draw.js` / `kagura-gfx.js` の4ファイル体制） |
+
+## ファクトチェック根拠
+
+- `lib/web/kagura-init.js` 全文確認（123行）: `loadFonts`・`state.fonts` の記述なし → RESOLVED確認
+- `grep -rn "loadFonts|state\.fonts" lib/` → `.mooncakes/` キャッシュのみマッチ（`lib/web/` には0件）
+- `index.html:110` が `./lib/web/kagura-init.js` を import していることを確認
+- `playwright_smoke.sh:50` で `open`、`L71` で `close`（成功パスのみ）
+- `playwright_smoke.sh:9` に `set -euo pipefail`、`L58`・`L68` に `exit 1` → close未呼び出しパス存在を確認
+
+## REJECT判定条件
+ARCH-NEW-playwright-smoke-close-trap (`new`) が1件存在するため REJECT。

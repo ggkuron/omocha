@@ -1,0 +1,52 @@
+# アーキテクチャレビュー
+
+## 結果: APPROVE
+
+## サマリー
+前回指摘 `ARCH-NEW-kagura-init-js-selector` は解消済み（`lib/web/kagura-init.js:88-104` を直接確認。`selector:` フィールドは存在しない）。今回の全体スキャンで新たな REJECT 条件は検出されなかった。
+
+## 確認した観点
+- [x] 構造・設計
+- [x] コード品質
+- [x] 変更スコープ
+- [x] テストカバレッジ
+- [x] デッドコード
+- [x] 呼び出しチェーン検証
+- [x] パブリック API の公開範囲
+
+## 解消済み（resolved）
+
+| finding_id | 解消根拠 |
+|------------|----------|
+| ARCH-NEW-kagura-init-js-selector | `lib/web/kagura-init.js:88-104` を直接確認。`selector:` フィールドは存在しない（fix.6 で削除済み） ✅ |
+
+## 今回の指摘（new）
+
+なし
+
+## 継続指摘（persists）
+
+なし
+
+## 参考情報（非ブロッキング）
+
+| # | finding_id | 場所 | 問題 | 対応 |
+|---|------------|------|------|------|
+| W1 | ARCH-WARN-kagura-gfx-large-file | `lib/web/kagura-gfx.js` (1624行) | 300行超の単一ファイル。ナレッジ判定基準は REJECT だが、WebGPU バックエンドとして高凝集（単一責務）かつ、ファイル分割はタスクスコープ（ブラウザ HTML 整備・UI 調整）を大きく逸脱するリファクタリングに相当するため非ブロッキングとして記録する | 次タスク以降でシェーダーパーサー・タイムスタンプ計測・リソース管理等のサブモジュールへの分割を検討 |
+
+## パブリック API 検証
+
+| ファイル | export 関数 | index.html 使用 | 判定 |
+|---------|-----------|----------------|------|
+| `kagura-init.js` | `initWebGPU` | L115 ✅ | OK |
+| `kagura-init.js` | `showStartupError` | L117, L130 ✅ | OK |
+| `kagura-init.js` | `setupGlobalState` | L124 ✅ | OK |
+| `kagura-init.js` | `loadGameScript` | L127 ✅ | OK |
+| `kagura-audio.js` | `installAudioHelpers` | L125 ✅ | OK |
+| `kagura-gfx.js` | `installGfxHelpers` | L126 ✅ | OK |
+
+内部実装関数（`createAudioBackend`・`advanceAudioWrite`・`closeAudio`・`ensureGpuPipeline`・`releaseGpuResources`・`finalizeTextureUpload`・`renderGpu`）はすべて非 export。再発防止テストが `check_files.sh` で7件追加済み。
+
+## APPROVE判定条件
+
+`new` および `persists` がともに 0件のため、REJECT 条件は成立しない。APPROVE。

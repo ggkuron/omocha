@@ -1,0 +1,12 @@
+import {
+  "astrata/astrata/lib",
+  "mizchi/kagura/core",
+  "mizchi/kagura/scene",
+  "mizchi/kagura/core/inpututil",
+}
+
+warnings = "-29-71"
+
+options(
+  "is-main": true,
+)

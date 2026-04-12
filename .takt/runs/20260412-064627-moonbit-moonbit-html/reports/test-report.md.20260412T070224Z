@@ -1,0 +1,117 @@
+# テストレポート
+
+## 概要
+
+ブラウザ起動用 HTML/JS/CSS の実装前に、検証用シェルスクリプトテストを作成した。
+
+---
+
+## 作成したテストファイル
+
+| ファイル | 目的 |
+|---------|------|
+| `test/browser/check_files.sh` | ブラウザ起動に必要なファイルの存在確認（10件） |
+| `test/browser/check_html.sh` | `index.html` 内容の検証（17件） |
+| `test/browser/playwright_smoke.sh` | Playwright によるブラウザ表示確認スクリプト |
+
+---
+
+## テスト実行結果（実装前）
+
+### check_files.sh
+
+```
+=== check_files: ブラウザ起動ファイル存在確認 ===
+  FAIL: moon.mod.json が存在する (moon.mod.json) - not found
+  FAIL: moonbit/ ディレクトリが存在する (moonbit) - not found
+  FAIL: moonbit/main/ ディレクトリが存在する (moonbit/main) - not found
+  FAIL: moonbit/main/main.mbt が存在する (moonbit/main/main.mbt) - not found
+  FAIL: main.js ビルド成果物が存在する (_build/js/debug/build/main/main.js) - not found
+  FAIL: lib/web/ ディレクトリが存在する (lib/web) - not found
+  FAIL: kagura-init.js が存在する (lib/web/kagura-init.js) - not found
+  FAIL: kagura-gfx.js が存在する (lib/web/kagura-gfx.js) - not found
+  FAIL: kagura-audio.js が存在する (lib/web/kagura-audio.js) - not found
+  FAIL: index.html が存在する (index.html) - not found
+結果: PASS=0 FAIL=10
+```
+
+→ 実装前のため全件 FAIL（**想定内**）
+
+### check_html.sh
+
+```
+=== check_html: index.html 内容検証 ===
+  FAIL: index.html が存在しない
+結果: PASS=0 FAIL=1
+```
+
+→ `index.html` 未作成のため FAIL（**想定内**）
+
+### playwright_smoke.sh
+
+実行せず（静的サーバーが未起動のため）。実装完了後に `implement` ステップで実行予定。
+
+---
+
+## 各テストの検証内容
+
+### check_files.sh — ファイル存在確認（10件）
+
+| # | 検証内容 | 実装後に期待する結果 |
+|---|---------|-----------------|
+| 1 | `moon.mod.json` が存在する | PASS |
+| 2 | `moonbit/` ディレクトリが存在する | PASS |
+| 3 | `moonbit/main/` ディレクトリが存在する | PASS |
+| 4 | `moonbit/main/main.mbt` が存在する | PASS |
+| 5 | `_build/js/debug/build/main/main.js` が存在する | PASS |
+| 6 | `lib/web/` ディレクトリが存在する | PASS |
+| 7 | `lib/web/kagura-init.js` が存在する | PASS |
+| 8 | `lib/web/kagura-gfx.js` が存在する | PASS |
+| 9 | `lib/web/kagura-audio.js` が存在する | PASS |
+| 10 | `index.html` が存在する | PASS |
+
+### check_html.sh — index.html 内容検証（17件）
+
+| # | 検証内容 | 実装後に期待する結果 |
+|---|---------|-----------------|
+| 1 | `id="app"` が存在する | PASS |
+| 2 | `width="800"` が存在する | PASS |
+| 3 | `height="600"` が存在する | PASS |
+| 4 | `<canvas>` 要素が存在する | PASS |
+| 5 | `type="module"` が使われている | PASS |
+| 6 | `kagura-init.js` への参照が存在する | PASS |
+| 7 | `kagura-gfx.js` への参照が存在する | PASS |
+| 8 | `kagura-audio.js` への参照が存在する | PASS |
+| 9 | `main.js` への参照が存在する | PASS |
+| 10 | `setupGlobalState` が呼ばれている | PASS |
+| 11 | `installAudioHelpers` が呼ばれている | PASS |
+| 12 | `installGfxHelpers` が呼ばれている | PASS |
+| 13 | `loadGameScript` が呼ばれている | PASS |
+| 14 | `setupGlobalState` は `installAudioHelpers` より前に呼ばれる | PASS |
+| 15 | `installGfxHelpers` は `loadGameScript` より前に呼ばれる | PASS |
+| 16 | ダークテーマ CSS が存在する | PASS |
+| 17 | 操作説明の参照が存在する | PASS |
+
+### playwright_smoke.sh — Playwright 表示確認
+
+| 確認内容 | 方法 |
+|---------|------|
+| デスクトップ (1280×800) でスクリーンショット取得 | `playwright-cli screenshot --viewport-size 1280,800` |
+| モバイル (375×812) でスクリーンショット取得 | `playwright-cli screenshot --viewport-size 375,812` |
+| `playwright-cli` 未インストール時は SKIP（エラー終了しない） | — |
+
+---
+
+## テスト実行コマンド（実装完了後）
+
+```bash
+# ファイル存在確認
+bash test/browser/check_files.sh
+
+# HTML 内容検証
+bash test/browser/check_html.sh
+
+# Playwright ブラウザ表示確認（静的サーバー起動後）
+python3 -m http.server 8080 &
+bash test/browser/playwright_smoke.sh 8080
+```

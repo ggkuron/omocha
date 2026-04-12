@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Astrata – Card Battle</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: linear-gradient(160deg, #0d1117 0%, #1a1a2e 60%, #0f3460 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #c9d4e0;
+    }
+
+    header {
+      margin-bottom: 16px;
+      text-align: center;
+    }
+
+    header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      background: linear-gradient(90deg, #f0a500, #ffe066, #f0a500);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      text-shadow: none;
+      filter: drop-shadow(0 0 8px rgba(240, 165, 0, 0.5));
+    }
+
+    header p {
+      font-size: 0.75rem;
+      color: #6b7d93;
+      letter-spacing: 0.1em;
+      margin-top: 4px;
+    }
+
+    main {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+
+    #app {
+      display: block;
+      border: 2px solid rgba(240, 165, 0, 0.4);
+      border-radius: 4px;
+      box-shadow:
+        0 0 24px rgba(240, 165, 0, 0.2),
+        0 0 64px rgba(15, 52, 96, 0.6),
+        inset 0 0 12px rgba(0, 0, 0, 0.4);
+      background: #0a0a1a;
+      max-width: 100%;
+    }
+
+    .controls {
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+      justify-content: center;
+      font-size: 0.78rem;
+      font-family: 'Consolas', 'SFMono-Regular', monospace;
+      color: #6b7d93;
+      padding: 8px 16px;
+      border: 1px solid rgba(240, 165, 0, 0.15);
+      border-radius: 4px;
+      background: rgba(10, 10, 26, 0.6);
+    }
+
+    .controls span {
+      white-space: nowrap;
+    }
+
+    .controls kbd {
+      display: inline-block;
+      background: rgba(240, 165, 0, 0.12);
+      border: 1px solid rgba(240, 165, 0, 0.3);
+      border-radius: 3px;
+      padding: 1px 5px;
+      font-size: 0.72rem;
+      color: #f0a500;
+      font-family: inherit;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>ASTRATA</h1>
+    <p>CARD BATTLE</p>
+  </header>
+  <main>
+    <canvas id="app" width="800" height="600"></canvas>
+    <div class="controls">
+      <span><kbd>Left</kbd> / <kbd>Right</kbd> 選択移動</span>
+      <span><kbd>Up</kbd> / <kbd>Down</kbd> レベル内移動</span>
+      <span><kbd>Enter</kbd> カードプレイ</span>
+      <span><kbd>E</kbd> ターン終了</span>
+    </div>
+  </main>
+  <script type="module">
+    import { initWebGPU, setupGlobalState, showStartupError, loadGameScript }
+      from "./lib/web/kagura-init.js";
+    import { installAudioHelpers } from "./lib/web/kagura-audio.js";
+    import { installGfxHelpers } from "./lib/web/kagura-gfx.js";
+
+    async function init() {
+      const result = await initWebGPU("#app");
+      if (!result) {
+        showStartupError(
+          "#app",
+          "WebGPU が必要です",
+          "Chrome 113+ または Edge 113+ を使用してください。"
+        );
+        return;
+      }
+      setupGlobalState(result.canvas, result.device, result.format, result.context);
+      installAudioHelpers();
+      installGfxHelpers();
+      await loadGameScript("./_build/js/debug/build/main/main.js");
+    }
+
+    init().catch((e) => showStartupError("#app", "起動エラー", String(e)));
+  </script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - heading "ASTRATA" [level=1] [ref=e3]
+    - paragraph [ref=e4]: CARD BATTLE
+  - main [ref=e5]:
+    - generic [ref=e7]:
+      - generic [ref=e8]:
+        - generic [ref=e9]: Left
+        - text: /
+        - generic [ref=e10]: Right
+        - text: 選択移動
+      - generic [ref=e11]:
+        - generic [ref=e12]: Up
+        - text: /
+        - generic [ref=e13]: Down
+        - text: レベル内移動
+      - generic [ref=e14]:
+        - generic [ref=e15]: Enter
+        - text: カードプレイ
+      - generic [ref=e16]:
+        - generic [ref=e17]: E
+        - text: ターン終了

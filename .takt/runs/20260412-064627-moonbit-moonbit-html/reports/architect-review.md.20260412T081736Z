@@ -1,0 +1,86 @@
+# アーキテクチャレビュー
+
+## 結果: REJECT
+
+## サマリー
+前回指摘 `ARCH-NEW-kagura-audio-unnecessary-exports` は解消済み。今回、`lib/web/kagura-init.js:90` の `selector: "#app"` フィールドがデッドフィールドであることを検出した（どのコンシューマーにも読まれていない）。過去イテレーションで `state.fonts` を削除したケースと同一クラスの問題。ボーイスカウトルールにより差し戻す。
+
+## 確認した観点
+- [x] 構造・設計
+- [x] コード品質
+- [x] 変更スコープ
+- [x] テストカバレッジ
+- [x] デッドコード
+- [x] 呼び出しチェーン検証
+- [x] パブリック API の公開範囲
+
+## 前回指摘の追跡
+
+| finding_id | 前回状態 | 今回状態 | 根拠 |
+|-----------|---------|---------|------|
+| ARCH-NEW-kagura-audio-unnecessary-exports | open (REJECT) | resolved ✅ | `grep '^export function' lib/web/kagura-audio.js` → `installAudioHelpers`（L118）のみ。`createAudioBackend`（L42）・`advanceAudioWrite`（L91）・`closeAudio`（L108）は `export` 削除済み |
+
+## 今回の指摘（new）
+
+| # | finding_id | family_tag | スコープ | 場所 | 問題 | 修正案 |
+|---|------------|------------|---------|------|------|--------|
+| 1 | ARCH-NEW-kagura-init-js-selector | dead-field | スコープ内（ボーイスカウト） | `lib/web/kagura-init.js:90` | `setupGlobalState` 内で初期化される状態オブジェクトに `selector: "#app"` フィールドが存在するが、どこからも読まれていない。`kagura-gfx.js`（0件）・`kagura-audio.js`（0件）・`_build/js/debug/build/main/main.js`（`.selector` アクセス 0件）・`moonbit/` ソース（0件）・`index.html`（0件）すべてで参照なし。`main.js` の 36件の "selector" は関数引数名 `_canvas_selector` であり `state.selector` へのアクセスではない。過去イテレーションで同ファイルの `state.fonts` フィールドを削除したケースと同一クラス | `lib/web/kagura-init.js:90` の `selector: "#app",` 行を削除する |
+
+**修正後の `setupGlobalState` 初期化オブジェクト（L88〜L105）:**
+```js
+export function setupGlobalState(canvas, device, format, context) {
+  const state = globalThis.__kaguraWebRuntime ?? (globalThis.__kaguraWebRuntime = {
+    nextSurfaceId: 100,
+    canvas: null,
+    surfaceId: 0,
+    width: canvas.width,
+    height: canvas.height,
+    dpr: 1,
+    webgpu: {
+      context: null, device: null, format: "bgra8unorm",
+      pending: null, _pipeline: null, _pipelineFormat: "",
+      _uniformBGL: null, _texBGL: null,
+      _defaultTexture: null, _defaultTexView: null, _defaultSampler: null,
+      _drawResourceCache: null, _currentDraw: null, _pendingTexture: null,
+      presentScheduled: false,
+      clear: [0, 0, 0, 1], commands: [], textures: null, lastError: "",
+    },
+  });
+  state.canvas = canvas;
+  state.surfaceId = state.nextSurfaceId++;
+  canvas.__kaguraSurfaceId = state.surfaceId;
+  state.webgpu.context = context;
+  state.webgpu.device = device;
+  state.webgpu.format = format;
+  return state;
+}
+```
+
+## 継続指摘（persists）
+なし
+
+## 解消済み（resolved）
+
+| finding_id | 解消根拠 |
+|------------|----------|
+| ARCH-NEW-kagura-audio-unnecessary-exports | `lib/web/kagura-audio.js` の3関数（L42・L91・L108）の `export` 削除済み。`grep '^export function' lib/web/kagura-audio.js` → `installAudioHelpers`（L118）のみ ✅ |
+
+## 警告（非ブロッキング）
+
+| # | finding_id | 場所 | 問題 | 推奨対応 |
+|---|------------|------|------|---------|
+| W1 | ARCH-WARN-kagura-gfx-file-size（継続） | `lib/web/kagura-gfx.js` (1624行) | 300行超の REJECT 基準を大幅に超過（5倍超）。shader解析・メトリクス・タイムスタンプクエリ・パイプライン生成・描画コマンド・main renderの6つの関心が1ファイルに同居 | 現タスクスコープを大きく逸脱するリファクタリングのため非ブロッキング。次サイクルで `kagura-gfx-metrics.js`（metrics+timestamp）・`kagura-gfx-pipeline.js`（shader helpers+pipeline creation）・`kagura-gfx-draw.js`（draw helpers 3関数）・`kagura-gfx.js`（renderGpu+resource mgmt+installGfxHelpers）への分割を推奨 |
+
+## ファクトチェック根拠
+
+- `selector` フィールドの未使用確認:
+  - `grep -rn "selector:" lib/web/ index.html` → `kagura-init.js:90` のみ（定義のみ）
+  - `grep -rn '\.selector\b' lib/web/ index.html` → 0件
+  - `grep -n '"selector"\|\.selector' _build/js/debug/build/main/main.js` → 0件
+  - `grep -c "selector" _build/js/debug/build/main/main.js` → 36件（すべて `_canvas_selector` 関数引数名、`state.selector` 読み取りなし）
+  - moonbit ソース: `find moonbit/ -name "*.mbt"` → `selector` 参照なし
+  - `kagura-gfx.js`: `grep -c "selector\|__kaguraWebRuntime" lib/web/kagura-gfx.js` → 0件
+- 過去イテレーションとの比較: `20260412T073645Z` レポートで `state.fonts` フィールドの削除を指摘・解消済み。`selector` はその際未検出だったが同一クラスの問題
+
+## REJECT判定条件
+ARCH-NEW-kagura-init-js-selector (`new`) が1件存在するため REJECT。

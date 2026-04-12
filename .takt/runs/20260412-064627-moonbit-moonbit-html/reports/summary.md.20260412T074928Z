@@ -1,0 +1,33 @@
+# タスク完了サマリー
+
+## タスク
+`moonbit/` 配下にある生成済み MoonBit 実装をブラウザで起動できるようにし、ブラウザ起動用の HTML を用意したうえで、`playwright-cli` で実画面を確認しながら UI をシャドウバース風のカードバトル UI に調整した。
+
+## 結果
+完了
+
+## 変更内容
+
+| 種別 | ファイル | 概要 |
+|------|---------|------|
+| 作成 | `index.html` | ブラウザ起動エントリポイント。WebGPU 初期化シーケンス（setupGlobalState → installAudioHelpers → installGfxHelpers → loadGameScript）をES moduleで実装。シャドウバース風ダークテーマ・金色タイトル・操作説明パネルを含む |
+| 作成 | `lib/web/kagura-init.js` | Kagura WebGPU 初期化ヘルパー（dead export `loadFonts` と dead init `state.fonts` を削除済み） |
+| 作成 | `lib/web/kagura-gfx.js` | Kagura グラフィクスヘルパー（空 catch 3箇所を `console.warn` による警告ログに修正済み） |
+| 作成 | `lib/web/kagura-audio.js` | Kagura オーディオヘルパー |
+| 作成 | `moon.mod.json` | MoonBit プロジェクト設定 |
+| 作成 | `moonbit/` | MoonBit ゲームソース（lib/ + main/） |
+| 作成 | `.mooncakes/` | MoonBit 依存パッケージ |
+| 作成 | `_build/js/debug/build/main/main.js` | `moon build --target js` によるビルド生成物 |
+| 作成 | `test/browser/check_files.sh` | 必要ファイルの存在確認テスト |
+| 作成 | `test/browser/check_html.sh` | HTML 内容検証テスト（canvas, kagura 参照, main.js 参照, 初期化順序を確認） |
+| 作成 | `test/browser/playwright_smoke.sh` | Playwright スモークテスト（Anthropic版 playwright-cli の open→resize→screenshot API に対応。`trap` によるリソースリーク対策済み） |
+| 作成 | `test/browser/screenshots/smoke-20260412T163829.png` | デスクトップ表示スクリーンショット（184,089 bytes） |
+| 作成 | `test/browser/screenshots/smoke-mobile-20260412T163829.png` | モバイル表示スクリーンショット（63,744 bytes） |
+
+## 検証証跡
+
+- **ビルド**: `moon build --target js` → "Finished. ran 15 tasks, now up to date"
+- **ファイル存在確認テスト**: `bash test/browser/check_files.sh` → PASS=10 FAIL=0
+- **HTML 内容検証テスト**: `bash test/browser/check_html.sh` → PASS=17 FAIL=0
+- **Playwright スモークテスト**: `bash test/browser/playwright_smoke.sh` → デスクトップ・モバイルともに PASS（スクリーンショット2件取得。ページタイトル「Astrata – Card Battle」確認。ダークグラデーション背景・金色タイトル・操作説明パネルが正常表示）
+- **起動コマンド**: `python3 -m http.server 8080` → `http://localhost:8080/` でアクセス可能

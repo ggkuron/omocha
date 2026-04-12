@@ -1,0 +1,23 @@
+# 変更スコープ宣言
+
+## タスク
+MoonBit 実装をブラウザで起動できるよう HTML/JS/CSS を整備し、シャドウバース風 UI に調整する
+
+## 変更予定
+| 種別 | ファイル |
+|------|---------|
+| コピー | `moon.mod.json` (元プロジェクトから) |
+| コピー | `moonbit/` (元プロジェクトから) |
+| コピー | `.mooncakes/` (元プロジェクトから) |
+| 作成 | `lib/web/kagura-init.js` (.mooncakes からコピー) |
+| 作成 | `lib/web/kagura-gfx.js` (.mooncakes からコピー) |
+| 作成 | `lib/web/kagura-audio.js` (.mooncakes からコピー) |
+| 作成 | `_build/js/debug/build/main/main.js` (moon build で生成) |
+| 作成 | `index.html` |
+
+## 推定規模
+Medium
+
+## 影響範囲
+- 既存 Haskell コードへの影響ゼロ
+- MoonBit ブラウザ起動エントリポイント新規追加

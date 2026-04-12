@@ -1,0 +1,56 @@
+# 最終検証結果
+
+## 結果: APPROVE
+
+## 要件充足チェック
+
+タスク指示書（`order.md`）の要件7件を検証可能な最小単位に分解して照合する。
+
+| # | 要件（タスク指示書から抽出） | 充足 | 根拠（ファイル:行） |
+|---|---------------------------|------|-------------------|
+| 1a | `moonbit/` 配下の生成済み MoonBit 実装が存在する | ✅ | `moonbit/lib/`, `moonbit/main/` がワークツリーに存在（`ls moonbit/` で直接確認） |
+| 1b | `_build/js/debug/build/main/main.js` が生成済み | ✅ | `_build/js/debug/build/main/main.js` 存在確認（check_files.sh PASS=10 FAIL=0 を本サイクルで再実行して直接確認） |
+| 2  | ブラウザ起動用の HTML を用意する | ✅ | `index.html` 存在確認（check_files.sh PASS=10 FAIL=0）。`<canvas id="app" width="800" height="600">` が `index.html:100` に存在（ファイル直接確認） |
+| 3a | HTML から kagura-init.js を ES module で読み込む | ✅ | `index.html:109` — `import { initWebGPU, setupGlobalState, showStartupError, loadGameScript } from "./lib/web/kagura-init.js"` |
+| 3b | HTML から kagura-audio.js を ES module で読み込む | ✅ | `index.html:111` — `import { installAudioHelpers } from "./lib/web/kagura-audio.js"` |
+| 3c | HTML から kagura-gfx.js を ES module で読み込む | ✅ | `index.html:112` — `import { installGfxHelpers } from "./lib/web/kagura-gfx.js"` |
+| 3d | HTML から MoonBit ビルド成果物（main.js）を読み込む | ✅ | `index.html:127` — `await loadGameScript("./_build/js/debug/build/main/main.js")` |
+| 4a | ローカル起動コマンドを明確にする | ✅ | `python3 -m http.server 8080` — `implement.1.20260412T070631Z.md` に明記、`test/browser/playwright_smoke.sh:4` コメントにも記載 |
+| 4b | アクセス URL を明確にする | ✅ | `http://localhost:8080/` — `implement.1.20260412T070631Z.md` に明記 |
+| 5  | `playwright-cli` を使って実画面を確認しながら UI を調整する | ✅ | `test/browser/screenshots/smoke-20260412T163829.png`（184,089 bytes）・`smoke-mobile-20260412T163829.png`（63,744 bytes）が 2026-04-12 16:38 に生成（`ls -la` で本サイクル直接確認。空ファイルではない） |
+| 6a | UI ダークテーマ | ✅ | `index.html:11` — `background: linear-gradient(160deg, #0d1117 0%, #1a1a2e 60%, #0f3460 100%)` |
+| 6b | UI 金色装飾 | ✅ | `index.html:30-35` — 金グラデーションタイトル。`index.html:54-59` — 金色グローボーダー `rgba(240, 165, 0, 0.4)` |
+| 6c | UI 操作説明パネル | ✅ | `index.html:101-106` — `.controls` 要素に Left/Right/Up/Down/Enter/E を `<kbd>` タグで表示 |
+| 7a | 実装後ビルドを実行する | ✅ | `moon build --target js` "Finished. ran 15 tasks, now up to date" — `implement.1.20260412T070631Z.md` に記載 |
+| 7b | 実装後テストを実行する（check_files.sh） | ✅ | PASS=10 FAIL=0 — 本サイクルで再実行して直接確認 |
+| 7c | 実装後テストを実行する（check_html.sh） | ✅ | PASS=17 FAIL=0 — 本サイクルで再実行して直接確認 |
+| 7d | 実装後ブラウザ表示確認を実行する | ✅ | playwright スクリーンショット 2件（184KB・63KB）が `test/browser/screenshots/` に存在（ls -la で本サイクル直接確認） |
+
+❌ なし → APPROVE 条件を満たす。
+
+## 前段 finding の再評価
+
+| finding_id | 前段判定 | 再評価 | 根拠 |
+|------------|----------|--------|------|
+| AI-NEW-kagura-gfx-js-L283 | new → resolved（fix.1） | **妥当 → RESOLVED** | `lib/web/kagura-gfx.js:283-284` — 空 catch が `console.warn` 警告ログに変更済み（supervisor-validation.md.20260412T074301Z 記載、前段判定と整合） |
+| AI-NEW-kagura-gfx-js-L293 | new → resolved（fix.1） | **妥当 → RESOLVED** | `lib/web/kagura-gfx.js:295-296` — エラーパラメータ付き `.catch((e) => { console.warn(...) })` に変更済み |
+| AI-NEW-kagura-gfx-js-L296 | new → resolved（fix.1） | **妥当 → RESOLVED** | `lib/web/kagura-gfx.js:299-300` — `console.warn` 警告ログに変更済み |
+| ARCH-NEW-check-html-sh-L39 | new → resolved（fix.1） | **妥当 → RESOLVED** | `test/browser/check_html.sh` PASS=17 FAIL=0 — 本サイクルで再実行して直接確認。`awk` → `grep -nE` 置換後に全パスを確認 |
+| ARCH-NEW-kagura-init-js-L116 | new → resolved（fix.2） | **妥当 → RESOLVED** | `grep -n "loadFonts\|state\.fonts" lib/web/kagura-init.js` が空を返す（本サイクルで実行して直接確認）。dead export `loadFonts` および `state.fonts` 初期化が削除済み |
+| VAL-PERSIST-playwright-confirm | persists → resolved（fix.2） | **妥当 → RESOLVED** | `test/browser/screenshots/smoke-20260412T163829.png`（184,089 bytes）・`smoke-mobile-20260412T163829.png`（63,744 bytes）が 16:38 に生成。`ls -la` で本サイクル直接確認 |
+| ARCH-NEW-playwright-smoke-close-trap | new → resolved（fix.3） | **妥当 → RESOLVED** | `test/browser/playwright_smoke.sh:51` — `trap '"${PLAYWRIGHT_CMD}" close 2>/dev/null \|\| true' EXIT` が存在することをファイル直接確認（本サイクル Read ツールで確認）。明示的 `close`（旧 L71）は削除済み |
+
+false_positive・overreach として疑うべき finding はなし。すべて実コードで成立が確認できる問題であり、タスクスコープ内（今回の変更ファイル）への指摘である。
+
+## 検証サマリー
+
+| 項目 | 状態 | 確認方法 |
+|------|------|---------|
+| テスト | ✅ | `check_files.sh` PASS=10 FAIL=0 / `check_html.sh` PASS=17 FAIL=0 — 本サイクルで再実行して直接確認 |
+| ビルド | ✅ | `moon build --target js` "Finished. ran 15 tasks, now up to date" — `implement.1.20260412T070631Z.md` 記載（再実行なし。証跡として採用） |
+| 動作確認 | ✅ | `test/browser/screenshots/smoke-20260412T163829.png`（184KB）・`smoke-mobile-20260412T163829.png`（63KB）が `test/browser/screenshots/` に存在（`ls -la` で本サイクル直接確認） |
+
+## 成果物
+
+- 作成: `index.html`, `lib/web/kagura-init.js`, `lib/web/kagura-gfx.js`, `lib/web/kagura-audio.js`, `moon.mod.json`, `moonbit/`, `.mooncakes/`, `_build/js/debug/build/main/main.js`, `test/browser/check_files.sh`, `test/browser/check_html.sh`, `test/browser/playwright_smoke.sh`, `test/browser/screenshots/smoke-20260412T163829.png`, `test/browser/screenshots/smoke-mobile-20260412T163829.png`
+- 変更: `lib/web/kagura-gfx.js`（空 catch 3箇所を `console.warn` に修正）, `lib/web/kagura-init.js`（dead export `loadFonts` と dead init `state.fonts` 削除）, `test/browser/check_html.sh`（`check_order` を `awk` → `grep -nE` に置換）, `test/browser/playwright_smoke.sh`（Anthropic版 playwright-cli API 対応・`open` 後の `trap` 追加）
