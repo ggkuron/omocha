@@ -1,7 +1,0 @@
-with-compiler: ghc-9.4.8
-
-packages:
-    ./
-  , ./JuicyPixels-util/
-  , ./GPipe-Core/GPipe-Core/
-
